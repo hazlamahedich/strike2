@@ -12,10 +12,11 @@ from sqlalchemy.orm import Session
 from ..models.notification import (
     Notification, NotificationCreate, NotificationUpdate,
     NotificationResponse, NotificationCount, NotificationPreferences,
-    NotificationType, NotificationPriority, NotificationChannel, NotificationStatus
+    NotificationType, NotificationPriority, NotificationChannel, NotificationStatus,
+    NotificationPreference, DeliveryChannel
 )
-from ..core.database import get_db
-from ..core.exceptions import NotFoundException, BadRequestException
+from ..core.database import get_db, fetch_one, fetch_all, execute
+from ..core.exceptions import NotFoundException, BadRequestException, ResourceNotFoundException, DatabaseException
 from ..services.communication import CommunicationService
 
 logger = logging.getLogger(__name__)
@@ -316,4 +317,486 @@ class NotificationService:
                 priority=NotificationPriority.MEDIUM,
                 channel=NotificationChannel.IN_APP
             )
-        ) 
+        )
+
+    @staticmethod
+    async def get_user_preferences(user_id: int) -> List[NotificationPreference]:
+        """
+        Get notification preferences for a user
+        
+        Args:
+            user_id: ID of the user
+            
+        Returns:
+            List of notification preferences
+        """
+        try:
+            query = """
+                SELECT * FROM notification_preferences
+                WHERE user_id = $1
+            """
+            
+            results = await fetch_all(query, user_id)
+            
+            preferences = []
+            for row in results:
+                preferences.append(NotificationPreference(
+                    user_id=row["user_id"],
+                    notification_type=row["notification_type"],
+                    enabled=row["enabled"],
+                    delivery_channels=row["delivery_channels"],
+                    time_window=row["time_window"],
+                    config=row.get("config", {})
+                ))
+            
+            return preferences
+            
+        except Exception as e:
+            logger.error(f"Error getting user notification preferences: {e}")
+            raise DatabaseException(f"Failed to retrieve notification preferences: {str(e)}")
+    
+    @staticmethod
+    async def get_preference(
+        user_id: int,
+        notification_type: NotificationType
+    ) -> Optional[NotificationPreference]:
+        """
+        Get a specific notification preference
+        
+        Args:
+            user_id: ID of the user
+            notification_type: Type of notification
+            
+        Returns:
+            Notification preference or None if not found
+        """
+        try:
+            query = """
+                SELECT * FROM notification_preferences
+                WHERE user_id = $1 AND notification_type = $2
+            """
+            
+            row = await fetch_one(query, user_id, notification_type.value)
+            
+            if not row:
+                # Return default preference if not found
+                return NotificationPreference(
+                    user_id=user_id,
+                    notification_type=notification_type,
+                    enabled=True,
+                    delivery_channels=[DeliveryChannel.IN_APP],
+                    time_window=None,
+                    config={}
+                )
+            
+            return NotificationPreference(
+                user_id=row["user_id"],
+                notification_type=row["notification_type"],
+                enabled=row["enabled"],
+                delivery_channels=row["delivery_channels"],
+                time_window=row["time_window"],
+                config=row.get("config", {})
+            )
+            
+        except Exception as e:
+            logger.error(f"Error getting notification preference: {e}")
+            raise DatabaseException(f"Failed to retrieve notification preference: {str(e)}")
+    
+    @staticmethod
+    async def update_preference(
+        user_id: int,
+        notification_type: NotificationType,
+        update_data: Dict[str, Any]
+    ) -> NotificationPreference:
+        """
+        Update a notification preference
+        
+        Args:
+            user_id: ID of the user
+            notification_type: Type of notification
+            update_data: Data to update
+            
+        Returns:
+            Updated notification preference
+        """
+        try:
+            # Check if preference exists
+            existing = await NotificationService.get_preference(user_id, notification_type)
+            
+            if existing and hasattr(existing, "user_id"):
+                # Update existing preference
+                update_fields = []
+                params = []
+                param_idx = 1
+                
+                for field, value in update_data.items():
+                    if hasattr(existing, field):
+                        update_fields.append(f"{field} = ${param_idx}")
+                        params.append(value)
+                        param_idx += 1
+                
+                if update_fields:
+                    query = f"""
+                        UPDATE notification_preferences
+                        SET {", ".join(update_fields)}
+                        WHERE user_id = ${param_idx} AND notification_type = ${param_idx + 1}
+                        RETURNING *
+                    """
+                    params.extend([user_id, notification_type.value])
+                    
+                    row = await fetch_one(query, *params)
+                    
+                    return NotificationPreference(
+                        user_id=row["user_id"],
+                        notification_type=row["notification_type"],
+                        enabled=row["enabled"],
+                        delivery_channels=row["delivery_channels"],
+                        time_window=row["time_window"],
+                        config=row.get("config", {})
+                    )
+            else:
+                # Create new preference
+                fields = ["user_id", "notification_type", "enabled", "delivery_channels", "time_window", "config"]
+                values = [user_id, notification_type.value]
+                placeholders = ["$1", "$2"]
+                
+                # Set defaults
+                data = {
+                    "enabled": True,
+                    "delivery_channels": [DeliveryChannel.IN_APP.value],
+                    "time_window": None,
+                    "config": {}
+                }
+                
+                # Update with provided data
+                data.update(update_data)
+                
+                # Add to query
+                for idx, field in enumerate(fields[2:], start=3):
+                    if field in data:
+                        values.append(data[field])
+                        placeholders.append(f"${idx}")
+                
+                query = f"""
+                    INSERT INTO notification_preferences
+                    ({", ".join(fields)})
+                    VALUES ({", ".join(placeholders)})
+                    RETURNING *
+                """
+                
+                row = await fetch_one(query, *values)
+                
+                return NotificationPreference(
+                    user_id=row["user_id"],
+                    notification_type=row["notification_type"],
+                    enabled=row["enabled"],
+                    delivery_channels=row["delivery_channels"],
+                    time_window=row["time_window"],
+                    config=row.get("config", {})
+                )
+                
+        except Exception as e:
+            logger.error(f"Error updating notification preference: {e}")
+            raise DatabaseException(f"Failed to update notification preference: {str(e)}")
+    
+    @staticmethod
+    async def create_notification(notification_data: NotificationCreate) -> Notification:
+        """
+        Create a new notification
+        
+        Args:
+            notification_data: Notification data
+            
+        Returns:
+            Created notification
+        """
+        try:
+            # Get user preferences
+            preference = await NotificationService.get_preference(
+                notification_data.user_id, 
+                notification_data.notification_type
+            )
+            
+            # Check if notifications are enabled
+            if not preference.enabled:
+                logger.info(f"Notification disabled for user {notification_data.user_id}, type {notification_data.notification_type}")
+                # Return a dummy notification that wasn't actually saved
+                return Notification(
+                    id=-1,
+                    user_id=notification_data.user_id,
+                    notification_type=notification_data.notification_type,
+                    title=notification_data.title,
+                    message=notification_data.message,
+                    data=notification_data.data or {},
+                    is_read=False,
+                    created_at=datetime.now()
+                )
+            
+            # Create notification in database
+            query = """
+                INSERT INTO notifications
+                (user_id, notification_type, title, message, data, is_read, created_at)
+                VALUES ($1, $2, $3, $4, $5, false, $6)
+                RETURNING *
+            """
+            
+            row = await fetch_one(
+                query,
+                notification_data.user_id,
+                notification_data.notification_type.value,
+                notification_data.title,
+                notification_data.message,
+                notification_data.data or {},
+                datetime.now()
+            )
+            
+            notification = Notification(
+                id=row["id"],
+                user_id=row["user_id"],
+                notification_type=row["notification_type"],
+                title=row["title"],
+                message=row["message"],
+                data=row["data"],
+                is_read=row["is_read"],
+                created_at=row["created_at"],
+                read_at=row["read_at"]
+            )
+            
+            # Handle delivery to different channels based on user preferences
+            await NotificationService._deliver_notification(notification, preference)
+            
+            return notification
+            
+        except Exception as e:
+            logger.error(f"Error creating notification: {e}")
+            raise DatabaseException(f"Failed to create notification: {str(e)}")
+    
+    @staticmethod
+    async def _deliver_notification(
+        notification: Notification,
+        preference: NotificationPreference
+    ) -> None:
+        """
+        Deliver notification to specified channels
+        
+        Args:
+            notification: Notification to deliver
+            preference: User's notification preferences
+        """
+        # Check time window if set
+        if preference.time_window:
+            try:
+                now = datetime.now().time()
+                start_time, end_time = preference.time_window.split('-')
+                start_hour, start_min = map(int, start_time.split(':'))
+                end_hour, end_min = map(int, end_time.split(':'))
+                
+                start = datetime.now().replace(hour=start_hour, minute=start_min, second=0).time()
+                end = datetime.now().replace(hour=end_hour, minute=end_min, second=0).time()
+                
+                if not (start <= now <= end):
+                    logger.info(f"Notification outside time window for user {notification.user_id}")
+                    return
+            except Exception as e:
+                logger.error(f"Error checking notification time window: {e}")
+        
+        # Deliver to each channel
+        for channel in preference.delivery_channels:
+            if channel == DeliveryChannel.EMAIL:
+                # Send email notification
+                logger.info(f"Sending email notification to user {notification.user_id}")
+                # Email sending logic would go here
+                
+            elif channel == DeliveryChannel.PUSH:
+                # Send push notification
+                logger.info(f"Sending push notification to user {notification.user_id}")
+                # Push notification logic would go here
+                
+            elif channel == DeliveryChannel.SMS:
+                # Send SMS notification
+                logger.info(f"Sending SMS notification to user {notification.user_id}")
+                # SMS sending logic would go here
+    
+    @staticmethod
+    async def get_notifications(
+        user_id: int,
+        limit: int = 20,
+        offset: int = 0,
+        unread_only: bool = False
+    ) -> Dict[str, Any]:
+        """
+        Get notifications for a user
+        
+        Args:
+            user_id: ID of the user
+            limit: Maximum number of notifications to return
+            offset: Offset for pagination
+            unread_only: Whether to return only unread notifications
+            
+        Returns:
+            Dictionary with notifications and counts
+        """
+        try:
+            # Construct the WHERE clause
+            where_clause = "WHERE user_id = $1"
+            params = [user_id]
+            
+            if unread_only:
+                where_clause += " AND is_read = false"
+            
+            # Get total count
+            count_query = f"""
+                SELECT COUNT(*) as total
+                FROM notifications
+                {where_clause}
+            """
+            
+            count_result = await fetch_one(count_query, *params)
+            total = count_result["total"]
+            
+            # Get unread count
+            unread_query = """
+                SELECT COUNT(*) as unread
+                FROM notifications
+                WHERE user_id = $1 AND is_read = false
+            """
+            
+            unread_result = await fetch_one(unread_query, user_id)
+            unread_count = unread_result["unread"]
+            
+            # Get notifications
+            query = f"""
+                SELECT *
+                FROM notifications
+                {where_clause}
+                ORDER BY created_at DESC
+                LIMIT $2 OFFSET $3
+            """
+            
+            rows = await fetch_all(query, *params, limit, offset)
+            
+            notifications = []
+            for row in rows:
+                notifications.append(Notification(
+                    id=row["id"],
+                    user_id=row["user_id"],
+                    notification_type=row["notification_type"],
+                    title=row["title"],
+                    message=row["message"],
+                    data=row["data"],
+                    is_read=row["is_read"],
+                    created_at=row["created_at"],
+                    read_at=row["read_at"]
+                ))
+            
+            return {
+                "items": notifications,
+                "total": total,
+                "unread_count": unread_count
+            }
+            
+        except Exception as e:
+            logger.error(f"Error getting notifications: {e}")
+            raise DatabaseException(f"Failed to retrieve notifications: {str(e)}")
+    
+    @staticmethod
+    async def mark_as_read(
+        user_id: int,
+        notification_id: int
+    ) -> Notification:
+        """
+        Mark a notification as read
+        
+        Args:
+            user_id: ID of the user
+            notification_id: ID of the notification
+            
+        Returns:
+            Updated notification
+        """
+        try:
+            query = """
+                UPDATE notifications
+                SET is_read = true, read_at = $1
+                WHERE id = $2 AND user_id = $3
+                RETURNING *
+            """
+            
+            row = await fetch_one(query, datetime.now(), notification_id, user_id)
+            
+            if not row:
+                raise ResourceNotFoundException(f"Notification with id {notification_id} not found")
+            
+            return Notification(
+                id=row["id"],
+                user_id=row["user_id"],
+                notification_type=row["notification_type"],
+                title=row["title"],
+                message=row["message"],
+                data=row["data"],
+                is_read=row["is_read"],
+                created_at=row["created_at"],
+                read_at=row["read_at"]
+            )
+            
+        except ResourceNotFoundException:
+            raise
+        except Exception as e:
+            logger.error(f"Error marking notification as read: {e}")
+            raise DatabaseException(f"Failed to update notification: {str(e)}")
+    
+    @staticmethod
+    async def mark_all_as_read(user_id: int) -> int:
+        """
+        Mark all notifications as read for a user
+        
+        Args:
+            user_id: ID of the user
+            
+        Returns:
+            Number of notifications marked as read
+        """
+        try:
+            query = """
+                UPDATE notifications
+                SET is_read = true, read_at = $1
+                WHERE user_id = $2 AND is_read = false
+                RETURNING id
+            """
+            
+            rows = await fetch_all(query, datetime.now(), user_id)
+            return len(rows)
+            
+        except Exception as e:
+            logger.error(f"Error marking all notifications as read: {e}")
+            raise DatabaseException(f"Failed to update notifications: {str(e)}")
+    
+    @staticmethod
+    async def delete_notification(
+        user_id: int,
+        notification_id: int
+    ) -> bool:
+        """
+        Delete a notification
+        
+        Args:
+            user_id: ID of the user
+            notification_id: ID of the notification
+            
+        Returns:
+            True if deleted, False if not found
+        """
+        try:
+            query = """
+                DELETE FROM notifications
+                WHERE id = $1 AND user_id = $2
+                RETURNING id
+            """
+            
+            row = await fetch_one(query, notification_id, user_id)
+            
+            return row is not None
+            
+        except Exception as e:
+            logger.error(f"Error deleting notification: {e}")
+            raise DatabaseException(f"Failed to delete notification: {str(e)}") 

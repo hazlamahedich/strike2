@@ -3,7 +3,7 @@ Analytics models for reporting and dashboard functionality.
 """
 from datetime import datetime, date
 from enum import Enum
-from typing import Dict, List, Optional, Any, Union
+from typing import Dict, List, Optional, Any, Union, Literal
 
 from pydantic import BaseModel, Field
 
@@ -24,9 +24,9 @@ class TimeRange(str, Enum):
 
 
 class DateRange(BaseModel):
-    """Date range for analytics"""
-    start_date: date
-    end_date: date
+    """Date range for analytics queries"""
+    start_date: datetime
+    end_date: datetime
 
 
 class MetricType(str, Enum):
@@ -273,4 +273,56 @@ class AnalyticsResponse(BaseModel):
     metrics: List[Metric]
     chart_data: Optional[Chart] = None
     time_range: TimeRange
-    date_range: Optional[DateRange] = None 
+    date_range: Optional[DateRange] = None
+
+
+class TimeSeriesMetric(BaseModel):
+    """Time series data point"""
+    date: datetime
+    value: float
+
+
+class LeadAnalytics(BaseModel):
+    """Analytics for leads"""
+    total_leads: Optional[int] = 0
+    new_leads: Optional[int] = 0
+    qualified_leads: Optional[int] = 0
+    converted_leads: Optional[int] = 0
+    conversion_rate: Optional[float] = 0
+    avg_time_to_conversion: Optional[float] = 0  # in seconds
+    leads_over_time: Optional[List[TimeSeriesMetric]] = Field(default_factory=list)
+    grouped_metrics: Optional[Dict[str, Dict[str, Any]]] = Field(default_factory=dict)
+    date_range: DateRange
+
+
+class CampaignAnalytics(BaseModel):
+    """Analytics for marketing campaigns"""
+    campaigns: List[Dict[str, Any]] = Field(default_factory=list)
+    total_campaigns: int = 0
+    total_leads_generated: int = 0
+    avg_conversion_rate: float = 0
+    date_range: DateRange
+
+
+class UserPerformance(BaseModel):
+    """Performance metrics for a user/sales rep"""
+    user_id: int
+    user_name: str
+    leads_assigned: int = 0
+    leads_converted: int = 0
+    conversion_rate: float = 0
+    avg_response_time: Optional[float] = None  # in seconds
+    avg_time_to_conversion: Optional[float] = None  # in seconds
+    meetings_scheduled: int = 0
+    emails_sent: int = 0
+    tasks_completed: int = 0
+    tasks_overdue: int = 0
+    performance_trend: Optional[List[TimeSeriesMetric]] = None
+    date_range: DateRange
+
+
+class ConversionFunnel(BaseModel):
+    """Conversion funnel analytics"""
+    stages: List[Dict[str, Any]] = Field(default_factory=list)
+    overall_conversion_rate: float = 0
+    date_range: DateRange 

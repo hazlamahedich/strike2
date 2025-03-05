@@ -2,6 +2,7 @@
 Analytics router for dashboard and reporting endpoints.
 """
 from typing import Dict, List, Optional, Any
+from datetime import datetime, timedelta
 
 from fastapi import APIRouter, Depends, Query, Path, HTTPException, status
 from fastapi.responses import JSONResponse
@@ -11,12 +12,16 @@ from ..models.analytics import (
     Report, ReportCreate, ReportUpdate, ReportType,
     ReportSchedule, ReportExportRequest, ReportFormat,
     Chart, ChartType, ChartSeries, DataPoint,
-    AnalyticsRequest, AnalyticsResponse
+    AnalyticsRequest, AnalyticsResponse,
+    DateRange, 
+    LeadAnalytics, 
+    CampaignAnalytics, 
+    ConversionFunnel
 )
 from ..services.analytics import AnalyticsService
-from ..core.security import get_current_user
+from ..core.security import get_current_user, get_current_active_user
 from ..models.user import User
-from ..core.exceptions import NotFoundException, BadRequestException
+from ..core.exceptions import NotFoundException, BadRequestException, ResourceNotFoundException, PermissionDeniedException
 
 router = APIRouter(
     prefix="/analytics",
@@ -252,4 +257,92 @@ async def get_analytics(
     try:
         return await analytics_service.get_analytics(request, current_user.id)
     except BadRequestException as e:
-        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(e)) 
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(e))
+
+
+@router.get("/leads", response_model=LeadAnalytics)
+async def get_lead_analytics(
+    start_date: Optional[datetime] = Query(None),
+    end_date: Optional[datetime] = Query(None),
+    lead_id: Optional[int] = Query(None),
+    group_by: Optional[str] = Query(None),
+    current_user: User = Depends(get_current_active_user)
+):
+    """
+    Get analytics for leads
+    """
+    # Set default date range if not provided
+    if not start_date:
+        start_date = datetime.now() - timedelta(days=30)
+    if not end_date:
+        end_date = datetime.now()
+    
+    date_range = DateRange(start_date=start_date, end_date=end_date)
+    
+    try:
+        return await AnalyticsService.get_lead_analytics(
+            user_id=current_user.id,
+            date_range=date_range,
+            lead_id=lead_id,
+            group_by=group_by
+        )
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Error retrieving lead analytics: {str(e)}")
+
+
+@router.get("/campaigns", response_model=CampaignAnalytics)
+async def get_campaign_analytics(
+    start_date: Optional[datetime] = Query(None),
+    end_date: Optional[datetime] = Query(None),
+    campaign_id: Optional[int] = Query(None),
+    current_user: User = Depends(get_current_active_user)
+):
+    """
+    Get analytics for marketing campaigns
+    """
+    # Set default date range if not provided
+    if not start_date:
+        start_date = datetime.now() - timedelta(days=30)
+    if not end_date:
+        end_date = datetime.now()
+    
+    date_range = DateRange(start_date=start_date, end_date=end_date)
+    
+    try:
+        return await AnalyticsService.get_campaign_analytics(
+            user_id=current_user.id,
+            date_range=date_range,
+            campaign_id=campaign_id
+        )
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Error retrieving campaign analytics: {str(e)}")
+
+
+@router.get("/conversion-funnel", response_model=ConversionFunnel)
+async def get_conversion_funnel(
+    start_date: Optional[datetime] = Query(None),
+    end_date: Optional[datetime] = Query(None),
+    campaign_id: Optional[int] = Query(None),
+    current_user: User = Depends(get_current_active_user)
+):
+    """
+    Get conversion funnel analytics
+    """
+    # Set default date range if not provided
+    if not start_date:
+        start_date = datetime.now() - timedelta(days=30)
+    if not end_date:
+        end_date = datetime.now()
+    
+    date_range = DateRange(start_date=start_date, end_date=end_date)
+    
+    try:
+        return await AnalyticsService.get_conversion_funnel(
+            user_id=current_user.id,
+            date_range=date_range,
+            campaign_id=campaign_id
+        )
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Error retrieving conversion funnel: {str(e)}") 

@@ -33,6 +33,7 @@ from app.models.meeting import (
     TimeSlot
 )
 from app.services.lead import LeadService
+from app.core.exceptions import ResourceNotFoundException, PermissionDeniedException, ExternalAPIException
 
 logger = logging.getLogger(__name__)
 

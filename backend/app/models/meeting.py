@@ -8,13 +8,25 @@ from typing import Dict, List, Optional, Any, Union
 from pydantic import BaseModel, Field, EmailStr, validator, HttpUrl
 
 
+class MeetingType(str, Enum):
+    """Types of meetings supported by the system"""
+    INITIAL_CALL = "initial_call"
+    DISCOVERY = "discovery"
+    DEMO = "demo"
+    PROPOSAL = "proposal"
+    NEGOTIATION = "negotiation"
+    FOLLOW_UP = "follow_up"
+    OTHER = "other"
+
+
 class MeetingStatus(str, Enum):
     """Status of a meeting"""
     SCHEDULED = "scheduled"
     CONFIRMED = "confirmed"
+    CANCELED = "canceled"
     COMPLETED = "completed"
-    CANCELLED = "cancelled"
     RESCHEDULED = "rescheduled"
+    NO_SHOW = "no_show"
 
 
 class MeetingLocationType(str, Enum):
@@ -124,48 +136,50 @@ class Meeting(BaseModel):
 
 
 class MeetingCreate(BaseModel):
-    """Meeting creation model"""
+    """Model for creating a meeting"""
+    lead_id: int
     title: str
     description: Optional[str] = None
     start_time: datetime
     end_time: datetime
-    lead_id: Optional[str] = None
-    location: MeetingLocation
-    attendee_emails: List[EmailStr] = Field(default_factory=list)
-    agenda_items: List[str] = Field(default_factory=list)
-    reminder_time: Optional[int] = 15
-
+    timezone: Optional[str] = "UTC"
+    meeting_type: MeetingType = MeetingType.INITIAL_CALL
+    location: Optional[str] = None  # Can be a URL for virtual meetings
+    lead_email: str  # Email of the lead for calendar invitation
+    
 
 class MeetingUpdate(BaseModel):
-    """Meeting update model"""
+    """Model for updating a meeting"""
     title: Optional[str] = None
     description: Optional[str] = None
     start_time: Optional[datetime] = None
     end_time: Optional[datetime] = None
+    timezone: Optional[str] = None
+    meeting_type: Optional[MeetingType] = None
+    location: Optional[str] = None
     status: Optional[MeetingStatus] = None
-    location: Optional[MeetingLocation] = None
-    notes: Optional[str] = None
-    agenda_items: Optional[List[str]] = None
-    reminder_time: Optional[int] = None
 
 
 class MeetingResponse(BaseModel):
-    """Meeting response model"""
-    id: str
+    """Response model for meetings"""
+    id: int
+    user_id: int
+    lead_id: int
     title: str
     description: Optional[str] = None
     start_time: datetime
     end_time: datetime
-    status: MeetingStatus
-    location: MeetingLocation
-    organizer: Dict[str, Any]  # Simplified user info
-    lead: Optional[Dict[str, Any]] = None  # Simplified lead info if applicable
-    attendees: List[Dict[str, Any]]  # Simplified attendee info
-    notes: Optional[str] = None
-    calendar_provider: Optional[CalendarProvider] = None
-    agenda_items: List[str]
+    timezone: str = "UTC"
+    meeting_type: MeetingType
+    location: Optional[str] = None
+    status: str
+    calendar_id: Optional[str] = None  # ID in the external calendar system
+    meeting_url: Optional[str] = None  # URL to join the meeting
     created_at: datetime
     updated_at: datetime
+    
+    class Config:
+        from_attributes = True
 
 
 class TimeSlot(BaseModel):
@@ -175,17 +189,19 @@ class TimeSlot(BaseModel):
 
 
 class AvailabilityRequest(BaseModel):
-    """Request for user availability"""
-    user_id: str
-    date_from: datetime
-    date_to: datetime
+    """Request model for checking availability"""
+    start_date: datetime
+    end_date: datetime
     duration_minutes: int = 30
+    timezone: str = "UTC"
 
 
 class AvailabilityResponse(BaseModel):
-    """Response with available time slots"""
+    """Response model for available time slots"""
     available_slots: List[TimeSlot]
-    user_id: str
-    date_from: datetime
-    date_to: datetime
-    duration_minutes: int 
+
+
+class AvailableTimeSlot(BaseModel):
+    """Available time slot model"""
+    start: datetime
+    end: datetime 

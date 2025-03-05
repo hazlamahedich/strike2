@@ -2,6 +2,10 @@ from typing import Any, Optional
 
 from fastapi import Depends, HTTPException, status
 from fastapi.security import OAuth2PasswordBearer
+from typing import Optional
+from datetime import datetime, timedelta
+import jwt
+from pydantic import ValidationError
 
 from app.core.config import settings
 from app.models.user import User

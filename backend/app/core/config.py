@@ -7,16 +7,35 @@ from dotenv import load_dotenv
 load_dotenv()
 
 class Settings(BaseSettings):
+    """Application settings"""
     # API settings
     API_V1_STR: str = "/api"
     PROJECT_NAME: str = "AI-Powered CRM"
     
-    # CORS settings
-    CORS_ORIGINS: List[str] = ["http://localhost:3000", "https://yourdomain.com"]
-    
     # Security settings
-    SECRET_KEY: str = os.getenv("SECRET_KEY", "dev_secret_key_change_in_production")
+    SECRET_KEY: str = "CHANGE_ME_IN_PRODUCTION"
+    ALGORITHM: str = "HS256"
     ACCESS_TOKEN_EXPIRE_MINUTES: int = 60 * 24 * 8  # 8 days
+    
+    # CORS settings
+    CORS_ORIGINS: List[str] = ["http://localhost:3000", "http://localhost:8000"]
+    
+    # Database settings
+    DATABASE_URL: str = "postgresql://postgres:postgres@localhost:5432/crm"
+    
+    # OpenAI settings
+    OPENAI_API_KEY: Optional[str] = None
+    OPENAI_ORGANIZATION: Optional[str] = None
+    
+    # Email settings
+    SENDGRID_API_KEY: Optional[str] = None
+    EMAIL_FROM: str = "noreply@example.com"
+    EMAIL_FROM_NAME: str = "CRM System"
+    
+    # Twilio settings
+    TWILIO_ACCOUNT_SID: Optional[str] = None
+    TWILIO_AUTH_TOKEN: Optional[str] = None
+    TWILIO_PHONE_NUMBER: Optional[str] = None
     
     # Supabase settings
     SUPABASE_URL: str = os.getenv("SUPABASE_URL", "")
@@ -32,19 +51,6 @@ class Settings(BaseSettings):
     # Set to 'local' to use local Supabase, 'cloud' to use Supabase cloud
     SUPABASE_ENV: str = os.getenv("SUPABASE_ENV", "local")
     
-    # OpenAI settings
-    OPENAI_API_KEY: str = os.getenv("OPENAI_API_KEY", "")
-    DEFAULT_MODEL: str = "gpt-4-1106-preview"
-    
-    # SendGrid settings
-    SENDGRID_API_KEY: str = os.getenv("SENDGRID_API_KEY", "")
-    SENDGRID_FROM_EMAIL: str = os.getenv("SENDGRID_FROM_EMAIL", "crm@yourdomain.com")
-    
-    # Twilio settings
-    TWILIO_ACCOUNT_SID: str = os.getenv("TWILIO_ACCOUNT_SID", "")
-    TWILIO_AUTH_TOKEN: str = os.getenv("TWILIO_AUTH_TOKEN", "")
-    TWILIO_PHONE_NUMBER: str = os.getenv("TWILIO_PHONE_NUMBER", "")
-    
     # Sentry settings
     SENTRY_DSN: Optional[str] = os.getenv("SENTRY_DSN")
     
@@ -56,7 +62,8 @@ class Settings(BaseSettings):
     
     class Config:
         env_file = ".env"
+        env_file_encoding = "utf-8"
         case_sensitive = True
 
-# Create a global settings object
+# Create settings instance
 settings = Settings() 

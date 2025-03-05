@@ -3,7 +3,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from contextlib import asynccontextmanager
 
 # Import our routers
-from app.routers import auth, leads, tasks, communications, meetings, analytics, campaigns, notifications
+from app.routers import auth, leads, tasks, communications, meetings, analytics, campaigns, notifications, agents
 from app.core.config import settings
 from app.core.security import get_current_active_user
 
@@ -74,6 +74,12 @@ app.include_router(
     notifications.router, 
     prefix="/api/notifications", 
     tags=["Notifications"], 
+    dependencies=[Depends(get_current_active_user)]
+)
+app.include_router(
+    agents.router, 
+    prefix="/api/agents", 
+    tags=["AI Agents"], 
     dependencies=[Depends(get_current_active_user)]
 )
 

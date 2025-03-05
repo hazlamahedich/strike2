@@ -7,6 +7,7 @@ import logging
 from datetime import datetime, date, timedelta
 from typing import Dict, List, Optional, Any, Union, Tuple
 from uuid import uuid4
+import json
 
 from sqlalchemy import text, func, desc, asc
 from sqlalchemy.orm import Session
@@ -17,10 +18,15 @@ from ..models.analytics import (
     ReportSchedule, ReportExportRequest, ReportFormat,
     Chart, ChartType, ChartSeries, DataPoint,
     Metric, MetricType, TimeRange, DateRange,
-    Dimension, ReportFilter, AnalyticsRequest, AnalyticsResponse
+    Dimension, ReportFilter, AnalyticsRequest, AnalyticsResponse,
+    LeadAnalytics, 
+    CampaignAnalytics, 
+    UserPerformance,
+    ConversionFunnel,
+    TimeSeriesMetric
 )
-from ..core.database import get_db
-from ..core.exceptions import NotFoundException, BadRequestException
+from ..core.database import get_db, fetch_one, fetch_all
+from ..core.exceptions import NotFoundException, BadRequestException, ResourceNotFoundException, DatabaseException
 
 logger = logging.getLogger(__name__)
 
@@ -618,4 +624,436 @@ class AnalyticsService:
         
         # Here we would save to the database
         # For now, just return the updated dashboard
-        return dashboard 
+        return dashboard
+
+    @staticmethod
+    async def get_lead_analytics(
+        user_id: int,
+        date_range: DateRange,
+        lead_id: Optional[int] = None,
+        group_by: Optional[str] = None
+    ) -> LeadAnalytics:
+        """
+        Get analytics for leads
+        
+        Args:
+            user_id: ID of the user requesting analytics
+            date_range: Date range for the analytics
+            lead_id: Optional specific lead ID to analyze
+            group_by: Optional grouping (e.g., 'status', 'source', 'campaign')
+            
+        Returns:
+            LeadAnalytics object with the requested metrics
+        """
+        try:
+            # Base query parts
+            select_clause = """
+                COUNT(*) as total_leads,
+                COUNT(CASE WHEN status = 'qualified' THEN 1 END) as qualified_leads,
+                COUNT(CASE WHEN status = 'converted' THEN 1 END) as converted_leads,
+                AVG(EXTRACT(EPOCH FROM (COALESCE(converted_at, CURRENT_TIMESTAMP) - created_at))) as avg_time_to_conversion
+            """
+            
+            from_clause = "FROM leads"
+            
+            where_conditions = [
+                "created_at >= $1",
+                "created_at <= $2"
+            ]
+            
+            params = [date_range.start_date, date_range.end_date]
+            
+            # Add lead_id condition if specified
+            if lead_id:
+                where_conditions.append(f"id = ${len(params) + 1}")
+                params.append(lead_id)
+            
+            # Add user_id condition (for multi-tenant systems)
+            where_conditions.append(f"user_id = ${len(params) + 1}")
+            params.append(user_id)
+            
+            where_clause = "WHERE " + " AND ".join(where_conditions)
+            
+            # Handle grouping
+            group_clause = ""
+            if group_by:
+                valid_group_fields = ['status', 'source', 'campaign_id', 'assigned_to']
+                if group_by not in valid_group_fields:
+                    raise ValueError(f"Invalid group_by value. Must be one of: {', '.join(valid_group_fields)}")
+                
+                select_clause = f"{group_by}, " + select_clause
+                group_clause = f"GROUP BY {group_by}"
+            
+            # Construct the full query
+            query = f"""
+                SELECT {select_clause}
+                {from_clause}
+                {where_clause}
+                {group_clause}
+            """
+            
+            # Execute the query
+            if group_by:
+                results = await fetch_all(query, *params)
+                
+                # Process grouped results
+                metrics_by_group = {}
+                for row in results:
+                    group_value = row[group_by]
+                    metrics_by_group[group_value] = {
+                        "total_leads": row["total_leads"],
+                        "qualified_leads": row["qualified_leads"],
+                        "converted_leads": row["converted_leads"],
+                        "conversion_rate": row["converted_leads"] / row["total_leads"] if row["total_leads"] > 0 else 0,
+                        "avg_time_to_conversion": row["avg_time_to_conversion"]
+                    }
+                
+                # Time series data for lead creation
+                time_series_query = f"""
+                    SELECT 
+                        DATE_TRUNC('day', created_at) as date,
+                        COUNT(*) as value
+                    FROM leads
+                    {where_clause}
+                    GROUP BY DATE_TRUNC('day', created_at)
+                    ORDER BY DATE_TRUNC('day', created_at)
+                """
+                
+                time_series_data = await fetch_all(time_series_query, *params)
+                leads_over_time = [
+                    {"date": row["date"], "value": row["value"]}
+                    for row in time_series_data
+                ]
+                
+                return LeadAnalytics(
+                    grouped_metrics=metrics_by_group,
+                    leads_over_time=leads_over_time,
+                    date_range=date_range
+                )
+            else:
+                result = await fetch_one(query, *params)
+                
+                if not result:
+                    # Return empty analytics if no data found
+                    return LeadAnalytics(
+                        total_leads=0,
+                        new_leads=0,
+                        qualified_leads=0,
+                        converted_leads=0,
+                        conversion_rate=0,
+                        avg_time_to_conversion=0,
+                        leads_over_time=[],
+                        date_range=date_range
+                    )
+                
+                # Get new leads count (separate query)
+                new_leads_query = f"""
+                    SELECT COUNT(*) as new_leads
+                    FROM leads
+                    WHERE created_at >= $1 AND created_at <= $2
+                    AND user_id = $3
+                """
+                new_leads_result = await fetch_one(new_leads_query, date_range.start_date, date_range.end_date, user_id)
+                
+                # Time series data for lead creation
+                time_series_query = f"""
+                    SELECT 
+                        DATE_TRUNC('day', created_at) as date,
+                        COUNT(*) as value
+                    FROM leads
+                    WHERE created_at >= $1 AND created_at <= $2
+                    AND user_id = $3
+                    GROUP BY DATE_TRUNC('day', created_at)
+                    ORDER BY DATE_TRUNC('day', created_at)
+                """
+                
+                time_series_data = await fetch_all(time_series_query, date_range.start_date, date_range.end_date, user_id)
+                leads_over_time = [
+                    TimeSeriesMetric(date=row["date"], value=row["value"])
+                    for row in time_series_data
+                ]
+                
+                # Calculate conversion rate
+                conversion_rate = result["converted_leads"] / result["total_leads"] if result["total_leads"] > 0 else 0
+                
+                return LeadAnalytics(
+                    total_leads=result["total_leads"],
+                    new_leads=new_leads_result["new_leads"],
+                    qualified_leads=result["qualified_leads"],
+                    converted_leads=result["converted_leads"],
+                    conversion_rate=conversion_rate,
+                    avg_time_to_conversion=result["avg_time_to_conversion"],
+                    leads_over_time=leads_over_time,
+                    date_range=date_range
+                )
+                
+        except Exception as e:
+            logger.error(f"Error getting lead analytics: {e}")
+            raise DatabaseException(f"Failed to retrieve lead analytics: {str(e)}")
+    
+    @staticmethod
+    async def get_campaign_analytics(
+        user_id: int,
+        date_range: DateRange,
+        campaign_id: Optional[int] = None
+    ) -> CampaignAnalytics:
+        """
+        Get analytics for marketing campaigns
+        
+        Args:
+            user_id: ID of the user requesting analytics
+            date_range: Date range for the analytics
+            campaign_id: Optional specific campaign ID to analyze
+            
+        Returns:
+            CampaignAnalytics object with the campaign metrics
+        """
+        try:
+            # Base query parts for campaigns
+            select_clause = """
+                c.id,
+                c.name,
+                c.start_date,
+                c.end_date,
+                c.status,
+                COUNT(cl.lead_id) as total_leads,
+                COUNT(CASE WHEN l.status = 'qualified' THEN 1 END) as qualified_leads,
+                COUNT(CASE WHEN l.status = 'converted' THEN 1 END) as converted_leads,
+                SUM(CASE WHEN i.type = 'email' AND i.action = 'opened' THEN 1 ELSE 0 END) as email_opens,
+                SUM(CASE WHEN i.type = 'email' AND i.action = 'clicked' THEN 1 ELSE 0 END) as email_clicks,
+                COUNT(DISTINCT cl.lead_id) as unique_leads
+            """
+            
+            from_clause = """
+                FROM campaigns c
+                LEFT JOIN campaign_leads cl ON c.id = cl.campaign_id
+                LEFT JOIN leads l ON cl.lead_id = l.id
+                LEFT JOIN interactions i ON l.id = i.lead_id AND i.created_at BETWEEN c.start_date AND COALESCE(c.end_date, CURRENT_TIMESTAMP)
+            """
+            
+            where_conditions = [
+                "c.start_date >= $1",
+                "c.start_date <= $2 OR (c.start_date <= $2 AND (c.end_date >= $1 OR c.end_date IS NULL))"
+            ]
+            
+            params = [date_range.start_date, date_range.end_date]
+            
+            # Add campaign_id condition if specified
+            if campaign_id:
+                where_conditions.append(f"c.id = ${len(params) + 1}")
+                params.append(campaign_id)
+            
+            # Add user_id condition
+            where_conditions.append(f"c.user_id = ${len(params) + 1}")
+            params.append(user_id)
+            
+            where_clause = "WHERE " + " AND ".join(where_conditions)
+            
+            # Group and order
+            group_order_clause = "GROUP BY c.id ORDER BY c.start_date DESC"
+            
+            # Construct the full query
+            query = f"""
+                SELECT {select_clause}
+                {from_clause}
+                {where_clause}
+                {group_order_clause}
+            """
+            
+            # Execute the query
+            results = await fetch_all(query, *params)
+            
+            if not results:
+                # Return empty analytics if no data found
+                return CampaignAnalytics(
+                    campaigns=[],
+                    total_campaigns=0,
+                    total_leads_generated=0,
+                    avg_conversion_rate=0,
+                    date_range=date_range
+                )
+            
+            # Process results into campaign analytics
+            campaigns = []
+            total_leads = 0
+            total_conversions = 0
+            
+            for row in results:
+                opens = row["email_opens"] or 0
+                clicks = row["email_clicks"] or 0
+                sent = row["total_leads"] or 0
+                
+                # Calculate metrics
+                open_rate = opens / sent if sent > 0 else 0
+                click_rate = clicks / opens if opens > 0 else 0
+                conversion_rate = row["converted_leads"] / row["total_leads"] if row["total_leads"] > 0 else 0
+                
+                # Accumulate totals
+                total_leads += row["total_leads"]
+                total_conversions += row["converted_leads"]
+                
+                campaigns.append({
+                    "id": row["id"],
+                    "name": row["name"],
+                    "start_date": row["start_date"],
+                    "end_date": row["end_date"],
+                    "status": row["status"],
+                    "total_leads": row["total_leads"],
+                    "qualified_leads": row["qualified_leads"],
+                    "converted_leads": row["converted_leads"],
+                    "conversion_rate": conversion_rate,
+                    "email_metrics": {
+                        "opens": opens,
+                        "clicks": clicks,
+                        "open_rate": open_rate,
+                        "click_rate": click_rate
+                    }
+                })
+            
+            # Calculate overall conversion rate
+            avg_conversion_rate = total_conversions / total_leads if total_leads > 0 else 0
+            
+            return CampaignAnalytics(
+                campaigns=campaigns,
+                total_campaigns=len(campaigns),
+                total_leads_generated=total_leads,
+                avg_conversion_rate=avg_conversion_rate,
+                date_range=date_range
+            )
+                
+        except Exception as e:
+            logger.error(f"Error getting campaign analytics: {e}")
+            raise DatabaseException(f"Failed to retrieve campaign analytics: {str(e)}")
+    
+    @staticmethod
+    async def get_user_performance(
+        user_id: int,
+        date_range: DateRange,
+        team_id: Optional[int] = None
+    ) -> List[UserPerformance]:
+        """
+        Get performance metrics for users/sales reps
+        
+        Args:
+            user_id: ID of the user requesting analytics (must have appropriate permissions)
+            date_range: Date range for the analytics
+            team_id: Optional team ID to filter users
+            
+        Returns:
+            List of UserPerformance objects with performance metrics
+        """
+        # This would typically require admin/manager permissions
+        # Implementation would be similar to the other analytics methods
+        
+        # For now, return a placeholder
+        raise NotImplementedError("User performance analytics not implemented yet")
+    
+    @staticmethod
+    async def get_conversion_funnel(
+        user_id: int,
+        date_range: DateRange,
+        campaign_id: Optional[int] = None
+    ) -> ConversionFunnel:
+        """
+        Get conversion funnel analytics
+        
+        Args:
+            user_id: ID of the user requesting analytics
+            date_range: Date range for the analytics
+            campaign_id: Optional campaign ID to filter leads
+            
+        Returns:
+            ConversionFunnel object with funnel stage metrics
+        """
+        try:
+            # Define funnel stages
+            stages = [
+                "new", "contacted", "engaged", "qualified", "proposal", "negotiation", "converted", "lost"
+            ]
+            
+            # Base query parts
+            where_conditions = [
+                "created_at >= $1",
+                "created_at <= $2",
+                "user_id = $3"
+            ]
+            
+            params = [date_range.start_date, date_range.end_date, user_id]
+            
+            # Add campaign_id condition if specified
+            if campaign_id:
+                where_conditions.append("""
+                    id IN (
+                        SELECT lead_id 
+                        FROM campaign_leads 
+                        WHERE campaign_id = $4
+                    )
+                """)
+                params.append(campaign_id)
+            
+            where_clause = "WHERE " + " AND ".join(where_conditions)
+            
+            # Construct the query to count leads in each stage
+            stage_counts_query = f"""
+                SELECT 
+                    status,
+                    COUNT(*) as count
+                FROM leads
+                {where_clause}
+                GROUP BY status
+                ORDER BY 
+                    CASE 
+                        WHEN status = 'new' THEN 1
+                        WHEN status = 'contacted' THEN 2
+                        WHEN status = 'engaged' THEN 3
+                        WHEN status = 'qualified' THEN 4
+                        WHEN status = 'proposal' THEN 5
+                        WHEN status = 'negotiation' THEN 6
+                        WHEN status = 'converted' THEN 7
+                        WHEN status = 'lost' THEN 8
+                        ELSE 9
+                    END
+            """
+            
+            # Execute the query
+            results = await fetch_all(stage_counts_query, *params)
+            
+            # Process results into funnel stages
+            stage_counts = {stage: 0 for stage in stages}
+            for row in results:
+                if row["status"] in stage_counts:
+                    stage_counts[row["status"]] = row["count"]
+            
+            # Calculate conversion rates between stages
+            funnel_stages = []
+            previous_count = None
+            
+            for stage in stages:
+                count = stage_counts.get(stage, 0)
+                conversion_rate = None
+                
+                if previous_count is not None and previous_count > 0:
+                    conversion_rate = count / previous_count
+                
+                funnel_stages.append({
+                    "name": stage,
+                    "count": count,
+                    "conversion_rate": conversion_rate
+                })
+                
+                previous_count = count
+            
+            # Calculate overall conversion rate (new to converted)
+            total_new = stage_counts.get("new", 0)
+            total_converted = stage_counts.get("converted", 0)
+            overall_conversion_rate = total_converted / total_new if total_new > 0 else 0
+            
+            return ConversionFunnel(
+                stages=funnel_stages,
+                overall_conversion_rate=overall_conversion_rate,
+                date_range=date_range
+            )
+                
+        except Exception as e:
+            logger.error(f"Error getting conversion funnel: {e}")
+            raise DatabaseException(f"Failed to retrieve conversion funnel: {str(e)}") 
