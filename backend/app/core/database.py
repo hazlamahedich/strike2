@@ -3,6 +3,7 @@ import asyncpg
 import json
 from typing import Dict, List, Optional, Any, Union, Tuple, AsyncGenerator
 from contextlib import asynccontextmanager
+from fastapi import Depends
 
 from supabase.client import create_client, Client as SupabaseClient
 
@@ -21,6 +22,15 @@ def get_supabase_client() -> SupabaseClient:
     except Exception as e:
         logger.error(f"Error creating Supabase client: {e}")
         raise
+
+async def get_db():
+    """Get a database connection for dependency injection in FastAPI"""
+    client = get_supabase_client()
+    try:
+        yield client
+    finally:
+        # No explicit cleanup needed as Supabase client doesn't have a close method
+        pass
 
 @asynccontextmanager
 async def get_db_client() -> AsyncGenerator[SupabaseClient, None]:

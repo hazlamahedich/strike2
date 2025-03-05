@@ -10,8 +10,8 @@ from app.models.campaign import (
     CampaignUpdate, 
     CampaignDetail,
     CampaignFilter,
-    CampaignTypeEnum,
-    CampaignStatusEnum
+    CampaignType,
+    CampaignStatus
 )
 from app.models.campaign_lead import (
     CampaignLead, 
@@ -48,8 +48,8 @@ allow_admin = RoleChecker(["admin"])
 @router.get("/", response_model=List[Campaign])
 async def list_campaigns(
     search: Optional[str] = None,
-    status: Optional[List[CampaignStatusEnum]] = Query(None),
-    type: Optional[List[CampaignTypeEnum]] = Query(None),
+    status: Optional[List[CampaignStatus]] = Query(None),
+    type: Optional[List[CampaignType]] = Query(None),
     created_by: Optional[int] = None,
     tags: Optional[List[str]] = Query(None),
     skip: int = 0,
@@ -223,7 +223,6 @@ async def delete_existing_campaign(
         )
     
     await delete_campaign(campaign_id)
-    return None
 
 
 @router.get("/{campaign_id}/leads", response_model=List[Dict[str, Any]])
@@ -308,7 +307,6 @@ async def remove_lead_from_existing_campaign(
         user_id=current_user.id,
         notes=notes
     )
-    return None
 
 
 @router.put("/{campaign_id}/leads/{lead_id}", response_model=CampaignLead)

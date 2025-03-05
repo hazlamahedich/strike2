@@ -666,4 +666,57 @@ async def get_advanced_lead_score(lead_id: int, timeframe_days: int = 30) -> Adv
         score_id=result.get("score_id"),
         errors=result.get("errors", []),
         timeframe_days=timeframe_days
-    ) 
+    )
+
+class AIService:
+    """Service class that encapsulates all AI-related functionality"""
+    
+    @staticmethod
+    async def analyze_sentiment(request: SentimentAnalysisRequest) -> SentimentAnalysisResponse:
+        """Analyze the sentiment of a text"""
+        return await analyze_sentiment(request)
+    
+    @staticmethod
+    async def calculate_lead_score(lead_id: int, force_recalculate: bool = False) -> LeadScoreResponse:
+        """Calculate a lead score based on interactions and profile data"""
+        return await calculate_lead_score(lead_id, force_recalculate)
+    
+    @staticmethod
+    async def generate_content(request: ContentGenerationRequest) -> ContentGenerationResponse:
+        """Generate content based on a prompt and parameters"""
+        return await generate_content(request)
+    
+    @staticmethod
+    async def get_lead_insights(lead_id: int) -> LeadInsightsResponse:
+        """Get AI-generated insights about a lead"""
+        return await get_lead_insights(lead_id)
+    
+    @staticmethod
+    async def get_follow_up_suggestions(lead_id: int, last_interaction_type: Optional[str] = None) -> FollowUpSuggestionsResponse:
+        """Get suggestions for following up with a lead"""
+        return await get_follow_up_suggestions(lead_id, last_interaction_type)
+    
+    @staticmethod
+    async def process_lead_document(document: str, source: Optional[str] = None) -> Dict[str, Any]:
+        """Process a document related to a lead"""
+        return await process_lead_document(document, source)
+    
+    @staticmethod
+    async def generate_advanced_content(request: ContentGenerationRequest) -> ContentGenerationResponse:
+        """Generate advanced content using specialized models"""
+        return await generate_advanced_content(request)
+    
+    @staticmethod
+    async def get_advanced_lead_insights(lead_id: int) -> LeadInsightsResponse:
+        """Get advanced AI-generated insights about a lead"""
+        return await get_advanced_lead_insights(lead_id)
+    
+    @staticmethod
+    async def get_advanced_follow_up_suggestions(lead_id: int) -> FollowUpSuggestionsResponse:
+        """Get advanced suggestions for following up with a lead"""
+        return await get_advanced_follow_up_suggestions(lead_id)
+    
+    @staticmethod
+    async def get_advanced_lead_score(lead_id: int, timeframe_days: int = 30) -> AdvancedLeadScoringResponse:
+        """Get an advanced lead score with detailed analytics"""
+        return await get_advanced_lead_score(lead_id, timeframe_days) 

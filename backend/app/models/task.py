@@ -1,4 +1,4 @@
-from pydantic import BaseModel, Field, validator
+from pydantic import BaseModel, Field, validator, model_validator
 from typing import Optional, List, Dict, Any, Union
 from datetime import datetime
 from enum import Enum
@@ -56,13 +56,16 @@ class TaskUpdate(BaseModel):
     category: Optional[str] = None
     tags: Optional[List[str]] = None
     custom_fields: Optional[Dict[str, Any]] = None
+    reminder: Optional[datetime] = None
     
-    @validator('reminder')
-    def validate_reminder(cls, v, values):
-        if v is not None and 'due_date' in values and values['due_date'] is not None:
-            if v > values['due_date']:
+    @model_validator(mode='after')
+    def validate_reminder_time(self) -> 'TaskUpdate':
+        reminder = getattr(self, 'reminder', None)
+        due_date = getattr(self, 'due_date', None)
+        if reminder is not None and due_date is not None:
+            if reminder > due_date:
                 raise ValueError('Reminder cannot be after due date')
-        return v
+        return self
 
 class Task(TaskBase):
     """Complete task model with system fields"""
@@ -74,6 +77,8 @@ class Task(TaskBase):
     completed_by: Optional[int] = None
     
     class Config:
+        from_attributes = True
+        # Keep orm_mode for backward compatibility
         orm_mode = True
 
 class TaskDetail(Task):
@@ -85,6 +90,8 @@ class TaskDetail(Task):
     comments: List[Dict[str, Any]] = Field(default_factory=list)
     
     class Config:
+        from_attributes = True
+        # Keep orm_mode for backward compatibility
         orm_mode = True
 
 class TaskFilter(BaseModel):
@@ -111,6 +118,8 @@ class TaskComment(BaseModel):
     updated_at: Optional[datetime] = None
     
     class Config:
+        from_attributes = True
+        # Keep orm_mode for backward compatibility
         orm_mode = True
 
 class TaskCommentCreate(BaseModel):
@@ -132,6 +141,8 @@ class TaskReminder(BaseModel):
     created_at: Optional[datetime] = None
     
     class Config:
+        from_attributes = True
+        # Keep orm_mode for backward compatibility
         orm_mode = True
 
 class TaskReminderCreate(BaseModel):
@@ -146,6 +157,8 @@ class TaskNote(BaseModel):
     created_by: int
     
     class Config:
+        from_attributes = True
+        # Keep orm_mode for backward compatibility
         orm_mode = True
 
 class TaskNoteCreate(BaseModel):

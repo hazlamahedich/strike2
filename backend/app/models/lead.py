@@ -1,4 +1,4 @@
-from pydantic import BaseModel, EmailStr, Field, validator, root_validator
+from pydantic import BaseModel, EmailStr, Field, validator, model_validator
 from typing import Optional, List, Dict, Any, Union
 from datetime import datetime
 from enum import Enum
@@ -64,14 +64,16 @@ class Lead(LeadBase):
     # Additional computed properties
     full_name: str = ""
     
-    @root_validator
-    def set_full_name(cls, values):
+    @model_validator(mode='after')
+    def set_full_name(self) -> 'Lead':
         """Set the full name from first and last name"""
-        if "first_name" in values and "last_name" in values:
-            values["full_name"] = f"{values['first_name']} {values['last_name']}".strip()
-        return values
+        if hasattr(self, "first_name") and hasattr(self, "last_name"):
+            self.full_name = f"{self.first_name} {self.last_name}".strip()
+        return self
     
     class Config:
+        from_attributes = True
+        # Keep orm_mode for backward compatibility
         orm_mode = True
 
 class LeadImport(BaseModel):
@@ -103,6 +105,8 @@ class LeadDetail(Lead):
     campaigns: List[Dict[str, Any]] = []
     
     class Config:
+        from_attributes = True
+        # Keep orm_mode for backward compatibility
         orm_mode = True
 
 class LeadFilter(BaseModel):

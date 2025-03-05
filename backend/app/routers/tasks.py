@@ -167,7 +167,7 @@ async def update_task(
 async def delete_task(
     task_id: int = Path(..., gt=0),
     current_user: User = Depends(get_current_active_user),
-) -> Any:
+):
     """
     Delete a task.
     """
@@ -192,7 +192,6 @@ async def delete_task(
         )
     
     await task_service.delete_task(task_id)
-    return None
 
 
 @router.post("/{task_id}/comments", response_model=TaskComment)
@@ -243,7 +242,7 @@ async def update_task_comment(
 async def delete_task_comment(
     comment_id: int = Path(..., gt=0),
     current_user: User = Depends(get_current_active_user),
-) -> Any:
+):
     """
     Delete a task comment.
     
@@ -251,7 +250,6 @@ async def delete_task_comment(
     """
     # Permission check is done in the service
     await task_service.delete_task_comment(comment_id, current_user.id)
-    return None
 
 
 @router.post("/{task_id}/reminders", response_model=TaskReminder)
@@ -286,14 +284,13 @@ async def create_reminder(
 async def delete_reminder(
     reminder_id: int = Path(..., gt=0),
     current_user: User = Depends(get_current_active_user),
-) -> Any:
+):
     """
     Delete a task reminder.
     """
     # For simplicity, we're allowing deletion without checking ownership
     # In a real app, you might want to check if the user is the creator or assignee
     await task_service.delete_task_reminder(reminder_id)
-    return None
 
 
 @router.get("/summary/user", response_model=Dict[str, Any])

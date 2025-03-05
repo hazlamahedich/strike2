@@ -179,7 +179,7 @@ async def update_lead(
 async def delete_lead(
     lead_id: int,
     current_user: User = Depends(get_current_active_user),
-) -> Any:
+):
     """
     Delete a lead.
     """
@@ -204,7 +204,6 @@ async def delete_lead(
         )
     
     await lead_service.delete_lead(lead_id)
-    return None
 
 @router.post("/import", response_model=Dict[str, Any])
 async def import_leads(
@@ -366,7 +365,7 @@ async def remove_lead_from_campaign(
     notes: Optional[str] = Query(None),
     current_user: User = Depends(get_current_active_user),
     _: User = Depends(allow_admin_or_marketer)
-) -> Any:
+):
     """
     Remove a lead from a campaign.
     

@@ -621,4 +621,102 @@ async def bulk_add_leads_to_campaign(
     # Update lead count in campaign
     await update_campaign_lead_count(campaign_id)
     
-    return results 
+    return results
+
+
+# Add CampaignService class at the end of the file
+class CampaignService:
+    @staticmethod
+    async def get_campaign_by_id(campaign_id: int) -> Optional[Campaign]:
+        return await get_campaign_by_id(campaign_id)
+    
+    @staticmethod
+    async def get_campaigns(
+        skip: int = 0, 
+        limit: int = 100, 
+        campaign_filter: Optional[CampaignFilter] = None,
+        sort_by: str = "created_at",
+        sort_desc: bool = True,
+        user_id: Optional[int] = None,
+        team_id: Optional[int] = None
+    ) -> List[Campaign]:
+        return await get_campaigns(skip, limit, campaign_filter, sort_by, sort_desc, user_id, team_id)
+    
+    @staticmethod
+    async def create_campaign(campaign_in: CampaignCreate, user_id: int) -> Campaign:
+        return await create_campaign(campaign_in, user_id)
+    
+    @staticmethod
+    async def update_campaign(campaign_id: int, campaign_in: Union[CampaignUpdate, Dict[str, Any]]) -> Campaign:
+        return await update_campaign(campaign_id, campaign_in)
+    
+    @staticmethod
+    async def delete_campaign(campaign_id: int) -> bool:
+        return await delete_campaign(campaign_id)
+    
+    @staticmethod
+    async def get_campaign_detail(campaign_id: int) -> CampaignDetail:
+        return await get_campaign_detail(campaign_id)
+    
+    @staticmethod
+    async def add_lead_to_campaign(
+        campaign_id: int, 
+        lead_id: int, 
+        user_id: int,
+        status: LeadCampaignStatus = LeadCampaignStatus.ADDED,
+        notes: Optional[str] = None,
+        metadata: Optional[Dict[str, Any]] = None
+    ) -> CampaignLead:
+        return await add_lead_to_campaign(campaign_id, lead_id, user_id, status, notes, metadata)
+    
+    @staticmethod
+    async def remove_lead_from_campaign(
+        campaign_id: int, 
+        lead_id: int, 
+        user_id: int,
+        notes: Optional[str] = None
+    ) -> bool:
+        return await remove_lead_from_campaign(campaign_id, lead_id, user_id, notes)
+    
+    @staticmethod
+    async def update_campaign_lead_status(
+        campaign_id: int, 
+        lead_id: int, 
+        status: LeadCampaignStatus,
+        user_id: int,
+        notes: Optional[str] = None,
+        metadata: Optional[Dict[str, Any]] = None
+    ) -> CampaignLead:
+        return await update_campaign_lead_status(campaign_id, lead_id, status, user_id, notes, metadata)
+    
+    @staticmethod
+    async def get_campaign_leads(
+        campaign_id: int,
+        skip: int = 0,
+        limit: int = 100,
+        status: Optional[List[LeadCampaignStatus]] = None,
+        sort_by: str = "created_at",
+        sort_desc: bool = True
+    ) -> List[Dict[str, Any]]:
+        return await get_campaign_leads(campaign_id, skip, limit, status, sort_by, sort_desc)
+    
+    @staticmethod
+    async def get_lead_campaigns(
+        lead_id: int,
+        include_removed: bool = False
+    ) -> List[Dict[str, Any]]:
+        return await get_lead_campaigns(lead_id, include_removed)
+    
+    @staticmethod
+    async def update_campaign_lead_count(campaign_id: int) -> None:
+        return await update_campaign_lead_count(campaign_id)
+    
+    @staticmethod
+    async def bulk_add_leads_to_campaign(
+        campaign_id: int,
+        lead_ids: List[int],
+        user_id: int,
+        status: LeadCampaignStatus = LeadCampaignStatus.ADDED,
+        notes: Optional[str] = None
+    ) -> Dict[str, Any]:
+        return await bulk_add_leads_to_campaign(campaign_id, lead_ids, user_id, status, notes) 

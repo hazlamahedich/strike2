@@ -61,7 +61,11 @@ class Email(EmailBase):
     sentiment_score: Optional[float] = None
     
     class Config:
+        from_attributes = True
         orm_mode = True
+
+# Add alias for Email as EmailMessage for backward compatibility
+EmailMessage = Email
 
 class EmailDetail(Email):
     """Email with additional details like lead and user information"""
@@ -126,6 +130,9 @@ class SMS(SMSBase):
     
     class Config:
         orm_mode = True
+
+# Add alias for SMS as SMSMessage for backward compatibility
+SMSMessage = SMS
 
 class SMSDetail(SMS):
     """SMS with additional details like lead and user information"""
@@ -349,4 +356,60 @@ class EmailSequenceUpdate(BaseModel):
     description: Optional[str] = None
     team_id: Optional[int] = None
     steps: Optional[List[Dict[str, Any]]] = None
-    is_active: Optional[bool] = None 
+    is_active: Optional[bool] = None
+
+# Add alias for CallTranscript which might be missing
+class CallTranscript(BaseModel):
+    call_id: int
+    transcript: str
+    created_at: datetime = Field(default_factory=datetime.now)
+    
+    class Config:
+        from_attributes = True
+        orm_mode = True
+
+# Add alias for EmailSequenceStep
+class EmailSequenceStep(BaseModel):
+    sequence_id: int
+    step_order: int
+    delay_days: int
+    email_template_id: int
+    is_active: bool = True
+    
+    class Config:
+        from_attributes = True
+        orm_mode = True
+
+# Add response models for API endpoints
+class EmailMessageResponse(BaseModel):
+    """Response model for email sending endpoint"""
+    id: int
+    status: EmailStatus
+    message: str = "Email sent successfully"
+    details: Optional[Dict[str, Any]] = None
+    
+    class Config:
+        from_attributes = True
+        orm_mode = True
+
+class SMSMessageResponse(BaseModel):
+    """Response model for SMS sending endpoint"""
+    id: int
+    status: SMSStatus
+    message: str = "SMS sent successfully"
+    details: Optional[Dict[str, Any]] = None
+    
+    class Config:
+        from_attributes = True
+        orm_mode = True
+
+class CallResponse(BaseModel):
+    """Response model for call endpoint"""
+    id: int
+    status: CallStatus
+    message: str = "Call initiated successfully"
+    details: Optional[Dict[str, Any]] = None
+    
+    class Config:
+        from_attributes = True
+        orm_mode = True 

@@ -551,4 +551,70 @@ async def get_user_tasks_summary(user_id: int) -> Dict[str, Any]:
         "upcoming_count": len(upcoming_tasks),
         "overdue_tasks": [Task(**task).dict() for task in overdue_tasks],
         "upcoming_tasks": [Task(**task).dict() for task in upcoming_tasks]
-    } 
+    }
+
+# Add TaskService class at the end of the file
+class TaskService:
+    @staticmethod
+    async def get_task_by_id(task_id: int) -> Optional[Task]:
+        return await get_task_by_id(task_id)
+    
+    @staticmethod
+    async def get_tasks(
+        skip: int = 0,
+        limit: int = 100,
+        task_filter: Optional[TaskFilter] = None,
+        sort_by: str = "due_date",
+        sort_desc: bool = True,
+        user_id: Optional[int] = None,
+        team_id: Optional[int] = None
+    ) -> List[Task]:
+        return await get_tasks(skip, limit, task_filter, sort_by, sort_desc, user_id, team_id)
+    
+    @staticmethod
+    async def create_task(task_in: TaskCreate, user_id: int) -> Task:
+        return await create_task(task_in, user_id)
+    
+    @staticmethod
+    async def update_task(task_id: int, task_in: Union[TaskUpdate, Dict[str, Any]], user_id: int) -> Task:
+        return await update_task(task_id, task_in, user_id)
+    
+    @staticmethod
+    async def delete_task(task_id: int) -> bool:
+        return await delete_task(task_id)
+    
+    @staticmethod
+    async def get_task_detail(task_id: int) -> TaskDetail:
+        return await get_task_detail(task_id)
+    
+    @staticmethod
+    async def add_task_comment(task_id: int, comment_in: TaskCommentCreate, user_id: int) -> TaskComment:
+        return await add_task_comment(task_id, comment_in, user_id)
+    
+    @staticmethod
+    async def update_task_comment(comment_id: int, comment_in: TaskCommentUpdate, user_id: int) -> TaskComment:
+        return await update_task_comment(comment_id, comment_in, user_id)
+    
+    @staticmethod
+    async def delete_task_comment(comment_id: int, user_id: int) -> bool:
+        return await delete_task_comment(comment_id, user_id)
+    
+    @staticmethod
+    async def create_task_reminder(task_id: int, reminder_in: TaskReminderCreate, user_id: int) -> TaskReminder:
+        return await create_task_reminder(task_id, reminder_in, user_id)
+    
+    @staticmethod
+    async def delete_task_reminder(reminder_id: int) -> bool:
+        return await delete_task_reminder(reminder_id)
+    
+    @staticmethod
+    async def get_pending_reminders() -> List[Dict[str, Any]]:
+        return await get_pending_reminders()
+    
+    @staticmethod
+    async def mark_reminder_sent(reminder_id: int) -> bool:
+        return await mark_reminder_sent(reminder_id)
+    
+    @staticmethod
+    async def get_user_tasks_summary(user_id: int) -> Dict[str, Any]:
+        return await get_user_tasks_summary(user_id) 

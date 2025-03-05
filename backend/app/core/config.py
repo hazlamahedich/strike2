@@ -26,11 +26,13 @@ class Settings(BaseSettings):
     # OpenAI settings
     OPENAI_API_KEY: Optional[str] = None
     OPENAI_ORGANIZATION: Optional[str] = None
+    DEFAULT_MODEL: Optional[str] = "gpt-4"
     
     # Email settings
     SENDGRID_API_KEY: Optional[str] = None
     EMAIL_FROM: str = "noreply@example.com"
     EMAIL_FROM_NAME: str = "CRM System"
+    SENDGRID_FROM_EMAIL: Optional[str] = "crm@example.com"
     
     # Twilio settings
     TWILIO_ACCOUNT_SID: Optional[str] = None
@@ -59,6 +61,9 @@ class Settings(BaseSettings):
     ENABLE_EMAIL: bool = True
     ENABLE_SMS: bool = True
     ENABLE_CALL_TRACKING: bool = True
+    
+    # Timezone setting
+    TIMEZONE: str = "UTC"
     
     class Config:
         env_file = ".env"

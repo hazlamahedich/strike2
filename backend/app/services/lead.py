@@ -605,4 +605,62 @@ async def export_leads(
         return {
             "success": False,
             "error": str(e)
-        } 
+        }
+
+# Add LeadService class at the end of the file
+class LeadService:
+    @staticmethod
+    async def get_lead_by_id(lead_id: int) -> Optional[Lead]:
+        return await get_lead_by_id(lead_id)
+    
+    @staticmethod
+    async def get_leads(
+        skip: int = 0,
+        limit: int = 100,
+        lead_filter: Optional[LeadFilter] = None,
+        sort_by: str = "created_at",
+        sort_desc: bool = True
+    ) -> List[Lead]:
+        return await get_leads(skip, limit, lead_filter, sort_by, sort_desc)
+    
+    @staticmethod
+    async def create_lead(lead_in: LeadCreate, user_id: Optional[int] = None) -> Lead:
+        return await create_lead(lead_in, user_id)
+    
+    @staticmethod
+    async def update_lead(lead_id: int, lead_in: Union[LeadUpdate, Dict[str, Any]], user_id: Optional[int] = None) -> Lead:
+        return await update_lead(lead_id, lead_in, user_id)
+    
+    @staticmethod
+    async def delete_lead(lead_id: int) -> bool:
+        return await delete_lead(lead_id)
+    
+    @staticmethod
+    async def get_lead_detail(lead_id: int, include_campaign_data: bool = True) -> LeadDetail:
+        return await get_lead_detail(lead_id, include_campaign_data)
+    
+    @staticmethod
+    async def get_lead_timeline(lead_id: int, limit: int = 20) -> List[Dict[str, Any]]:
+        return await get_lead_timeline(lead_id, limit)
+    
+    @staticmethod
+    async def import_leads(
+        file: UploadFile,
+        field_mapping: Dict[str, str],
+        handle_duplicates: str = "skip",
+        user_id: Optional[int] = None,
+        team_id: Optional[int] = None
+    ) -> Dict[str, Any]:
+        return await import_leads(file, field_mapping, handle_duplicates, user_id, team_id)
+    
+    @staticmethod
+    async def export_leads(
+        lead_ids: Optional[List[int]] = None,
+        filters: Optional[Dict[str, Any]] = None,
+        export_format: str = "csv",
+        include_fields: Optional[List[str]] = None,
+        user_id: Optional[int] = None,
+        user_role: Optional[str] = None,
+        team_id: Optional[int] = None
+    ) -> Dict[str, Any]:
+        return await export_leads(lead_ids, filters, export_format, include_fields, user_id, user_role, team_id) 

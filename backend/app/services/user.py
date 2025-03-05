@@ -5,6 +5,77 @@ from app.core.security import get_password_hash
 from app.models.user import UserCreate, UserUpdate, UserInDB, User
 from app.core.database import fetch_one, fetch_all, insert_row, update_row, delete_row
 
+
+class UserService:
+    """
+    Service class for user management operations
+    """
+    @staticmethod
+    async def get_user_by_id(user_id: int) -> Optional[User]:
+        """
+        Get a user by ID.
+        """
+        return await get_user_by_id(user_id)
+    
+    @staticmethod
+    async def get_user_by_email(email: str) -> Optional[UserInDB]:
+        """
+        Get a user by email, including hashed password for internal use.
+        """
+        return await get_user_by_email(email)
+    
+    @staticmethod
+    async def get_users(
+        skip: int = 0, 
+        limit: int = 100,
+        team_id: Optional[int] = None,
+        role: Optional[str] = None,
+        search: Optional[str] = None,
+        is_active: Optional[bool] = None
+    ) -> List[User]:
+        """
+        Get multiple users with filtering options.
+        """
+        return await get_users(skip, limit, team_id, role, search, is_active)
+    
+    @staticmethod
+    async def create_user(user_in: UserCreate) -> User:
+        """
+        Create a new user.
+        """
+        return await create_user(user_in)
+    
+    @staticmethod
+    async def update_user(user_id: int, user_in: UserUpdate) -> User:
+        """
+        Update a user.
+        """
+        return await update_user(user_id, user_in)
+    
+    @staticmethod
+    async def delete_user(user_id: int) -> bool:
+        """
+        Delete a user.
+        """
+        return await delete_user(user_id)
+    
+    @staticmethod
+    async def get_user_activity(user_id: int, limit: int = 10) -> List[Dict[str, Any]]:
+        """
+        Get a user's recent activity.
+        """
+        return await get_user_activity(user_id, limit)
+    
+    @staticmethod
+    async def get_user_stats(user_id: int) -> Dict[str, Any]:
+        """
+        Get a user's performance statistics.
+        """
+        return await get_user_stats(user_id)
+
+
+# Original functions (keep for backward compatibility)
+
 async def get_user_by_id(user_id: int) -> Optional[User]:
     """
     Get a user by ID.

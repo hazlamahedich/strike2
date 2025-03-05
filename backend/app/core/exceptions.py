@@ -45,6 +45,23 @@ class ResourceNotFoundException(CRMException):
             details=details
         )
 
+# Alias for ResourceNotFoundException for backward compatibility
+NotFoundException = ResourceNotFoundException
+
+class BadRequestException(CRMException):
+    """Exception raised for bad request errors"""
+    def __init__(
+        self, 
+        message: str = "Bad request",
+        details: Optional[Dict[str, Any]] = None
+    ):
+        super().__init__(
+            message=message,
+            status_code=status.HTTP_400_BAD_REQUEST,
+            error_code="bad_request",
+            details=details
+        )
+
 class ValidationException(CRMException):
     """Exception raised when data validation fails"""
     def __init__(
@@ -145,4 +162,10 @@ class RateLimitException(CRMException):
             status_code=status.HTTP_429_TOO_MANY_REQUESTS,
             error_code="rate_limit_exceeded",
             details=details
-        ) 
+        )
+
+# Add alias for AuthorizationException for backward compatibility
+PermissionDeniedException = AuthorizationException
+
+# Add ExternalAPIException as an alias for ThirdPartyServiceException
+ExternalAPIException = ThirdPartyServiceException 

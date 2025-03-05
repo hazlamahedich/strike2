@@ -9,6 +9,90 @@ from app.core.database import get_supabase_client
 from app.models.user import UserCreate, UserInDB, User, UserUpdate
 
 
+class AuthService:
+    """
+    Service class for handling authentication and user management
+    """
+    @staticmethod
+    async def register_user(user_data: UserCreate) -> User:
+        """
+        Register a new user using Supabase authentication
+        """
+        try:
+            client = get_supabase_client()
+            
+            # Register the user with Supabase Auth
+            auth_response = client.auth.sign_up({
+                "email": user_data.email,
+                "password": user_data.password,
+            })
+            
+            if not auth_response.user:
+                raise HTTPException(
+                    status_code=status.HTTP_400_BAD_REQUEST,
+                    detail="Could not register user"
+                )
+            
+            # Use existing functions to handle the rest of the registration process
+            return await register_user(user_data)
+        except Exception as e:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail=f"Registration failed: {str(e)}"
+            )
+    
+    @staticmethod
+    async def login_user(email: str, password: str) -> Dict[str, Any]:
+        """
+        Authenticate a user and return tokens
+        """
+        return await login_user(email, password)
+    
+    @staticmethod
+    async def get_current_user(token: str) -> User:
+        """
+        Get the current authenticated user based on the token
+        """
+        return await get_current_user(token)
+    
+    @staticmethod
+    async def update_user_profile(user_id: str, user_data: UserUpdate) -> User:
+        """
+        Update a user's profile information
+        """
+        return await update_user_profile(user_id, user_data)
+    
+    @staticmethod
+    async def request_password_reset(email: EmailStr) -> Dict[str, Any]:
+        """
+        Request a password reset link
+        """
+        return await request_password_reset(email)
+    
+    @staticmethod
+    async def reset_password(token: str, new_password: str) -> Dict[str, Any]:
+        """
+        Reset password using a valid token
+        """
+        return await reset_password(token, new_password)
+    
+    @staticmethod
+    async def logout_user(token: str) -> Dict[str, Any]:
+        """
+        Logout a user by invalidating their token
+        """
+        return await logout_user(token)
+    
+    @staticmethod
+    async def delete_auth_user(user_id: str) -> None:
+        """
+        Delete a user's authentication account
+        """
+        return await delete_auth_user(user_id)
+
+
+# Keep the original functions for backward compatibility
+
 async def register_user(user_data: UserCreate) -> User:
     """
     Register a new user using Supabase authentication
