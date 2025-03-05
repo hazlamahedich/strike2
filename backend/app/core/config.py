@@ -21,6 +21,16 @@ class Settings(BaseSettings):
     # Supabase settings
     SUPABASE_URL: str = os.getenv("SUPABASE_URL", "")
     SUPABASE_KEY: str = os.getenv("SUPABASE_KEY", "")
+    # Local Supabase settings
+    SUPABASE_LOCAL_URL: str = os.getenv("SUPABASE_LOCAL_URL", "http://localhost:8080")
+    SUPABASE_LOCAL_KEY: str = os.getenv("SUPABASE_LOCAL_KEY", "postgres")
+    SUPABASE_DB_HOST: str = os.getenv("SUPABASE_DB_HOST", "supabase-db")
+    SUPABASE_DB_PORT: int = int(os.getenv("SUPABASE_DB_PORT", "5432"))
+    SUPABASE_DB_NAME: str = os.getenv("SUPABASE_DB_NAME", "postgres")
+    SUPABASE_DB_USER: str = os.getenv("SUPABASE_DB_USER", "postgres")
+    SUPABASE_DB_PASSWORD: str = os.getenv("SUPABASE_DB_PASSWORD", "postgres")
+    # Set to 'local' to use local Supabase, 'cloud' to use Supabase cloud
+    SUPABASE_ENV: str = os.getenv("SUPABASE_ENV", "local")
     
     # OpenAI settings
     OPENAI_API_KEY: str = os.getenv("OPENAI_API_KEY", "")

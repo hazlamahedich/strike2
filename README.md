@@ -42,6 +42,7 @@ An intelligent, modular CRM system built with modern AI capabilities, focusing o
 - Python 3.11+
 - Node.js 18+
 - Docker and Docker Compose (optional)
+- Supabase account (or local Supabase setup)
 
 ### Backend Setup
 
@@ -84,11 +85,54 @@ An intelligent, modular CRM system built with modern AI capabilities, focusing o
    TWILIO_PHONE_NUMBER=your_twilio_phone
    ```
 
-5. Run the backend server:
+5. Set up the Supabase database:
+   ```bash
+   cd backend
+   python setup_supabase.py
+   ```
+   
+   This script will create all the necessary tables, indexes, and seed the database with initial data.
+   
+   You can also run specific parts of the setup:
+   ```bash
+   # Only create the schema (tables, indexes, etc.)
+   python setup_supabase.py --schema-only
+   
+   # Only seed the database with initial data
+   python setup_supabase.py --seed-only
+   ```
+
+6. Run the backend server:
    ```bash
    cd backend
    uvicorn main:app --reload
    ```
+
+### Database Structure
+
+The CRM system uses a Supabase PostgreSQL database with the following main tables:
+
+- **users**: User accounts with role-based access control
+- **teams**: Team organization for users
+- **leads**: Lead information and tracking
+- **pipeline_stages**: Customizable sales pipeline stages
+- **lead_status_history**: History of lead status changes
+- **tasks**: Task management and assignment
+- **emails, calls, sms**: Communication tracking
+- **meetings**: Meeting scheduling and management
+- **notes**: Notes attached to leads
+- **activities**: Comprehensive activity timeline
+- **campaigns**: Marketing campaign management
+- **campaign_leads**: Junction table for leads in campaigns
+- **lead_scores**: AI-generated lead scoring
+- **recordings**: Call and meeting recordings
+- **profiles**: User profiles and preferences
+
+The database includes:
+- Foreign key constraints for data integrity
+- Indexes for performance optimization
+- Triggers for automatic timestamp updates and activity logging
+- Row-level security policies for data access control
 
 ### Frontend Setup
 
@@ -113,6 +157,9 @@ Coming soon...
 │   │   ├── services/       # Business logic
 │   │   └── utils/          # Utilities
 │   ├── main.py             # Application entry point
+│   ├── supabase_schema.sql # Database schema definition
+│   ├── supabase_seed.sql   # Initial seed data
+│   ├── setup_supabase.py   # Database setup script
 │   └── Dockerfile          # Backend Docker config
 ├── frontend/               # Frontend Next.js application (coming soon)
 ├── docker-compose.yml      # Docker Compose config

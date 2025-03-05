@@ -6,8 +6,13 @@ from app.core.config import settings
 
 # Initialize Supabase client
 def get_supabase_client():
-    """Get a Supabase client instance"""
-    return supabase.create_client(settings.SUPABASE_URL, settings.SUPABASE_KEY)
+    """Get a Supabase client instance based on environment configuration"""
+    if settings.SUPABASE_ENV.lower() == 'local':
+        # Use local Supabase instance
+        return supabase.create_client(settings.SUPABASE_LOCAL_URL, settings.SUPABASE_LOCAL_KEY)
+    else:
+        # Use cloud Supabase instance
+        return supabase.create_client(settings.SUPABASE_URL, settings.SUPABASE_KEY)
 
 @asynccontextmanager
 async def get_db_client() -> AsyncGenerator[supabase.Client, None]:
@@ -123,4 +128,13 @@ async def execute_rpc(function_name: str, params: Dict[str, Any]) -> List[Dict[s
     """Execute a stored procedure/function in the database"""
     client = get_supabase_client()
     response = client.rpc(function_name, params).execute()
+    return response.data
+
+async def execute_raw_sql(sql: str, params: Dict[str, Any] = None) -> List[Dict[str, Any]]:
+    """Execute raw SQL query (use with caution)"""
+    client = get_supabase_client()
+    
+    # This is a simplified approach and may not work for all SQL statements
+    # For complex operations, you might need to use the Postgres connection directly
+    response = client.rpc('exec_sql', {'sql': sql, 'params': params or {}}).execute()
     return response.data 
