@@ -160,4 +160,22 @@ class FollowUpSuggestion(BaseModel):
 class FollowUpSuggestionsResponse(BaseModel):
     """Response with follow-up suggestions"""
     lead_id: int
-    suggestions: List[FollowUpSuggestion] 
+    suggestions: List[FollowUpSuggestion]
+
+class AdvancedLeadScoringRequest(BaseModel):
+    """Request for advanced lead scoring using the LangGraph LeadScoringAgent"""
+    lead_id: int
+    timeframe_days: int = 30  # Number of days of interaction history to analyze
+
+class AdvancedLeadScoringResponse(BaseModel):
+    """Response from the advanced lead scoring agent"""
+    lead_id: int
+    status: str  # success or error
+    lead_score: Optional[float] = None  # 0-100 score
+    conversion_probability: Optional[float] = None  # 0-100 percentage
+    factors: Optional[List[str]] = None  # Factors affecting the score
+    recommendations: Optional[List[str]] = None  # Recommended actions
+    analysis: Optional[str] = None  # Brief analysis text
+    score_id: Optional[int] = None  # Database ID of the stored score
+    errors: Optional[List[str]] = None  # Any errors that occurred
+    timeframe_days: int  # The timeframe used for analysis 

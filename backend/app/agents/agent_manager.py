@@ -12,6 +12,7 @@ from app.agents.lead_processor import LeadProcessorAgent
 from app.agents.communication_assistant import CommunicationAssistantAgent
 from app.agents.insight_generator import InsightGeneratorAgent
 from app.agents.task_orchestrator import TaskOrchestratorAgent
+from app.agents.lead_scoring_agent import LeadScoringAgent
 
 # Configure logger
 logger = logging.getLogger(__name__)
@@ -33,6 +34,7 @@ class AgentManager:
         self._communication_assistant = None
         self._insight_generator = None
         self._task_orchestrator = None
+        self._lead_scoring_agent = None
         
         logger.info("Agent Manager initialized")
     
@@ -63,6 +65,13 @@ class AgentManager:
             logger.info("Creating TaskOrchestrator agent instance")
             self._task_orchestrator = TaskOrchestratorAgent()
         return self._task_orchestrator
+    
+    async def get_lead_scoring_agent(self) -> LeadScoringAgent:
+        """Get or create the LeadScoring agent instance."""
+        if self._lead_scoring_agent is None:
+            logger.info("Creating LeadScoring agent instance")
+            self._lead_scoring_agent = LeadScoringAgent()
+        return self._lead_scoring_agent
     
     async def process_lead_document(
         self,
@@ -169,6 +178,34 @@ class AgentManager:
         
         # Create the follow-up plan
         result = await task_orchestrator.create_follow_up_plan(lead_id)
+        
+        return result
+    
+    async def score_lead(
+        self,
+        lead_id: int,
+        timeframe_days: int = 30
+    ) -> Dict[str, Any]:
+        """
+        Score a lead based on their interaction data across all channels.
+        
+        Args:
+            lead_id: ID of the lead to score
+            timeframe_days: Number of days of history to analyze
+            
+        Returns:
+            Dictionary containing lead score, factors, recommendations, and analysis
+        """
+        logger.info(f"Scoring lead ID: {lead_id} with timeframe of {timeframe_days} days")
+        
+        # Get the lead scoring agent
+        lead_scoring_agent = await self.get_lead_scoring_agent()
+        
+        # Score the lead
+        result = await lead_scoring_agent.score_lead(
+            lead_id=lead_id,
+            timeframe_days=timeframe_days
+        )
         
         return result
 

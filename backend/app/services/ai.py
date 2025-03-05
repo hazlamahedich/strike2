@@ -23,7 +23,8 @@ from app.models.ai import (
     LeadInsightsResponse,
     LeadInsight,
     FollowUpSuggestion,
-    FollowUpSuggestionsResponse
+    FollowUpSuggestionsResponse,
+    AdvancedLeadScoringResponse
 )
 from app.services import lead as lead_service
 from app.core.database import fetch_one, fetch_all, insert_row, update_row
@@ -523,182 +524,146 @@ async def get_follow_up_suggestions(lead_id: int, last_interaction_type: Optiona
 
 async def process_lead_document(document: str, source: Optional[str] = None) -> Dict[str, Any]:
     """
-    Process an unstructured document to extract and enrich lead information using LangGraph agents.
+    Process a lead document using the LangGraph LeadProcessor agent.
     
     Args:
-        document: The document or text to process
-        source: Optional source information for the lead
+        document: The document text to process
+        source: Optional source of the document
         
     Returns:
-        Dictionary containing the processing results
+        The extracted and processed lead information
     """
-    logger.info(f"Processing lead document with LangGraph agent from source: {source}")
+    logger.info(f"Processing lead document with LangGraph agent, source: {source}")
     
-    try:
-        # Process the document using the agent manager
-        result = await agent_manager.process_lead_document(document, source)
-        
-        return result
-    except Exception as e:
-        logger.error(f"Error in lead document processing: {str(e)}")
-        return {
-            "success": False,
-            "error": str(e)
-        }
+    # Use the agent manager to access the lead processor agent
+    result = await agent_manager.process_lead_document(document=document, source=source)
+    
+    return result
 
 async def generate_advanced_content(request: ContentGenerationRequest) -> ContentGenerationResponse:
     """
-    Generate personalized communication content using the LangGraph agent.
-    
-    This version uses the advanced CommunicationAssistant agent which provides more
-    context-aware and personalized content generation than the standard version.
+    Generate advanced personalized content using the LangGraph CommunicationAssistant agent.
     
     Args:
-        request: The content generation request parameters
+        request: The content generation request
         
     Returns:
-        ContentGenerationResponse object with the generated content
+        The generated content with metadata
     """
-    logger.info(f"Generating advanced content for lead ID: {request.lead_id}")
+    logger.info(f"Generating advanced content for lead ID: {request.lead_id}, type: {request.content_type}")
     
-    try:
-        # Generate the content using the agent manager
-        result = await agent_manager.generate_communication_content(
-            lead_id=request.lead_id,
-            content_type=request.content_type,
-            purpose=request.purpose,
-            tone=request.tone,
-            key_points=request.key_points
-        )
-        
-        if result.get("success", False):
-            content_data = result.get("content", {})
-            
-            # Create the response
-            return ContentGenerationResponse(
-                content=content_data.get("content", ""),
-                variables=content_data.get("variables", {}),
-                alternative_versions=content_data.get("alternative_versions", [])
-            )
-        else:
-            logger.error(f"Error in advanced content generation: {result.get('error', 'Unknown error')}")
-            # Return a basic response
-            return ContentGenerationResponse(
-                content=f"[Error generating content: {result.get('error', 'Unknown error')}]",
-                variables={},
-                alternative_versions=[]
-            )
-    except Exception as e:
-        logger.error(f"Error in advanced content generation: {str(e)}")
-        return ContentGenerationResponse(
-            content=f"[Error generating content: {str(e)}]",
-            variables={},
-            alternative_versions=[]
-        )
+    # Use the agent manager to access the communication assistant agent
+    result = await agent_manager.generate_communication_content(
+        lead_id=request.lead_id,
+        content_type=request.content_type,
+        purpose=request.purpose,
+        tone=request.tone,
+        key_points=request.key_points
+    )
+    
+    # Transform the result to match the expected response model
+    return ContentGenerationResponse(
+        content=result.get("content", ""),
+        variables=result.get("variables", {}),
+        alternative_versions=result.get("alternatives", [])
+    )
 
 async def get_advanced_lead_insights(lead_id: int) -> LeadInsightsResponse:
     """
     Get advanced insights for a lead using the LangGraph InsightGenerator agent.
     
-    This version provides more comprehensive insights by analyzing all available
-    lead data and communication history in a structured workflow.
-    
     Args:
         lead_id: The ID of the lead to analyze
         
     Returns:
-        LeadInsightsResponse object with insights and recommendations
+        Insights and recommendations for the lead
     """
-    logger.info(f"Generating advanced insights for lead ID: {lead_id}")
+    logger.info(f"Getting advanced insights for lead ID: {lead_id}")
     
-    try:
-        # Analyze the lead using the agent manager
-        result = await agent_manager.analyze_lead(lead_id)
-        
-        if result.get("success", False):
-            insights_data = result.get("insights", {})
-            
-            # Extract insights
-            insights = []
-            for insight_data in insights_data.get("insights", []):
-                insights.append(LeadInsight(
-                    type=insight_data.get("type", "observation"),
-                    description=insight_data.get("description", ""),
-                    confidence=insight_data.get("confidence", 0.0),
-                    supporting_data=insight_data.get("supporting_data", {}),
-                    suggested_actions=insight_data.get("suggested_actions", [])
-                ))
-            
-            # Create the response
-            return LeadInsightsResponse(
-                lead_id=lead_id,
-                insights=insights,
-                optimal_contact_times=insights_data.get("optimal_contact_times", {}),
-                communication_preferences=insights_data.get("communication_preferences", {})
-            )
-        else:
-            logger.error(f"Error in advanced lead insights: {result.get('error', 'Unknown error')}")
-            # Return a basic response
-            return LeadInsightsResponse(
-                lead_id=lead_id,
-                insights=[]
-            )
-    except Exception as e:
-        logger.error(f"Error in advanced lead insights: {str(e)}")
-        return LeadInsightsResponse(
-            lead_id=lead_id,
-            insights=[]
-        )
+    # Use the agent manager to access the insight generator agent
+    result = await agent_manager.analyze_lead(lead_id=lead_id)
+    
+    # Transform insights to the expected format
+    insights = []
+    for insight_data in result.get("insights", []):
+        insights.append(LeadInsight(
+            type=insight_data.get("type", "observation"),
+            description=insight_data.get("description", ""),
+            confidence=insight_data.get("confidence", 0.7),
+            supporting_data=insight_data.get("supporting_data", {}),
+            suggested_actions=insight_data.get("suggested_actions", [])
+        ))
+    
+    return LeadInsightsResponse(
+        lead_id=lead_id,
+        insights=insights,
+        optimal_contact_times=result.get("optimal_contact_times", {}),
+        communication_preferences=result.get("communication_preferences", {})
+    )
 
 async def get_advanced_follow_up_suggestions(lead_id: int) -> FollowUpSuggestionsResponse:
     """
     Get advanced follow-up suggestions using the LangGraph TaskOrchestrator agent.
     
-    This version creates a comprehensive follow-up plan that considers the user's
-    calendar, lead insights, and communication preferences.
-    
     Args:
         lead_id: The ID of the lead to create suggestions for
         
     Returns:
-        FollowUpSuggestionsResponse object with suggestions
+        Follow-up suggestions with detailed information
     """
-    logger.info(f"Generating advanced follow-up suggestions for lead ID: {lead_id}")
+    logger.info(f"Getting advanced follow-up suggestions for lead ID: {lead_id}")
     
-    try:
-        # Create the follow-up plan using the agent manager
-        result = await agent_manager.create_follow_up_plan(lead_id)
+    # Use the agent manager to access the task orchestrator agent
+    result = await agent_manager.create_follow_up_plan(lead_id=lead_id)
+    
+    # Transform suggestions to the expected format
+    suggestions = []
+    for suggestion_data in result.get("suggestions", []):
+        suggestions.append(FollowUpSuggestion(
+            type=suggestion_data.get("type", "email"),
+            priority=suggestion_data.get("priority", 0.5),
+            suggested_timing=suggestion_data.get("timing", "next week"),
+            template=suggestion_data.get("template", None),
+            explanation=suggestion_data.get("explanation", "")
+        ))
+    
+    return FollowUpSuggestionsResponse(
+        lead_id=lead_id,
+        suggestions=suggestions
+    )
+
+async def get_advanced_lead_score(lead_id: int, timeframe_days: int = 30) -> AdvancedLeadScoringResponse:
+    """
+    Score a lead using the advanced LangGraph LeadScoringAgent.
+    
+    This agent analyzes lead interactions across all channels to generate
+    an intelligent score and actionable recommendations.
+    
+    Args:
+        lead_id: The ID of the lead to score
+        timeframe_days: Number of days of history to analyze
         
-        if result.get("success", False):
-            # Get the follow-up suggestions
-            suggestions_data = result.get("follow_up_suggestions", [])
-            
-            # Convert to the expected format
-            suggestions = []
-            for suggestion_data in suggestions_data:
-                suggestions.append(FollowUpSuggestion(
-                    type=suggestion_data.get("type", "email"),
-                    priority=suggestion_data.get("priority", 0.5),
-                    suggested_timing=suggestion_data.get("suggested_timing", ""),
-                    template=suggestion_data.get("template", ""),
-                    explanation=suggestion_data.get("explanation", "")
-                ))
-            
-            # Create the response
-            return FollowUpSuggestionsResponse(
-                lead_id=lead_id,
-                suggestions=suggestions
-            )
-        else:
-            logger.error(f"Error in advanced follow-up suggestions: {result.get('error', 'Unknown error')}")
-            # Return a basic response
-            return FollowUpSuggestionsResponse(
-                lead_id=lead_id,
-                suggestions=[]
-            )
-    except Exception as e:
-        logger.error(f"Error in advanced follow-up suggestions: {str(e)}")
-        return FollowUpSuggestionsResponse(
-            lead_id=lead_id,
-            suggestions=[]
-        ) 
+    Returns:
+        Detailed lead score with analysis and recommendations
+    """
+    logger.info(f"Scoring lead ID: {lead_id} with advanced LangGraph agent")
+    
+    # Use the agent manager to access the lead scoring agent
+    result = await agent_manager.score_lead(
+        lead_id=lead_id,
+        timeframe_days=timeframe_days
+    )
+    
+    # Transform the result to match the expected response model
+    return AdvancedLeadScoringResponse(
+        lead_id=lead_id,
+        status=result.get("status", "error"),
+        lead_score=result.get("lead_score"),
+        conversion_probability=result.get("conversion_probability"),
+        factors=result.get("factors"),
+        recommendations=result.get("recommendations"),
+        analysis=result.get("analysis"),
+        score_id=result.get("score_id"),
+        errors=result.get("errors", []),
+        timeframe_days=timeframe_days
+    ) 

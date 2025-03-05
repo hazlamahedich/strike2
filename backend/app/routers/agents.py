@@ -6,6 +6,7 @@ from app.services import ai as ai_service
 from app.models.content import ContentGenerationRequest, ContentGenerationResponse
 from app.models.insights import LeadInsightsResponse
 from app.models.follow_up import FollowUpSuggestionsResponse
+from app.models.ai import AdvancedLeadScoringRequest, AdvancedLeadScoringResponse
 from app.core.security import get_current_active_user
 from app.models.user import User
 
@@ -61,4 +62,25 @@ async def get_follow_up_suggestions(
     Get advanced follow-up suggestions using the LangGraph TaskOrchestrator agent
     """
     result = await ai_service.get_advanced_follow_up_suggestions(lead_id)
+    return result
+
+@router.post("/lead-scoring", response_model=AdvancedLeadScoringResponse)
+async def score_lead(
+    request: AdvancedLeadScoringRequest,
+    current_user: User = Depends(get_current_active_user)
+) -> AdvancedLeadScoringResponse:
+    """
+    Score a lead using the advanced LangGraph LeadScoringAgent
+    
+    This endpoint analyzes lead interactions across different channels to provide:
+    - A comprehensive lead score (0-100)
+    - Conversion probability estimation
+    - Key factors affecting the score
+    - Actionable recommendations to improve engagement
+    - Detailed analysis of the lead's interaction patterns
+    """
+    result = await ai_service.get_advanced_lead_score(
+        lead_id=request.lead_id,
+        timeframe_days=request.timeframe_days
+    )
     return result 
