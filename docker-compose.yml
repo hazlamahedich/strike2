@@ -1,0 +1,66 @@
+version: '3.8'
+
+services:
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    ports:
+      - "8000:8000"
+    volumes:
+      - ./backend:/app
+    env_file:
+      - ./backend/.env
+    restart: unless-stopped
+    networks:
+      - crm-network
+    depends_on:
+      - supabase-db
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/api/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  # Placeholder for frontend (will be added in future)
+  # frontend:
+  #   build:
+  #     context: ./frontend
+  #     dockerfile: Dockerfile
+  #   ports:
+  #     - "3000:3000"
+  #   volumes:
+  #     - ./frontend:/app
+  #   env_file:
+  #     - ./frontend/.env
+  #   restart: unless-stopped
+  #   networks:
+  #     - crm-network
+  #   depends_on:
+  #     - backend
+
+  # Local development Supabase (optional - can use cloud Supabase instead)
+  supabase-db:
+    image: supabase/postgres:14.1.0
+    ports:
+      - "5432:5432"
+    volumes:
+      - supabase-data:/var/lib/postgresql/data
+    environment:
+      POSTGRES_PASSWORD: postgres
+      POSTGRES_USER: postgres
+      POSTGRES_DB: postgres
+    networks:
+      - crm-network
+    healthcheck:
+      test: ["CMD", "pg_isready", "-U", "postgres"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+networks:
+  crm-network:
+    driver: bridge
+
+volumes:
+  supabase-data: 
