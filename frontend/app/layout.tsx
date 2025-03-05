@@ -2,6 +2,8 @@ import type { Metadata } from "next";
 import { Inter } from "next/font/google";
 import "./globals.css";
 import { ThemeProvider } from "@/components/shared/theme-provider";
+import { Toaster } from "sonner";
+import AuthProviderWrapper from "@/components/shared/auth-provider-wrapper";
 
 const inter = Inter({ subsets: ["latin"] });
 
@@ -24,7 +26,10 @@ export default function RootLayout({
           enableSystem
           disableTransitionOnChange
         >
-          {children}
+          <AuthProviderWrapper>
+            {children}
+            <Toaster position="top-right" />
+          </AuthProviderWrapper>
         </ThemeProvider>
       </body>
     </html>

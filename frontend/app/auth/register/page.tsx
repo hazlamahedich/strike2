@@ -10,26 +10,38 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { useAuth } from '@/lib/hooks/useAuth';
 
-export default function LoginPage() {
+export default function RegisterPage() {
+  const [name, setName] = useState('');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
-  const { signIn, isLoading } = useAuth();
+  const [confirmPassword, setConfirmPassword] = useState('');
+  const { signUp, isLoading } = useAuth();
   const router = useRouter();
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     
-    if (!email || !password) {
-      toast.error('Please enter both email and password');
+    if (!name || !email || !password || !confirmPassword) {
+      toast.error('Please fill in all fields');
+      return;
+    }
+    
+    if (password !== confirmPassword) {
+      toast.error('Passwords do not match');
+      return;
+    }
+    
+    if (password.length < 8) {
+      toast.error('Password must be at least 8 characters long');
       return;
     }
     
     try {
-      await signIn(email, password);
+      await signUp(email, password, name);
       // The useAuth hook will handle the redirect and success message
     } catch (error) {
       // The useAuth hook will handle the error message
-      console.error('Login failed:', error);
+      console.error('Registration failed:', error);
     }
   };
 
@@ -46,16 +58,28 @@ export default function LoginPage() {
             <span className="text-primary-foreground text-xl font-bold">AI</span>
           </div>
           <h1 className="text-3xl font-bold">AI-Powered CRM</h1>
-          <p className="text-muted-foreground mt-2">Sign in to your account</p>
+          <p className="text-muted-foreground mt-2">Create your account</p>
         </div>
         
         <Card className="animate-slide-up hover-lift">
           <CardHeader>
-            <CardTitle>Login</CardTitle>
-            <CardDescription>Enter your credentials to access your account</CardDescription>
+            <CardTitle>Register</CardTitle>
+            <CardDescription>Create a new account to get started</CardDescription>
           </CardHeader>
           <CardContent>
             <form onSubmit={handleSubmit} className="space-y-4">
+              <div className="space-y-2">
+                <Label htmlFor="name">Full Name</Label>
+                <Input
+                  id="name"
+                  type="text"
+                  placeholder="John Doe"
+                  value={name}
+                  onChange={(e) => setName(e.target.value)}
+                  required
+                  disabled={isLoading}
+                />
+              </div>
               <div className="space-y-2">
                 <Label htmlFor="email">Email</Label>
                 <Input
@@ -69,15 +93,7 @@ export default function LoginPage() {
                 />
               </div>
               <div className="space-y-2">
-                <div className="flex items-center justify-between">
-                  <Label htmlFor="password">Password</Label>
-                  <Link 
-                    href="/auth/forgot-password" 
-                    className="text-xs text-primary hover:underline"
-                  >
-                    Forgot password?
-                  </Link>
-                </div>
+                <Label htmlFor="password">Password</Label>
                 <Input
                   id="password"
                   type="password"
@@ -88,16 +104,28 @@ export default function LoginPage() {
                   disabled={isLoading}
                 />
               </div>
+              <div className="space-y-2">
+                <Label htmlFor="confirmPassword">Confirm Password</Label>
+                <Input
+                  id="confirmPassword"
+                  type="password"
+                  placeholder="••••••••"
+                  value={confirmPassword}
+                  onChange={(e) => setConfirmPassword(e.target.value)}
+                  required
+                  disabled={isLoading}
+                />
+              </div>
               <Button type="submit" className="w-full" disabled={isLoading}>
-                {isLoading ? 'Signing in...' : 'Sign In'}
+                {isLoading ? 'Creating account...' : 'Create Account'}
               </Button>
             </form>
           </CardContent>
           <CardFooter className="flex flex-col space-y-4">
             <div className="text-sm text-center text-muted-foreground">
-              Don't have an account?{' '}
-              <Link href="/auth/register" className="text-primary hover:underline">
-                Sign up
+              Already have an account?{' '}
+              <Link href="/auth/login" className="text-primary hover:underline">
+                Sign in
               </Link>
             </div>
             <div className="relative">
@@ -120,7 +148,7 @@ export default function LoginPage() {
         </Card>
         
         <p className="text-center text-sm text-muted-foreground mt-6">
-          By signing in, you agree to our{' '}
+          By creating an account, you agree to our{' '}
           <Link href="/terms" className="text-primary hover:underline">
             Terms of Service
           </Link>{' '}

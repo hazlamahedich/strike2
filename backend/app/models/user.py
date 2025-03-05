@@ -73,6 +73,10 @@ class TokenPayload(BaseModel):
     sub: str
     exp: int
 
+class LoginRequest(BaseModel):
+    email: EmailStr
+    password: str
+
 class UserWithStats(User):
     lead_count: int = 0
     active_tasks: int = 0

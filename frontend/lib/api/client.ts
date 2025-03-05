@@ -5,8 +5,11 @@ type FetchOptions = {
   credentials?: RequestCredentials;
 };
 
+// Import Supabase client
+import supabase from '../supabase/client';
+
 // Base API URL from environment variable (with fallback)
-const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000/api';
+const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000';
 
 // Create a reusable client for API requests
 class ApiClient {
@@ -44,6 +47,12 @@ class ApiClient {
     }
   }
 
+  // Method to get the current session from Supabase
+  async getSupabaseSession() {
+    const { data: { session } } = await supabase.auth.getSession();
+    return session;
+  }
+
   // Generic fetch method with authentication and error handling
   async fetch<T>(endpoint: string, options: FetchOptions = {}): Promise<T> {
     const url = `${API_BASE_URL}${endpoint.startsWith('/') ? endpoint : `/${endpoint}`}`;
@@ -54,8 +63,19 @@ class ApiClient {
       ...options.headers,
     };
     
+    // Try to get token from Supabase first, then fall back to stored token
+    let token = this.getAuthToken();
+    
+    // If no stored token, try to get from Supabase session
+    if (!token) {
+      const session = await this.getSupabaseSession();
+      if (session?.access_token) {
+        token = session.access_token;
+        this.setAuthToken(token);
+      }
+    }
+    
     // Add auth token if available
-    const token = this.getAuthToken();
     if (token) {
       headers['Authorization'] = `Bearer ${token}`;
     }
@@ -69,7 +89,16 @@ class ApiClient {
     
     // Add body for non-GET requests if provided
     if (options.body && fetchOptions.method !== 'GET') {
-      fetchOptions.body = JSON.stringify(options.body);
+      // If the body is FormData, use it directly without stringifying
+      if (options.body instanceof FormData) {
+        fetchOptions.body = options.body;
+        // Remove Content-Type to let the browser set it with the boundary
+        if (fetchOptions.headers && 'Content-Type' in fetchOptions.headers) {
+          delete fetchOptions.headers['Content-Type'];
+        }
+      } else {
+        fetchOptions.body = JSON.stringify(options.body);
+      }
     }
     
     try {
@@ -78,6 +107,8 @@ class ApiClient {
       // Handle 401 Unauthorized (token expired or invalid)
       if (response.status === 401) {
         this.clearAuthToken();
+        // Sign out from Supabase as well
+        await supabase.auth.signOut();
         // Redirect to login in browser environment
         if (typeof window !== 'undefined') {
           window.location.href = '/auth/login';
