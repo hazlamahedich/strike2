@@ -24,6 +24,7 @@ type AuthContextType = {
   signUp: (email: string, password: string, name: string) => Promise<void>;
   signOut: () => Promise<void>;
   resetPassword: (email: string) => Promise<void>;
+  resendConfirmation: (email: string) => Promise<{ success: boolean; error?: string }>;
 };
 
 // Create context with default values
@@ -34,6 +35,7 @@ const AuthContext = createContext<AuthContextType>({
   signUp: async () => {},
   signOut: async () => {},
   resetPassword: async () => {},
+  resendConfirmation: async () => ({ success: false }),
 });
 
 // Local storage keys
@@ -256,8 +258,27 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       // Provide more specific error messages
       if (error.message?.includes('Invalid login credentials')) {
         toast.error('Invalid email or password. Please try again.');
-      } else if (error.message?.includes('Email not confirmed')) {
+      } else if (error.message?.includes('Email not confirmed') || error.message?.includes('not confirmed')) {
         toast.error('Please confirm your email before logging in.');
+        toast.info('Check your inbox for a confirmation email. If you cannot find it, check your spam folder or click below to request a new one.', { duration: 8000 });
+        
+        // Add a button to resend confirmation email
+        toast.custom((toastId) => (
+          <div className="bg-white dark:bg-gray-800 p-4 rounded shadow-lg">
+            <p className="text-gray-800 dark:text-gray-200 mb-3">Email not confirmed. Need a new confirmation email?</p>
+            <div className="flex justify-end">
+              <button 
+                onClick={() => {
+                  toast.dismiss(toastId);
+                  resendConfirmation(email);
+                }}
+                className="px-4 py-2 bg-blue-500 text-white rounded hover:bg-blue-600 transition-colors"
+              >
+                Resend confirmation email
+              </button>
+            </div>
+          </div>
+        ), { duration: 15000 });
       } else if (error.message?.includes('network') || error.message?.includes('fetch')) {
         toast.error('Network error. Please check your internet connection and try again.');
       } else {
@@ -362,11 +383,13 @@ export function AuthProvider({ children }: { children: ReactNode }) {
                 console.log('User profile created successfully or will be created later:', profileResult.message);
               } else {
                 console.warn('Could not create user profile:', profileResult.message);
-                // Don't throw an error here, just log it and continue
+                // Show a toast warning but don't block the auth flow
+                toast.warning('Your profile was not fully created. Some features may be limited until you log in again.');
               }
             } catch (profileError: any) {
               console.error('Error creating profile:', profileError?.message || JSON.stringify(profileError));
-              // Continue with auth flow even if profile creation fails
+              // Show a toast warning but don't block the auth flow
+              toast.warning('Your profile was not fully created. Some features may be limited until you log in again.');
             }
             
             // Check if email confirmation is required
@@ -400,6 +423,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
               // Email confirmation required
               toast.dismiss();
               toast.success('Registration successful! Please check your email to confirm your account.');
+              toast.info('You will need to confirm your email before you can log in.', { duration: 6000 });
               
               // Store in temporary users for fallback
               try {
@@ -581,6 +605,49 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     }
   };
 
+  // Resend confirmation email
+  const resendConfirmation = async (email: string) => {
+    try {
+      setIsLoading(true);
+      
+      // Show loading toast
+      toast.loading('Sending confirmation email...');
+      
+      const { data, error } = await supabase.auth.resend({
+        type: 'signup',
+        email: email,
+      });
+      
+      // Dismiss the loading toast
+      toast.dismiss();
+      
+      if (error) {
+        console.error('Error resending confirmation email:', error);
+        toast.error(`Failed to resend confirmation email: ${error.message}`);
+        throw error;
+      }
+      
+      toast.success('Confirmation email sent! Please check your inbox.');
+      toast.info('If you cannot find the email, please check your spam folder.', { duration: 5000 });
+      
+      return { success: true };
+    } catch (error: any) {
+      console.error('Error in resendConfirmation:', error);
+      
+      // Dismiss any loading toasts
+      toast.dismiss();
+      
+      // Show error toast if not already shown
+      if (!error.message?.includes('Failed to resend')) {
+        toast.error(`Error: ${error.message || 'Unknown error'}`);
+      }
+      
+      return { success: false, error };
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
   // Provide auth context
   return (
     <AuthContext.Provider
@@ -591,6 +658,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         signUp,
         signOut,
         resetPassword,
+        resendConfirmation,
       }}
     >
       {children}

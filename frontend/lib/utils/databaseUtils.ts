@@ -97,6 +97,8 @@ export async function checkAuthSchema(): Promise<{ success: boolean; message: st
  */
 export async function createUserProfile(userId: string, email: string, name: string): Promise<{ success: boolean; message: string }> {
   try {
+    console.log('Starting profile creation for user:', userId);
+    
     // Check if the profiles table exists
     const { data: tableExists, error: tableCheckError } = await supabase
       .from('profiles')
@@ -119,6 +121,10 @@ export async function createUserProfile(userId: string, email: string, name: str
       .eq('user_id', userId)
       .single();
     
+    if (profileCheckError) {
+      console.log('Error checking for existing profile:', profileCheckError);
+    }
+    
     if (existingProfile) {
       console.log('Profile already exists for user:', userId);
       return { 
@@ -128,11 +134,14 @@ export async function createUserProfile(userId: string, email: string, name: str
     }
     
     // Wait a moment to ensure the auth user is fully propagated to the database
-    // This helps with foreign key constraints
-    await new Promise(resolve => setTimeout(resolve, 1000));
+    // This helps with foreign key constraints - increase the delay
+    console.log('Waiting for auth user to propagate to database...');
+    await new Promise(resolve => setTimeout(resolve, 2000));
     
     // Create the profile with all required fields
     const now = new Date().toISOString();
+    console.log('Attempting to insert profile with user_id:', userId);
+    
     const { data, error } = await supabase
       .from('profiles')
       .insert([
@@ -148,11 +157,25 @@ export async function createUserProfile(userId: string, email: string, name: str
     
     if (error) {
       console.error('Error creating profile:', error);
+      console.error('Error details:', {
+        code: error.code,
+        message: error.message,
+        details: error.details,
+        hint: error.hint
+      });
       
       // Check for foreign key constraint violation
       if (error.code === '23503' && error.message?.includes('profiles_user_id_fkey')) {
         // This is a foreign key constraint error - the user_id doesn't exist in auth.users
         console.log('Foreign key constraint violation - user may not be fully propagated to database yet');
+        
+        // Try to verify if the user exists in auth.users
+        try {
+          const { data: authUser, error: authError } = await supabase.auth.admin.getUserById(userId);
+          console.log('Auth user check result:', authUser ? 'User exists' : 'User not found', authError ? `Error: ${authError.message}` : 'No error');
+        } catch (authCheckError) {
+          console.error('Error checking auth user:', authCheckError);
+        }
         
         // Return success anyway since the user was created in auth system
         // The profile can be created later when the user logs in

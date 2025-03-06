@@ -50,6 +50,11 @@ import {
   MessageSquare 
 } from 'lucide-react';
 import apiClient from '@/lib/api/client';
+import { useRouter } from 'next/navigation';
+import { MeetingDialog } from '@/components/meetings/MeetingDialog';
+import { openMeetingDialog } from '@/lib/utils/dialogUtils';
+import { toast } from '@/components/ui/use-toast';
+import { LeadStatus, LeadSource } from '@/lib/types/lead';
 
 // Lead type definition
 type Lead = {
@@ -62,6 +67,10 @@ type Lead = {
   created_at: string;
   last_contact: string | null;
   notes: string;
+  score?: number; // Lead score
+  address?: string; // Lead address
+  campaign_id?: string; // Campaign assignment
+  campaign_name?: string; // Campaign name for display
 };
 
 export default function LeadsPage() {
@@ -76,8 +85,19 @@ export default function LeadsPage() {
     phone: '',
     status: 'new',
     source: '',
-    notes: ''
+    notes: '',
+    score: 50, // Default score
+    address: '',
+    campaign_id: ''
   });
+  const router = useRouter();
+
+  // Mock campaigns for dropdown
+  const mockCampaigns = [
+    { id: '1', name: 'Summer Promotion' },
+    { id: '2', name: 'New Product Launch' },
+    { id: '3', name: 'Enterprise Outreach' }
+  ];
 
   // Fetch leads data
   useEffect(() => {
@@ -95,7 +115,11 @@ export default function LeadsPage() {
             source: 'Website',
             created_at: '2023-05-15T10:30:00Z',
             last_contact: null,
-            notes: 'Interested in premium plan'
+            notes: 'Interested in premium plan',
+            score: 85,
+            address: '123 Main St, San Francisco, CA 94105',
+            campaign_id: '1',
+            campaign_name: 'Summer Promotion'
           },
           {
             id: '2',
@@ -106,7 +130,11 @@ export default function LeadsPage() {
             source: 'Referral',
             created_at: '2023-05-10T14:20:00Z',
             last_contact: '2023-05-12T09:15:00Z',
-            notes: 'Follow up next week'
+            notes: 'Follow up next week',
+            score: 72,
+            address: '456 Market St, San Francisco, CA 94103',
+            campaign_id: '2',
+            campaign_name: 'New Product Launch'
           },
           {
             id: '3',
@@ -117,7 +145,11 @@ export default function LeadsPage() {
             source: 'LinkedIn',
             created_at: '2023-05-05T11:45:00Z',
             last_contact: '2023-05-11T16:30:00Z',
-            notes: 'Needs custom solution'
+            notes: 'Needs custom solution',
+            score: 91,
+            address: '789 Howard St, San Francisco, CA 94103',
+            campaign_id: '1',
+            campaign_name: 'Summer Promotion'
           },
           {
             id: '4',
@@ -128,7 +160,11 @@ export default function LeadsPage() {
             source: 'Conference',
             created_at: '2023-04-28T09:00:00Z',
             last_contact: '2023-05-09T13:45:00Z',
-            notes: 'Sent proposal on 5/9'
+            notes: 'Sent proposal on 5/9',
+            score: 65,
+            address: '101 California St, San Francisco, CA 94111',
+            campaign_id: '3',
+            campaign_name: 'Enterprise Outreach'
           },
           {
             id: '5',
@@ -139,7 +175,11 @@ export default function LeadsPage() {
             source: 'Cold Call',
             created_at: '2023-04-20T15:10:00Z',
             last_contact: '2023-05-08T10:20:00Z',
-            notes: 'Negotiating contract terms'
+            notes: 'Negotiating contract terms',
+            score: 88,
+            address: '555 Mission St, San Francisco, CA 94105',
+            campaign_id: '2',
+            campaign_name: 'New Product Launch'
           }
         ];
         
@@ -176,12 +216,15 @@ export default function LeadsPage() {
     try {
       // For now, just adding to local state
       // In production, would send to API first
+      const selectedCampaign = mockCampaigns.find(c => c.id === newLead.campaign_id);
+      
       const newLeadWithId: Lead = {
         ...newLead,
         id: `temp-${Date.now()}`,
         created_at: new Date().toISOString(),
         last_contact: null,
-        status: newLead.status as Lead['status']
+        status: newLead.status as Lead['status'],
+        campaign_name: selectedCampaign?.name || 'Unassigned'
       };
       
       setLeads([newLeadWithId, ...leads]);
@@ -192,7 +235,10 @@ export default function LeadsPage() {
         phone: '',
         status: 'new',
         source: '',
-        notes: ''
+        notes: '',
+        score: 50,
+        address: '',
+        campaign_id: ''
       });
       
       // Uncomment when API is ready
@@ -211,6 +257,42 @@ export default function LeadsPage() {
       day: 'numeric',
       year: 'numeric'
     }).format(date);
+  };
+
+  // Handle action links
+  const handleEmailClick = (email: string) => {
+    window.location.href = `mailto:${email}`;
+  };
+
+  const handlePhoneClick = (phone: string) => {
+    window.location.href = `tel:${phone}`;
+  };
+
+  const handleViewDetails = (leadId: string) => {
+    router.push(`/dashboard/leads/${leadId}`);
+  };
+
+  const handleEditLead = (leadId: string) => {
+    // Navigate to lead detail page
+    router.push(`/dashboard/leads/${leadId}`);
+  };
+
+  const handleAddTask = (leadId: string) => {
+    // Navigate to lead detail page with query parameter to open task dialog
+    router.push(`/dashboard/leads/${leadId}?openTask=true`);
+  };
+
+  const handleScheduleMeeting = (leadId: string) => {
+    // Open the meeting dialog
+    console.log('Opening meeting dialog for lead:', leadId);
+    openMeetingDialog(`lead-meeting-dialog-${leadId}`);
+  };
+
+  const handleDeleteLead = (leadId: string) => {
+    if (confirm('Are you sure you want to delete this lead?')) {
+      // In a real app, call API to delete lead
+      setLeads(leads.filter(lead => lead.id !== leadId));
+    }
   };
 
   return (
@@ -261,6 +343,15 @@ export default function LeadsPage() {
                     placeholder="(555) 123-4567"
                   />
                 </div>
+                <div className="col-span-2">
+                  <Label htmlFor="address">Address</Label>
+                  <Input
+                    id="address"
+                    value={newLead.address}
+                    onChange={(e) => setNewLead({...newLead, address: e.target.value})}
+                    placeholder="123 Main St, City, State, ZIP"
+                  />
+                </div>
                 <div className="col-span-2 sm:col-span-1">
                   <Label htmlFor="status">Status</Label>
                   <Select 
@@ -289,6 +380,36 @@ export default function LeadsPage() {
                     onChange={(e) => setNewLead({...newLead, source: e.target.value})}
                     placeholder="Website, Referral, etc."
                   />
+                </div>
+                <div className="col-span-2 sm:col-span-1">
+                  <Label htmlFor="score">Lead Score (1-100)</Label>
+                  <Input
+                    id="score"
+                    type="number"
+                    min="1"
+                    max="100"
+                    value={newLead.score}
+                    onChange={(e) => setNewLead({...newLead, score: parseInt(e.target.value) || 50})}
+                  />
+                </div>
+                <div className="col-span-2 sm:col-span-1">
+                  <Label htmlFor="campaign">Campaign</Label>
+                  <Select 
+                    value={newLead.campaign_id} 
+                    onValueChange={(value) => setNewLead({...newLead, campaign_id: value})}
+                  >
+                    <SelectTrigger id="campaign">
+                      <SelectValue placeholder="Select campaign" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="">Unassigned</SelectItem>
+                      {mockCampaigns.map(campaign => (
+                        <SelectItem key={campaign.id} value={campaign.id}>
+                          {campaign.name}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
                 </div>
                 <div className="col-span-2">
                   <Label htmlFor="notes">Notes</Label>
@@ -356,6 +477,9 @@ export default function LeadsPage() {
                 <TableHead>Status</TableHead>
                 <TableHead className="hidden md:table-cell">Email</TableHead>
                 <TableHead className="hidden md:table-cell">Phone</TableHead>
+                <TableHead className="hidden lg:table-cell">Score</TableHead>
+                <TableHead className="hidden lg:table-cell">Address</TableHead>
+                <TableHead className="hidden lg:table-cell">Campaign</TableHead>
                 <TableHead className="hidden lg:table-cell">Source</TableHead>
                 <TableHead className="hidden lg:table-cell">Created</TableHead>
                 <TableHead className="hidden lg:table-cell">Last Contact</TableHead>
@@ -365,13 +489,13 @@ export default function LeadsPage() {
             <TableBody>
               {isLoading ? (
                 <TableRow>
-                  <TableCell colSpan={8} className="text-center py-8">
+                  <TableCell colSpan={11} className="text-center py-8">
                     Loading leads...
                   </TableCell>
                 </TableRow>
               ) : filteredLeads.length === 0 ? (
                 <TableRow>
-                  <TableCell colSpan={8} className="text-center py-8">
+                  <TableCell colSpan={11} className="text-center py-8">
                     No leads found. Try adjusting your search or add a new lead.
                   </TableCell>
                 </TableRow>
@@ -397,15 +521,38 @@ export default function LeadsPage() {
                     </TableCell>
                     <TableCell className="hidden md:table-cell">{lead.email}</TableCell>
                     <TableCell className="hidden md:table-cell">{lead.phone}</TableCell>
+                    <TableCell className="hidden lg:table-cell">
+                      <div className="flex items-center">
+                        <span className={`font-medium ${
+                          (lead.score || 0) >= 80 ? 'text-green-600' :
+                          (lead.score || 0) >= 60 ? 'text-amber-600' :
+                          'text-red-600'
+                        }`}>
+                          {lead.score || 'N/A'}
+                        </span>
+                      </div>
+                    </TableCell>
+                    <TableCell className="hidden lg:table-cell">{lead.address || 'N/A'}</TableCell>
+                    <TableCell className="hidden lg:table-cell">{lead.campaign_name || 'Unassigned'}</TableCell>
                     <TableCell className="hidden lg:table-cell">{lead.source}</TableCell>
                     <TableCell className="hidden lg:table-cell">{formatDate(lead.created_at)}</TableCell>
                     <TableCell className="hidden lg:table-cell">{formatDate(lead.last_contact)}</TableCell>
                     <TableCell className="text-right">
                       <div className="flex justify-end gap-2">
-                        <Button variant="ghost" size="icon">
+                        <Button 
+                          variant="ghost" 
+                          size="icon" 
+                          onClick={() => handleEmailClick(lead.email)}
+                          title="Send Email"
+                        >
                           <Mail className="h-4 w-4" />
                         </Button>
-                        <Button variant="ghost" size="icon">
+                        <Button 
+                          variant="ghost" 
+                          size="icon" 
+                          onClick={() => handlePhoneClick(lead.phone)}
+                          title="Call"
+                        >
                           <Phone className="h-4 w-4" />
                         </Button>
                         <DropdownMenu>
@@ -416,12 +563,25 @@ export default function LeadsPage() {
                           </DropdownMenuTrigger>
                           <DropdownMenuContent align="end">
                             <DropdownMenuLabel>Actions</DropdownMenuLabel>
-                            <DropdownMenuItem>View Details</DropdownMenuItem>
-                            <DropdownMenuItem>Edit Lead</DropdownMenuItem>
-                            <DropdownMenuItem>Add Task</DropdownMenuItem>
-                            <DropdownMenuItem>Schedule Meeting</DropdownMenuItem>
+                            <DropdownMenuItem onClick={() => handleViewDetails(lead.id)}>
+                              View Details
+                            </DropdownMenuItem>
+                            <DropdownMenuItem onClick={() => handleEditLead(lead.id)}>
+                              Edit Lead
+                            </DropdownMenuItem>
+                            <DropdownMenuItem onClick={() => handleAddTask(lead.id)}>
+                              Add Task
+                            </DropdownMenuItem>
+                            <DropdownMenuItem onClick={() => handleScheduleMeeting(lead.id)}>
+                              Schedule Meeting
+                            </DropdownMenuItem>
                             <DropdownMenuSeparator />
-                            <DropdownMenuItem className="text-red-600">Delete Lead</DropdownMenuItem>
+                            <DropdownMenuItem 
+                              className="text-red-600"
+                              onClick={() => handleDeleteLead(lead.id)}
+                            >
+                              Delete Lead
+                            </DropdownMenuItem>
                           </DropdownMenuContent>
                         </DropdownMenu>
                       </div>
@@ -433,6 +593,61 @@ export default function LeadsPage() {
           </Table>
         </CardContent>
       </Card>
+
+      {/* Meeting dialogs for each lead */}
+      {leads.map(lead => {
+        // Map status to LeadStatus enum
+        let leadStatus: LeadStatus;
+        switch (lead.status) {
+          case 'new': leadStatus = LeadStatus.NEW; break;
+          case 'contacted': leadStatus = LeadStatus.CONTACTED; break;
+          case 'qualified': leadStatus = LeadStatus.QUALIFIED; break;
+          case 'proposal': leadStatus = LeadStatus.PROPOSAL; break;
+          case 'negotiation': leadStatus = LeadStatus.NEGOTIATION; break;
+          case 'closed_won': leadStatus = LeadStatus.WON; break;
+          case 'closed_lost': leadStatus = LeadStatus.LOST; break;
+          default: leadStatus = LeadStatus.NEW;
+        }
+        
+        // Map source to LeadSource enum
+        let leadSource: LeadSource;
+        switch (lead.source) {
+          case 'website': leadSource = LeadSource.WEBSITE; break;
+          case 'referral': leadSource = LeadSource.REFERRAL; break;
+          case 'linkedin': leadSource = LeadSource.LINKEDIN; break;
+          case 'cold_call': leadSource = LeadSource.COLD_CALL; break;
+          case 'email_campaign': leadSource = LeadSource.EMAIL_CAMPAIGN; break;
+          case 'event': leadSource = LeadSource.EVENT; break;
+          default: leadSource = LeadSource.OTHER;
+        }
+        
+        return (
+          <MeetingDialog 
+            key={`meeting-dialog-${lead.id}`}
+            id={`lead-meeting-dialog-${lead.id}`} 
+            lead={{
+              id: parseInt(lead.id),
+              email: lead.email,
+              first_name: lead.name.split(' ')[0],
+              last_name: lead.name.split(' ').slice(1).join(' '),
+              full_name: lead.name,
+              status: leadStatus,
+              source: leadSource,
+              created_at: lead.created_at,
+              updated_at: lead.created_at,
+              company: '',
+              custom_fields: {},
+              lead_score: 0
+            }}
+            onSuccess={() => {
+              toast({
+                title: "Meeting scheduled",
+                description: "The meeting has been successfully scheduled.",
+              });
+            }}
+          />
+        );
+      })}
     </div>
   );
 } 
