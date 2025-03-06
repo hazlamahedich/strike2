@@ -9,7 +9,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '../../components/ui/ta
 import { useForm } from 'react-hook-form';
 import { z } from 'zod';
 import { zodResolver } from '@hookform/resolvers/zod';
-import { Loader2, Send, FileText, Sparkles } from 'lucide-react';
+import { Loader2, Send, FileText, Sparkles, Phone, MessageSquare, Mail, Users } from 'lucide-react';
 import { useToast } from '../../components/ui/use-toast';
 import { Toaster } from '../../components/ui/toaster';
 import { sendEmail, generateEmailWithAI, getEmailTemplates } from '../../lib/services/emailService';
@@ -17,6 +17,11 @@ import Link from 'next/link';
 import RichTextEditor from '../../components/communications/RichTextEditor';
 import { useSearchParams } from 'next/navigation';
 import { TemplateSelectionDialog, EmailTemplate } from '../../components/communications/TemplateSelectionDialog';
+import AddressBook, { Contact } from '../../components/communications/AddressBook';
+import CallLog from '../../components/communications/CallLog';
+import Dialpad from '../../components/communications/Dialpad';
+import SMSComposer from '../../components/communications/SMSComposer';
+import SMSLog from '../../components/communications/SMSLog';
 
 // Define the form schema
 const emailFormSchema = z.object({
@@ -34,6 +39,8 @@ export default function CommunicationsPage() {
   const [activeTab, setActiveTab] = useState(tabParam || 'compose');
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [templateDialogOpen, setTemplateDialogOpen] = useState(false);
+  const [selectedContact, setSelectedContact] = useState<Contact | null>(null);
+  const [isDialpadOpen, setIsDialpadOpen] = useState(false);
   
   // Initialize the form
   const form = useForm<EmailFormValues>({
@@ -48,56 +55,56 @@ export default function CommunicationsPage() {
   // Check for reply data in localStorage when component mounts
   useEffect(() => {
     const checkForReplyData = () => {
-      try {
-        const replyDataString = localStorage.getItem('emailReplyData');
-        if (replyDataString) {
-          const replyData = JSON.parse(replyDataString);
+      const replyData = localStorage.getItem('replyEmailData');
+      if (replyData) {
+        try {
+          const parsedData = JSON.parse(replyData);
+          form.setValue('to', parsedData.to || '');
+          form.setValue('subject', parsedData.subject || '');
+          form.setValue('content', parsedData.content || '');
           
-          // Pre-fill the form with reply data
-          form.setValue('to', replyData.to || '');
-          form.setValue('subject', replyData.subject || '');
-          form.setValue('content', replyData.content || '');
+          // Clear the stored data
+          localStorage.removeItem('replyEmailData');
           
-          // Clear the localStorage after using the data
-          localStorage.removeItem('emailReplyData');
-          
-          // Ensure the compose tab is active
+          // Switch to compose tab
           setActiveTab('compose');
+        } catch (error) {
+          console.error('Failed to parse reply data:', error);
         }
-      } catch (error) {
-        console.error('Error parsing reply data:', error);
       }
     };
     
     checkForReplyData();
   }, [form]);
   
-  // Handle form submission
+  // Handle tab change
+  const handleTabChange = (value: string) => {
+    setActiveTab(value);
+  };
+  
+  // Handle email form submission
   const handleSubmit = async (data: EmailFormValues) => {
-    setIsSubmitting(true);
-    console.log('Sending email:', data);
-    
     try {
-      // Call the email service to send the email
-      const response = await sendEmail({
+      setIsSubmitting(true);
+      
+      const result = await sendEmail({
         to: data.to,
         subject: data.subject,
         content: data.content,
       });
       
       toast({
-        title: 'Email sent successfully',
-        description: `Your email to ${data.to} has been sent.`,
+        title: 'Email Sent',
+        description: 'Your email has been sent successfully.',
       });
       
-      // Reset the form
       form.reset();
     } catch (error) {
-      console.error('Error sending email:', error);
+      console.error('Failed to send email:', error);
       toast({
-        title: 'Failed to send email',
-        description: 'There was an error sending your email. Please try again.',
-        variant: 'destructive',
+        title: 'Error',
+        description: 'Failed to send email. Please try again.',
+        variant: 'destructive'
       });
     } finally {
       setIsSubmitting(false);
@@ -106,27 +113,30 @@ export default function CommunicationsPage() {
   
   // Handle AI generation
   const handleGenerateWithAI = async () => {
+    const prompt = window.prompt('What kind of email would you like to generate?');
+    if (!prompt) return;
+    
     try {
-      const result = await generateEmailWithAI({
-        context: 'your product/service',
-        tone: 'professional',
-        purpose: 'introduction',
+      const generatedEmail = await generateEmailWithAI({
+        context: prompt,
+        tone: 'professional'
       });
       
-      // Update the form with the generated content
-      form.setValue('subject', result.subject);
-      form.setValue('content', result.content);
-      
-      toast({
-        title: 'Email Generated',
-        description: 'AI has generated an email for you. Feel free to edit it before sending.',
-      });
+      if (generatedEmail) {
+        form.setValue('subject', generatedEmail.subject);
+        form.setValue('content', generatedEmail.content);
+        
+        toast({
+          title: 'Email Generated',
+          description: 'AI has generated an email based on your prompt.',
+        });
+      }
     } catch (error) {
-      console.error('Error generating email:', error);
+      console.error('Failed to generate email with AI:', error);
       toast({
-        title: 'Failed to Generate Email',
-        description: 'There was an error generating the email. Please try again.',
-        variant: 'destructive',
+        title: 'Error',
+        description: 'Failed to generate email with AI. Please try again.',
+        variant: 'destructive'
       });
     }
   };
@@ -136,35 +146,98 @@ export default function CommunicationsPage() {
     setTemplateDialogOpen(true);
   };
   
+  // Handle template selection
   const handleSelectTemplate = (template: EmailTemplate) => {
-    // Update the form with the template content
     form.setValue('subject', template.subject);
     form.setValue('content', template.content);
-    
-    toast({
-      title: 'Template Applied',
-      description: `The "${template.name}" template has been applied. Feel free to edit it before sending.`,
-    });
+    setTemplateDialogOpen(false);
   };
-  
+
+  // Handle contact selection for calling or messaging
+  const handleContactSelect = (contact: Contact) => {
+    setSelectedContact(contact);
+    setIsDialpadOpen(true);
+  };
+
+  // Handle initiating a call
+  const handleCall = (phoneNumber: string) => {
+    setIsDialpadOpen(true);
+  };
+
+  const handleSMSContact = (phoneNumber: string) => {
+    // Set the active tab to SMS
+    setActiveTab('sms');
+    
+    // If we have a contact with this phone number, select it
+    if (selectedContact && selectedContact.phone_number === phoneNumber) {
+      // Contact already selected
+    } else {
+      // Create a temporary contact with just the phone number
+      setSelectedContact({
+        id: 0,
+        name: 'Unknown',
+        phone_number: phoneNumber,
+        email: '',
+        company: '',
+        contact_type: 'other',
+        created_at: new Date().toISOString(),
+        updated_at: new Date().toISOString()
+      });
+    }
+  };
+
   return (
     <div className="container mx-auto py-6 space-y-6">
-      <h1 className="text-3xl font-bold">Communications</h1>
+      <div className="flex justify-between items-center">
+        <h1 className="text-3xl font-bold">Communications</h1>
+        <div className="flex space-x-2">
+          <Link href="/communications/inbox">
+            <Button variant="outline">
+              <Mail className="mr-2 h-4 w-4" /> Inbox
+            </Button>
+          </Link>
+          <Link href="/communications/templates">
+            <Button variant="outline">
+              <FileText className="mr-2 h-4 w-4" /> Templates
+            </Button>
+          </Link>
+        </div>
+      </div>
       
-      <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
-        <TabsList>
-          <TabsTrigger value="compose">Compose Email</TabsTrigger>
-          <TabsTrigger value="inbox">Inbox</TabsTrigger>
-          <TabsTrigger value="templates">Templates</TabsTrigger>
-          <TabsTrigger value="sent">Sent Emails</TabsTrigger>
+      <Tabs value={activeTab} onValueChange={handleTabChange} className="w-full">
+        <TabsList className="grid grid-cols-6 w-full">
+          <TabsTrigger value="compose">
+            <Mail className="h-4 w-4 mr-2" />
+            Email
+          </TabsTrigger>
+          <TabsTrigger value="sms">
+            <MessageSquare className="h-4 w-4 mr-2" />
+            SMS
+          </TabsTrigger>
+          <TabsTrigger value="phone">
+            <Phone className="h-4 w-4 mr-2" />
+            Phone
+          </TabsTrigger>
+          <TabsTrigger value="contacts">
+            <Users className="h-4 w-4 mr-2" />
+            Contacts
+          </TabsTrigger>
+          <TabsTrigger value="call-log">
+            <FileText className="h-4 w-4 mr-2" />
+            Call Log
+          </TabsTrigger>
+          <TabsTrigger value="sms-log">
+            <MessageSquare className="h-4 w-4 mr-2" />
+            SMS Log
+          </TabsTrigger>
         </TabsList>
         
         <TabsContent value="compose" className="mt-6">
           <Card>
             <CardHeader>
-              <CardTitle>Compose New Email</CardTitle>
+              <CardTitle>Compose Email</CardTitle>
               <CardDescription>
-                Create and send emails to your leads and contacts
+                Create and send emails to your contacts
               </CardDescription>
             </CardHeader>
             <CardContent>
@@ -203,13 +276,31 @@ export default function CommunicationsPage() {
                     name="content"
                     render={({ field }) => (
                       <FormItem>
-                        <FormLabel>Message</FormLabel>
+                        <FormLabel>Content</FormLabel>
+                        <div className="flex justify-end space-x-2 mb-2">
+                          <Button 
+                            type="button" 
+                            variant="outline" 
+                            size="sm"
+                            onClick={handleUseTemplate}
+                          >
+                            <FileText className="h-4 w-4 mr-2" />
+                            Templates
+                          </Button>
+                          <Button 
+                            type="button" 
+                            variant="outline" 
+                            size="sm"
+                            onClick={handleGenerateWithAI}
+                          >
+                            <Sparkles className="h-4 w-4 mr-2" />
+                            AI Assist
+                          </Button>
+                        </div>
                         <FormControl>
-                          <RichTextEditor
-                            content={field.value}
-                            onChange={field.onChange}
-                            placeholder="Write your email message here..."
-                            className="min-h-[300px]"
+                          <RichTextEditor 
+                            content={field.value} 
+                            onChange={field.onChange} 
                           />
                         </FormControl>
                         <FormMessage />
@@ -217,37 +308,17 @@ export default function CommunicationsPage() {
                     )}
                   />
                   
-                  <div className="flex justify-between pt-4">
-                    <div className="space-x-2">
-                      <Button
-                        type="button"
-                        variant="outline"
-                        onClick={handleUseTemplate}
-                      >
-                        <FileText className="mr-2 h-4 w-4" />
-                        Use Template
-                      </Button>
-                      <Button
-                        type="button"
-                        variant="outline"
-                        onClick={handleGenerateWithAI}
-                      >
-                        <Sparkles className="mr-2 h-4 w-4" />
-                        Generate with AI
-                      </Button>
-                    </div>
-                    <Button type="submit" disabled={isSubmitting}>
+                  <div className="flex justify-end">
+                    <Button 
+                      type="submit" 
+                      disabled={isSubmitting}
+                    >
                       {isSubmitting ? (
-                        <>
-                          <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                          Sending...
-                        </>
+                        <Loader2 className="h-4 w-4 mr-2 animate-spin" />
                       ) : (
-                        <>
-                          <Send className="mr-2 h-4 w-4" />
-                          Send
-                        </>
+                        <Send className="h-4 w-4 mr-2" />
                       )}
+                      Send Email
                     </Button>
                   </div>
                 </form>
@@ -256,73 +327,74 @@ export default function CommunicationsPage() {
           </Card>
         </TabsContent>
         
-        <TabsContent value="inbox" className="mt-6">
-          <Card>
-            <CardHeader>
-              <CardTitle>Email Inbox</CardTitle>
-              <CardDescription>
-                View and manage your received emails
-              </CardDescription>
-            </CardHeader>
-            <CardContent>
-              <div className="text-center py-8">
-                <p className="text-muted-foreground mb-4">
-                  Access your email inbox to view, search, and manage received emails.
-                </p>
-                <Link href="/communications/inbox">
-                  <Button>
-                    Open Inbox
-                  </Button>
-                </Link>
-              </div>
-            </CardContent>
-          </Card>
+        <TabsContent value="sms" className="mt-6">
+          <SMSComposer 
+            contact={selectedContact || undefined} 
+            onSMSSent={(to, body) => {
+              toast({
+                title: 'SMS Sent',
+                description: `Message sent to ${to}`,
+              });
+            }}
+          />
         </TabsContent>
         
-        <TabsContent value="templates" className="mt-6">
-          <Card>
-            <CardHeader>
-              <CardTitle>Email Templates</CardTitle>
-              <CardDescription>
-                Create and manage reusable email templates
-              </CardDescription>
-            </CardHeader>
-            <CardContent>
-              <div className="text-center py-8">
-                <p className="text-muted-foreground mb-4">
-                  Manage your email templates to save time and ensure consistency.
-                </p>
-                <Link href="/communications/templates">
-                  <Button>
-                    Manage Templates
-                  </Button>
-                </Link>
-              </div>
-            </CardContent>
-          </Card>
+        <TabsContent value="phone" className="mt-6">
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+            <Dialpad 
+              contact={selectedContact || undefined} 
+              initialPhoneNumber={selectedContact?.phone_number}
+            />
+            <Card>
+              <CardHeader>
+                <CardTitle>Recent Contacts</CardTitle>
+                <CardDescription>
+                  Quick access to your recent contacts
+                </CardDescription>
+              </CardHeader>
+              <CardContent>
+                <div className="space-y-4">
+                  {/* This would be populated with actual recent contacts */}
+                  <p className="text-sm text-gray-500">
+                    Select a contact from the Contacts tab to call them.
+                  </p>
+                </div>
+              </CardContent>
+            </Card>
+          </div>
         </TabsContent>
         
-        <TabsContent value="sent" className="mt-6">
-          <Card>
-            <CardHeader>
-              <CardTitle>Sent Emails</CardTitle>
-              <CardDescription>
-                View and track your sent emails
-              </CardDescription>
-            </CardHeader>
-            <CardContent>
-              <div className="text-center py-8">
-                <p className="text-muted-foreground">
-                  Sent emails will be displayed here once you start sending emails.
-                </p>
-              </div>
-            </CardContent>
-          </Card>
+        <TabsContent value="contacts" className="mt-6">
+          <AddressBook onSelectContact={handleContactSelect} />
+        </TabsContent>
+        
+        <TabsContent value="call-log" className="mt-6">
+          <CallLog onCallContact={handleCall} />
+        </TabsContent>
+        
+        <TabsContent value="sms-log" className="mt-6">
+          <SMSLog 
+            onSMSContact={handleSMSContact} 
+            onCallContact={handleCall}
+            onEmailContact={(email, name) => {
+              // Create a temporary contact with the email and name
+              const contact: Contact = {
+                id: 0,
+                name: name,
+                email: email,
+                phone_number: '',
+                contact_type: 'other',
+                created_at: new Date().toISOString(),
+                updated_at: new Date().toISOString()
+              };
+              handleContactSelect(contact);
+            }}
+          />
         </TabsContent>
       </Tabs>
       
       <TemplateSelectionDialog 
-        open={templateDialogOpen}
+        open={templateDialogOpen} 
         onOpenChange={setTemplateDialogOpen}
         onSelectTemplate={handleSelectTemplate}
       />

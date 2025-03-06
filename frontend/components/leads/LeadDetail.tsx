@@ -24,7 +24,8 @@ import {
 import { formatDistanceToNow } from 'date-fns';
 import { LeadDetail as LeadDetailType, LeadSource, LeadStatus } from '../../lib/types/lead';
 import { useLead, useLeadTimeline, useLeadInsights } from '../../lib/hooks/useLeads';
-import EmailDialog from '../communications/EmailDialog';
+import { EmailDialog } from '../communications/EmailDialog';
+import { PhoneDialog } from '../communications/PhoneDialog';
 
 interface LeadDetailProps {
   leadId: number;
@@ -51,6 +52,7 @@ const LeadDetail: React.FC<LeadDetailProps> = ({
 }) => {
   const [activeTab, setActiveTab] = useState('overview');
   const [showEmailDialog, setShowEmailDialog] = useState(false);
+  const [showPhoneDialog, setShowPhoneDialog] = useState(false);
   
   // Fetch lead data
   const { data: lead, isLoading, isError } = useLead(leadId);
@@ -65,21 +67,21 @@ const LeadDetail: React.FC<LeadDetailProps> = ({
   const getStatusColor = (status: LeadStatus) => {
     switch (status) {
       case LeadStatus.NEW:
-        return 'bg-blue-100 text-blue-800';
+        return 'bg-blue-100 text-blue-800 border-blue-300';
       case LeadStatus.CONTACTED:
-        return 'bg-purple-100 text-purple-800';
+        return 'bg-purple-100 text-purple-800 border-purple-300';
       case LeadStatus.QUALIFIED:
-        return 'bg-green-100 text-green-800';
+        return 'bg-green-100 text-green-800 border-green-300';
       case LeadStatus.PROPOSAL:
-        return 'bg-yellow-100 text-yellow-800';
+        return 'bg-yellow-100 text-yellow-800 border-yellow-300';
       case LeadStatus.NEGOTIATION:
-        return 'bg-orange-100 text-orange-800';
+        return 'bg-orange-100 text-orange-800 border-orange-300';
       case LeadStatus.WON:
-        return 'bg-green-100 text-green-800';
+        return 'bg-emerald-100 text-emerald-800 border-emerald-300';
       case LeadStatus.LOST:
-        return 'bg-red-100 text-red-800';
+        return 'bg-red-100 text-red-800 border-red-300';
       default:
-        return 'bg-gray-100 text-gray-800';
+        return 'bg-gray-100 text-gray-800 border-gray-300';
     }
   };
   
@@ -87,21 +89,19 @@ const LeadDetail: React.FC<LeadDetailProps> = ({
   const getSourceColor = (source: LeadSource) => {
     switch (source) {
       case LeadSource.WEBSITE:
-        return 'bg-indigo-100 text-indigo-800';
+        return 'bg-indigo-100 text-indigo-800 border-indigo-300';
       case LeadSource.REFERRAL:
-        return 'bg-green-100 text-green-800';
+        return 'bg-green-100 text-green-800 border-green-300';
       case LeadSource.LINKEDIN:
-        return 'bg-blue-100 text-blue-800';
+        return 'bg-blue-100 text-blue-800 border-blue-300';
       case LeadSource.COLD_CALL:
-        return 'bg-gray-100 text-gray-800';
+        return 'bg-purple-100 text-purple-800 border-purple-300';
       case LeadSource.EMAIL_CAMPAIGN:
-        return 'bg-yellow-100 text-yellow-800';
+        return 'bg-yellow-100 text-yellow-800 border-yellow-300';
       case LeadSource.EVENT:
-        return 'bg-purple-100 text-purple-800';
-      case LeadSource.OTHER:
-        return 'bg-gray-100 text-gray-800';
+        return 'bg-pink-100 text-pink-800 border-pink-300';
       default:
-        return 'bg-gray-100 text-gray-800';
+        return 'bg-gray-100 text-gray-800 border-gray-300';
     }
   };
   
@@ -116,6 +116,10 @@ const LeadDetail: React.FC<LeadDetailProps> = ({
   
   const handleSendEmail = () => {
     setShowEmailDialog(true);
+  };
+  
+  const handleCall = () => {
+    setShowPhoneDialog(true);
   };
   
   if (isLoading) {
@@ -218,7 +222,7 @@ const LeadDetail: React.FC<LeadDetailProps> = ({
         <Button onClick={handleSendEmail}>
           <Mail className="mr-2 h-4 w-4" /> Send Email
         </Button>
-        <Button onClick={onCall}>
+        <Button onClick={handleCall}>
           <Phone className="mr-2 h-4 w-4" /> Call
         </Button>
         <Button onClick={onScheduleMeeting}>
@@ -250,13 +254,23 @@ const LeadDetail: React.FC<LeadDetailProps> = ({
               <CardTitle>Contact Information</CardTitle>
             </CardHeader>
             <CardContent className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              <div>
+              <div className="space-y-1">
                 <h3 className="text-sm font-medium text-muted-foreground">Email</h3>
                 <p>{lead.email || 'N/A'}</p>
               </div>
-              <div>
+              <div className="space-y-1">
                 <h3 className="text-sm font-medium text-muted-foreground">Phone</h3>
-                <p>{lead.phone || 'N/A'}</p>
+                {lead.phone ? (
+                  <button 
+                    onClick={handleCall}
+                    className="text-blue-600 hover:underline flex items-center"
+                  >
+                    <Phone className="h-3 w-3 mr-1" />
+                    {lead.phone}
+                  </button>
+                ) : (
+                  <p>N/A</p>
+                )}
               </div>
               <div>
                 <h3 className="text-sm font-medium text-muted-foreground">Company</h3>
@@ -457,11 +471,21 @@ const LeadDetail: React.FC<LeadDetailProps> = ({
         </TabsContent>
       </Tabs>
       
-      {lead && (
+      {lead && lead.email && (
         <EmailDialog
-          isOpen={showEmailDialog}
-          onClose={() => setShowEmailDialog(false)}
-          lead={lead}
+          open={showEmailDialog}
+          onOpenChange={(open) => setShowEmailDialog(open)}
+          leadEmail={lead.email}
+          leadName={lead.full_name}
+        />
+      )}
+      
+      {lead && (
+        <PhoneDialog
+          open={showPhoneDialog}
+          onOpenChange={(open) => setShowPhoneDialog(open)}
+          leadPhone={lead.phone}
+          leadName={lead.full_name}
         />
       )}
     </div>

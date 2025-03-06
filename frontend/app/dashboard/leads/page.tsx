@@ -56,6 +56,8 @@ import { openMeetingDialog } from '@/lib/utils/dialogUtils';
 import { toast } from '@/components/ui/use-toast';
 import { LeadStatus, LeadSource } from '@/lib/types/lead';
 import { EmailDialog } from '@/components/communications/EmailDialog';
+import { PhoneDialog } from '@/components/communications/PhoneDialog';
+import { useToast } from '@/components/ui/use-toast';
 
 // Lead type definition
 type Lead = {
@@ -75,11 +77,17 @@ type Lead = {
 };
 
 export default function LeadsPage() {
+  const router = useRouter();
+  const { toast } = useToast();
   const [leads, setLeads] = useState<Lead[]>([]);
   const [isLoading, setIsLoading] = useState(true);
-  const [searchQuery, setSearchQuery] = useState('');
+  const [searchTerm, setSearchTerm] = useState('');
   const [statusFilter, setStatusFilter] = useState<string | null>(null);
+  const [sourceFilter, setSourceFilter] = useState<string | null>(null);
   const [showAddLeadDialog, setShowAddLeadDialog] = useState(false);
+  const [showEmailDialog, setShowEmailDialog] = useState(false);
+  const [showPhoneDialog, setShowPhoneDialog] = useState(false);
+  const [selectedLead, setSelectedLead] = useState<Lead | null>(null);
   const [newLead, setNewLead] = useState({
     name: '',
     email: '',
@@ -91,9 +99,6 @@ export default function LeadsPage() {
     address: '',
     campaign_id: ''
   });
-  const router = useRouter();
-  const [showEmailDialog, setShowEmailDialog] = useState(false);
-  const [selectedLead, setSelectedLead] = useState<Lead | null>(null);
 
   // Mock campaigns for dropdown
   const mockCampaigns = [
@@ -204,10 +209,10 @@ export default function LeadsPage() {
 
   // Filter leads based on search query and status filter
   const filteredLeads = leads.filter(lead => {
-    const matchesSearch = searchQuery === '' || 
-      lead.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      lead.email.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      lead.phone.includes(searchQuery);
+    const matchesSearch = searchTerm === '' || 
+      lead.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
+      lead.email.toLowerCase().includes(searchTerm.toLowerCase()) ||
+      lead.phone.includes(searchTerm);
     
     const matchesStatus = statusFilter === null || lead.status === statusFilter;
     
@@ -273,7 +278,23 @@ export default function LeadsPage() {
   };
 
   const handlePhoneClick = (phone: string) => {
-    window.location.href = `tel:${phone}`;
+    // Use the PhoneDialog component
+    setSelectedLead({
+      id: '',
+      name: '',
+      email: '',
+      phone: phone,
+      status: 'new',
+      source: '',
+      created_at: '',
+      last_contact: null,
+      notes: '',
+      score: 50,
+      address: '',
+      campaign_id: '',
+      campaign_name: ''
+    });
+    setShowPhoneDialog(true);
   };
 
   const handleViewDetails = (leadId: string) => {
@@ -446,8 +467,8 @@ export default function LeadsPage() {
             <Input
               placeholder="Search leads..."
               className="pl-8"
-              value={searchQuery}
-              onChange={(e) => setSearchQuery(e.target.value)}
+              value={searchTerm}
+              onChange={(e) => setSearchTerm(e.target.value)}
             />
           </div>
         </div>
@@ -663,6 +684,16 @@ export default function LeadsPage() {
           open={showEmailDialog}
           onOpenChange={setShowEmailDialog}
           leadEmail={selectedLead.email}
+          leadName={selectedLead.name}
+        />
+      )}
+
+      {/* Add the PhoneDialog component */}
+      {selectedLead && (
+        <PhoneDialog 
+          open={showPhoneDialog}
+          onOpenChange={setShowPhoneDialog}
+          leadPhone={selectedLead.phone}
           leadName={selectedLead.name}
         />
       )}

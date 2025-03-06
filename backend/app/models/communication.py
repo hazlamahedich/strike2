@@ -412,4 +412,174 @@ class CallResponse(BaseModel):
     
     class Config:
         from_attributes = True
+        orm_mode = True
+
+# Contact (Address Book) Models
+class ContactType(str, Enum):
+    """Contact type options"""
+    LEAD = "lead"
+    CLIENT = "client"
+    VENDOR = "vendor"
+    PARTNER = "partner"
+    OTHER = "other"
+
+class ContactBase(BaseModel):
+    """Base model for contacts"""
+    name: str
+    phone_number: str
+    email: Optional[EmailStr] = None
+    company: Optional[str] = None
+    job_title: Optional[str] = None
+    contact_type: ContactType = ContactType.LEAD
+    lead_id: Optional[int] = None
+    notes: Optional[str] = None
+    metadata: Dict[str, Any] = Field(default_factory=dict)
+
+class ContactCreate(ContactBase):
+    """Model for creating a new contact"""
+    user_id: int
+
+class ContactUpdate(BaseModel):
+    """Model for updating a contact"""
+    name: Optional[str] = None
+    phone_number: Optional[str] = None
+    email: Optional[EmailStr] = None
+    company: Optional[str] = None
+    job_title: Optional[str] = None
+    contact_type: Optional[ContactType] = None
+    lead_id: Optional[int] = None
+    notes: Optional[str] = None
+    metadata: Optional[Dict[str, Any]] = None
+
+class Contact(ContactBase):
+    """Complete contact model with system fields"""
+    id: int
+    user_id: int
+    created_at: datetime
+    updated_at: datetime
+    
+    class Config:
+        from_attributes = True
+        orm_mode = True
+
+class ContactDetail(Contact):
+    """Contact with additional details like lead information"""
+    lead: Optional[Dict[str, Any]] = None
+    
+    class Config:
+        orm_mode = True
+
+class ContactFilter(BaseModel):
+    """Model for filtering contacts"""
+    search: Optional[str] = None
+    lead_id: Optional[Union[int, List[int]]] = None
+    user_id: Optional[Union[int, List[int]]] = None
+    contact_type: Optional[List[ContactType]] = None
+
+# Call Log Models
+class CallLogStatus(str, Enum):
+    """Call log status options"""
+    COMPLETED = "completed"
+    MISSED = "missed"
+    VOICEMAIL = "voicemail"
+    FAILED = "failed"
+
+class CallLogBase(BaseModel):
+    """Base model for call logs"""
+    contact_id: Optional[int] = None
+    lead_id: Optional[int] = None
+    direction: CallDirection
+    duration: Optional[int] = None  # in seconds
+    notes: Optional[str] = None
+    caller_number: str
+    recipient_number: str
+    call_sid: Optional[str] = None
+    recording_url: Optional[str] = None
+    transcription: Optional[str] = None
+    metadata: Dict[str, Any] = Field(default_factory=dict)
+
+class CallLogCreate(CallLogBase):
+    """Model for creating a new call log"""
+    user_id: int
+    status: CallLogStatus
+
+class CallLogUpdate(BaseModel):
+    """Model for updating a call log"""
+    duration: Optional[int] = None
+    notes: Optional[str] = None
+    status: Optional[CallLogStatus] = None
+    recording_url: Optional[str] = None
+    transcription: Optional[str] = None
+    metadata: Optional[Dict[str, Any]] = None
+
+class CallLog(CallLogBase):
+    """Complete call log model with system fields"""
+    id: int
+    user_id: int
+    status: CallLogStatus
+    call_time: datetime
+    created_at: datetime
+    updated_at: datetime
+    sentiment_score: Optional[float] = None
+    
+    class Config:
+        from_attributes = True
+        orm_mode = True
+
+class CallLogDetail(CallLog):
+    """Call log with additional details like contact and lead information"""
+    contact: Optional[Dict[str, Any]] = None
+    lead: Optional[Dict[str, Any]] = None
+    
+    class Config:
+        orm_mode = True
+
+class CallLogFilter(BaseModel):
+    """Model for filtering call logs"""
+    search: Optional[str] = None
+    contact_id: Optional[Union[int, List[int]]] = None
+    lead_id: Optional[Union[int, List[int]]] = None
+    user_id: Optional[Union[int, List[int]]] = None
+    status: Optional[List[CallLogStatus]] = None
+    direction: Optional[CallDirection] = None
+    call_after: Optional[datetime] = None
+    call_before: Optional[datetime] = None
+    duration_min: Optional[int] = None
+    duration_max: Optional[int] = None
+
+# Dialpad Models
+class DialpadAction(str, Enum):
+    """Dialpad action options"""
+    DIAL = "dial"
+    ANSWER = "answer"
+    HANGUP = "hangup"
+    HOLD = "hold"
+    RESUME = "resume"
+    TRANSFER = "transfer"
+    MUTE = "mute"
+    UNMUTE = "unmute"
+    DTMF = "dtmf"  # Dual-tone multi-frequency signaling (keypad tones)
+
+class DialpadRequest(BaseModel):
+    """Model for dialpad requests"""
+    action: DialpadAction
+    call_sid: Optional[str] = None
+    to: Optional[str] = None
+    from_: Optional[str] = Field(None, alias="from")
+    digits: Optional[str] = None  # For DTMF
+    transfer_to: Optional[str] = None  # For TRANSFER
+    record: bool = True
+    
+    class Config:
+        allow_population_by_field_name = True
+
+class DialpadResponse(BaseModel):
+    """Response model for dialpad requests"""
+    success: bool
+    message: str
+    call_sid: Optional[str] = None
+    details: Optional[Dict[str, Any]] = None
+    
+    class Config:
+        from_attributes = True
         orm_mode = True 

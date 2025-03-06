@@ -49,6 +49,7 @@ import { MeetingDialog } from '@/components/meetings/MeetingDialog';
 import { openMeetingDialog } from '@/lib/utils/dialogUtils';
 import { toast } from '@/components/ui/use-toast';
 import { EmailDialog } from '@/components/communications/EmailDialog';
+import { PhoneDialog } from '@/components/communications/PhoneDialog';
 
 // Task type definition
 type Task = {
@@ -1270,6 +1271,7 @@ export default function LeadDetailPage() {
     }
   };
 
+  // State for email dialog
   const [showEmailDialog, setShowEmailDialog] = useState(false);
   
   const handleSendEmail = () => {
@@ -1279,10 +1281,13 @@ export default function LeadDetailPage() {
     }
   };
 
+  // State for phone dialog
+  const [showPhoneDialog, setShowPhoneDialog] = useState(false);
+  
   const handleCall = () => {
     const lead = mockLeadDetails[leadId];
     if (lead?.phone) {
-      window.location.href = `tel:${lead.phone}`;
+      setShowPhoneDialog(true);
     }
   };
 
@@ -1624,6 +1629,16 @@ export default function LeadDetailPage() {
           onOpenChange={setShowEmailDialog}
           leadEmail={mockLeadDetails[leadId].email}
           leadName={`${mockLeadDetails[leadId].first_name} ${mockLeadDetails[leadId].last_name}`}
+        />
+      )}
+
+      {/* Add the PhoneDialog component */}
+      {mockLeadDetails[leadId] && (
+        <PhoneDialog
+          open={showPhoneDialog}
+          onOpenChange={(open) => setShowPhoneDialog(open)}
+          leadPhone={mockLeadDetails[leadId].phone}
+          leadName={mockLeadDetails[leadId].full_name}
         />
       )}
     </div>
