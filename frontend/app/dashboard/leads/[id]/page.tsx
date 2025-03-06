@@ -48,6 +48,7 @@ import { cn } from '@/lib/utils';
 import { MeetingDialog } from '@/components/meetings/MeetingDialog';
 import { openMeetingDialog } from '@/lib/utils/dialogUtils';
 import { toast } from '@/components/ui/use-toast';
+import { EmailDialog } from '@/components/communications/EmailDialog';
 
 // Task type definition
 type Task = {
@@ -1269,10 +1270,12 @@ export default function LeadDetailPage() {
     }
   };
 
+  const [showEmailDialog, setShowEmailDialog] = useState(false);
+  
   const handleSendEmail = () => {
     const lead = mockLeadDetails[leadId];
     if (lead?.email) {
-      window.location.href = `mailto:${lead.email}`;
+      setShowEmailDialog(true);
     }
   };
 
@@ -1613,6 +1616,16 @@ export default function LeadDetailPage() {
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      {/* Add the EmailDialog component */}
+      {leadId && mockLeadDetails[leadId] && (
+        <EmailDialog 
+          open={showEmailDialog}
+          onOpenChange={setShowEmailDialog}
+          leadEmail={mockLeadDetails[leadId].email}
+          leadName={`${mockLeadDetails[leadId].first_name} ${mockLeadDetails[leadId].last_name}`}
+        />
+      )}
     </div>
   );
 } 

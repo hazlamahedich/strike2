@@ -55,6 +55,7 @@ import { MeetingDialog } from '@/components/meetings/MeetingDialog';
 import { openMeetingDialog } from '@/lib/utils/dialogUtils';
 import { toast } from '@/components/ui/use-toast';
 import { LeadStatus, LeadSource } from '@/lib/types/lead';
+import { EmailDialog } from '@/components/communications/EmailDialog';
 
 // Lead type definition
 type Lead = {
@@ -91,6 +92,8 @@ export default function LeadsPage() {
     campaign_id: ''
   });
   const router = useRouter();
+  const [showEmailDialog, setShowEmailDialog] = useState(false);
+  const [selectedLead, setSelectedLead] = useState<Lead | null>(null);
 
   // Mock campaigns for dropdown
   const mockCampaigns = [
@@ -260,8 +263,13 @@ export default function LeadsPage() {
   };
 
   // Handle action links
-  const handleEmailClick = (email: string) => {
-    window.location.href = `mailto:${email}`;
+  const handleEmailClick = (email: string, name: string) => {
+    // Find the lead with this email
+    const lead = leads.find(l => l.email === email);
+    if (lead) {
+      setSelectedLead(lead);
+      setShowEmailDialog(true);
+    }
   };
 
   const handlePhoneClick = (phone: string) => {
@@ -542,7 +550,7 @@ export default function LeadsPage() {
                         <Button 
                           variant="ghost" 
                           size="icon" 
-                          onClick={() => handleEmailClick(lead.email)}
+                          onClick={() => handleEmailClick(lead.email, lead.name)}
                           title="Send Email"
                         >
                           <Mail className="h-4 w-4" />
@@ -648,6 +656,16 @@ export default function LeadsPage() {
           />
         );
       })}
+
+      {/* Add the EmailDialog component */}
+      {selectedLead && (
+        <EmailDialog 
+          open={showEmailDialog}
+          onOpenChange={setShowEmailDialog}
+          leadEmail={selectedLead.email}
+          leadName={selectedLead.name}
+        />
+      )}
     </div>
   );
 } 

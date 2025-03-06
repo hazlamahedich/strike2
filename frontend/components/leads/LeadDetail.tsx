@@ -24,6 +24,7 @@ import {
 import { formatDistanceToNow } from 'date-fns';
 import { LeadDetail as LeadDetailType, LeadSource, LeadStatus } from '../../lib/types/lead';
 import { useLead, useLeadTimeline, useLeadInsights } from '../../lib/hooks/useLeads';
+import EmailDialog from '../communications/EmailDialog';
 
 interface LeadDetailProps {
   leadId: number;
@@ -49,6 +50,7 @@ const LeadDetail: React.FC<LeadDetailProps> = ({
   onAddTask,
 }) => {
   const [activeTab, setActiveTab] = useState('overview');
+  const [showEmailDialog, setShowEmailDialog] = useState(false);
   
   // Fetch lead data
   const { data: lead, isLoading, isError } = useLead(leadId);
@@ -110,6 +112,10 @@ const LeadDetail: React.FC<LeadDetailProps> = ({
     } catch (error) {
       return dateString;
     }
+  };
+  
+  const handleSendEmail = () => {
+    setShowEmailDialog(true);
   };
   
   if (isLoading) {
@@ -209,7 +215,7 @@ const LeadDetail: React.FC<LeadDetailProps> = ({
       </div>
       
       <div className="flex flex-wrap gap-2">
-        <Button onClick={onSendEmail}>
+        <Button onClick={handleSendEmail}>
           <Mail className="mr-2 h-4 w-4" /> Send Email
         </Button>
         <Button onClick={onCall}>
@@ -450,6 +456,14 @@ const LeadDetail: React.FC<LeadDetailProps> = ({
           </Card>
         </TabsContent>
       </Tabs>
+      
+      {lead && (
+        <EmailDialog
+          isOpen={showEmailDialog}
+          onClose={() => setShowEmailDialog(false)}
+          lead={lead}
+        />
+      )}
     </div>
   );
 };

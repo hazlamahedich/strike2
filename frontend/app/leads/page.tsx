@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { Button } from '../../components/ui/button';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '../../components/ui/tabs';
 import { useLeads } from '../../hooks/useLeads';
@@ -11,7 +11,7 @@ import { LeadViewDialog } from '../../components/leads/LeadViewDialog';
 import { LeadEditDialog } from '../../components/leads/LeadEditDialog';
 import { useToast } from '../../components/ui/use-toast';
 import { Toaster } from '../../components/ui/toaster';
-import { Plus, Filter, Download, Upload, MoreHorizontal, RefreshCcw, Settings } from 'lucide-react';
+import { Plus, Filter, Download, Upload, MoreHorizontal, RefreshCcw, Settings, FileText, Sparkles } from 'lucide-react';
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -20,14 +20,29 @@ import {
   DropdownMenuTrigger,
 } from '../../components/ui/dropdown-menu';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '../../components/ui/card';
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from '../../components/ui/dialog';
+import { Input } from '../../components/ui/input';
+import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from '../../components/ui/form';
+import { zodResolver } from '@hookform/resolvers/zod';
+import { z } from 'zod';
+import { useForm } from 'react-hook-form';
+import { Loader2, Send } from 'lucide-react';
 
 export default function LeadsPage() {
   // State for dialogs
   const [createDialogOpen, setCreateDialogOpen] = useState(false);
   const [viewDialogOpen, setViewDialogOpen] = useState(false);
   const [editDialogOpen, setEditDialogOpen] = useState(false);
+  const [emailDialogOpen, setEmailDialogOpen] = useState(false);
+  const [testDialogOpen, setTestDialogOpen] = useState(false);
   const [selectedLeadId, setSelectedLeadId] = useState<string | null>(null);
+  const [selectedLead, setSelectedLead] = useState<any>(null);
   const [activeTab, setActiveTab] = useState('table');
+  const [emailFormData, setEmailFormData] = useState({
+    to: '',
+    subject: '',
+    content: '',
+  });
   
   // Fetch leads data
   const { leads, isLoading, error, refetch } = useLeads();
@@ -35,6 +50,42 @@ export default function LeadsPage() {
   
   // Calculate error state from the error object
   const hasError = !!error;
+
+  // Email form schema
+  const emailFormSchema = z.object({
+    to: z.string().email({ message: 'Please enter a valid email address' }),
+    subject: z.string().min(1, { message: 'Subject is required' }),
+    content: z.string().min(1, { message: 'Email content is required' }),
+  });
+  
+  type EmailFormValues = z.infer<typeof emailFormSchema>;
+  
+  const emailForm = useForm<EmailFormValues>({
+    resolver: zodResolver(emailFormSchema),
+    defaultValues: emailFormData,
+  });
+  
+  // Update email form when selected lead changes
+  useEffect(() => {
+    if (selectedLead) {
+      setEmailFormData({
+        to: selectedLead.email || '',
+        subject: '',
+        content: '',
+      });
+      emailForm.reset({
+        to: selectedLead.email || '',
+        subject: '',
+        content: '',
+      });
+    }
+  }, [selectedLead, emailForm]);
+  
+  // Log state changes for email dialog
+  useEffect(() => {
+    console.log('🔍 emailDialogOpen state changed:', emailDialogOpen);
+    console.log('🔍 selectedLead state:', selectedLead);
+  }, [emailDialogOpen, selectedLead]);
 
   // Handler functions
   const handleCreateLead = () => {
@@ -52,11 +103,31 @@ export default function LeadsPage() {
   };
 
   const handleSendEmail = (id: string) => {
-    toast({
-      title: 'Email Action',
-      description: `Sending email to lead ID: ${id}`,
-    });
-    // Implementation for sending email
+    console.log('🔍 handleSendEmail called with id:', id);
+    try {
+      if (leads) {
+        console.log('🔍 Leads available:', leads.length);
+        const lead = leads.find(lead => lead.id.toString() === id);
+        console.log('🔍 Found lead:', lead);
+        if (lead) {
+          console.log('🔍 Setting selectedLead and opening dialog');
+          setSelectedLead(lead);
+          setEmailDialogOpen(true);
+          console.log('🔍 Email dialog should be open now, emailDialogOpen:', true);
+        } else {
+          console.log('🔍 Lead not found for id:', id);
+          toast({
+            title: 'Error',
+            description: 'Lead not found',
+            variant: 'destructive',
+          });
+        }
+      } else {
+        console.log('🔍 No leads available');
+      }
+    } catch (error) {
+      console.error('🔍 Error in handleSendEmail:', error);
+    }
   };
 
   const handleScheduleMeeting = (id: string) => {
@@ -115,6 +186,21 @@ export default function LeadsPage() {
       title: 'Lead Updated',
       description: 'Lead has been successfully updated',
     });
+  };
+
+  const handleEmailSubmit = async (data: EmailFormValues) => {
+    console.log('Sending email:', data);
+    
+    // Simulate API call
+    await new Promise(resolve => setTimeout(resolve, 1000));
+    
+    toast({
+      title: 'Email sent',
+      description: `Email sent to ${data.to}`,
+    });
+    
+    setEmailDialogOpen(false);
+    setSelectedLead(null);
   };
 
   // Render content based on loading/error state
@@ -218,9 +304,68 @@ export default function LeadsPage() {
     <div className="container mx-auto py-6 space-y-6">
       <div className="flex justify-between items-center">
         <h1 className="text-3xl font-bold tracking-tight">Leads Management</h1>
+        
+        <div className="space-x-2">
+          {/* Test button for simple dialog */}
+          <Button 
+            onClick={() => {
+              console.log('🔍 Simple dialog test button clicked');
+              setTestDialogOpen(true);
+            }}
+            variant="outline"
+          >
+            Test Simple Dialog
+          </Button>
+          
+          {/* Test button for email dialog */}
+          <Button 
+            onClick={() => {
+              console.log('🔍 Test button clicked');
+              if (leads && leads.length > 0) {
+                const firstLead = leads[0];
+                console.log('🔍 Setting selectedLead to first lead:', firstLead);
+                setSelectedLead(firstLead);
+                setEmailDialogOpen(true);
+              } else {
+                console.log('🔍 No leads available for test');
+                toast({
+                  title: 'No Leads Available',
+                  description: 'Cannot open email dialog without leads.',
+                  variant: 'destructive',
+                });
+              }
+            }}
+          >
+            Test Email Dialog
+          </Button>
+        </div>
       </div>
       
       {renderContent()}
+      
+      {/* Simple test dialog */}
+      <Dialog 
+        open={testDialogOpen} 
+        onOpenChange={(open) => {
+          console.log('🔍 Simple dialog onOpenChange called with value:', open);
+          setTestDialogOpen(open);
+        }}
+      >
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Simple Test Dialog</DialogTitle>
+          </DialogHeader>
+          <div className="p-4">
+            <p>This is a simple test dialog to verify that dialogs work correctly.</p>
+            <Button 
+              className="mt-4"
+              onClick={() => setTestDialogOpen(false)}
+            >
+              Close Dialog
+            </Button>
+          </div>
+        </DialogContent>
+      </Dialog>
       
       {/* Dialogs */}
       <LeadCreateDialog 
@@ -249,6 +394,128 @@ export default function LeadsPage() {
           />
         </>
       )}
+      
+      {/* Email Dialog */}
+      <Dialog 
+        open={emailDialogOpen} 
+        onOpenChange={(open) => {
+          console.log('🔍 Email Dialog onOpenChange called with value:', open);
+          if (!open) {
+            setEmailDialogOpen(false);
+            setSelectedLead(null);
+          } else {
+            setEmailDialogOpen(true);
+          }
+        }}
+      >
+        <DialogContent className="max-w-3xl">
+          <DialogHeader>
+            <DialogTitle>
+              {selectedLead ? `Send Email to ${selectedLead.first_name} ${selectedLead.last_name}` : 'Send Email'}
+            </DialogTitle>
+          </DialogHeader>
+          
+          {selectedLead ? (
+            <Form {...emailForm}>
+              <form onSubmit={emailForm.handleSubmit(handleEmailSubmit)} className="space-y-4">
+                <FormField
+                  control={emailForm.control}
+                  name="to"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel>To</FormLabel>
+                      <FormControl>
+                        <Input placeholder="recipient@example.com" {...field} />
+                      </FormControl>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
+
+                <FormField
+                  control={emailForm.control}
+                  name="subject"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel>Subject</FormLabel>
+                      <FormControl>
+                        <Input placeholder="Email subject" {...field} />
+                      </FormControl>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
+
+                <FormField
+                  control={emailForm.control}
+                  name="content"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel>Message</FormLabel>
+                      <FormControl>
+                        <textarea
+                          className="w-full min-h-[200px] p-2 border rounded-md"
+                          placeholder="Write your email message here..."
+                          {...field}
+                        />
+                      </FormControl>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
+
+                <div className="flex justify-between pt-4">
+                  <div className="space-x-2">
+                    <Button
+                      type="button"
+                      variant="outline"
+                      onClick={() => {
+                        toast({
+                          title: 'Template Feature',
+                          description: 'Email templates will be implemented soon.',
+                        });
+                      }}
+                    >
+                      <FileText className="mr-2 h-4 w-4" />
+                      Use Template
+                    </Button>
+                    <Button
+                      type="button"
+                      variant="outline"
+                      onClick={() => {
+                        toast({
+                          title: 'AI Feature',
+                          description: 'AI email generation will be implemented soon.',
+                        });
+                      }}
+                    >
+                      <Sparkles className="mr-2 h-4 w-4" />
+                      Reply with AI
+                    </Button>
+                  </div>
+                  <Button type="submit" disabled={emailForm.formState.isSubmitting}>
+                    {emailForm.formState.isSubmitting ? (
+                      <>
+                        <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                        Sending...
+                      </>
+                    ) : (
+                      <>
+                        <Send className="mr-2 h-4 w-4" />
+                        Send
+                      </>
+                    )}
+                  </Button>
+                </div>
+              </form>
+            </Form>
+          ) : (
+            <div className="p-4 text-center">
+              <p>No lead selected. Please select a lead to send an email.</p>
+            </div>
+          )}
+        </DialogContent>
+      </Dialog>
       
       <Toaster />
     </div>
