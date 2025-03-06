@@ -82,6 +82,20 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
   useEffect(() => {
     const fetchUserInfo = async () => {
       try {
+        // First try to get user from local storage (for temporary auth solution)
+        if (typeof window !== 'undefined') {
+          const storedUser = localStorage.getItem('strike_app_user');
+          if (storedUser) {
+            const user = JSON.parse(storedUser);
+            setUserName(user.name || user.email.split('@')[0]);
+            setUserInitials(
+              (user.name ? user.name.split(' ').map((n: string) => n[0]).join('') : user.email[0]).toUpperCase()
+            );
+            return; // Exit early if we found a user in local storage
+          }
+        }
+
+        // If no local user, try API
         const user = await apiClient.get<User>('auth/me');
         if (user && user.email) {
           setUserName(user.full_name || user.email.split('@')[0]);
@@ -91,6 +105,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
         }
       } catch (error) {
         console.error('Failed to fetch user info', error);
+        // No need to redirect - we'll just use default values
       }
     };
 
@@ -100,21 +115,38 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
         setNotifications(data || []);
       } catch (error) {
         console.error('Failed to fetch notifications', error);
+        // Just use empty notifications array
       }
     };
 
     fetchUserInfo();
-    fetchNotifications();
+    // Only try to fetch notifications if we're not in development mode with temporary auth
+    if (process.env.NODE_ENV !== 'development' || !localStorage.getItem('strike_app_user')) {
+      fetchNotifications();
+    }
   }, []);
 
   // Handle logout
   const handleLogout = async () => {
     try {
+      // Check if we're using local storage auth
+      if (typeof window !== 'undefined' && localStorage.getItem('strike_app_user')) {
+        localStorage.removeItem('strike_app_user');
+        window.location.href = '/auth/login';
+        return;
+      }
+
+      // Otherwise use API logout
       await apiClient.post('auth/logout', {});
       apiClient.clearAuthToken();
       window.location.href = '/auth/login';
     } catch (error) {
       console.error('Logout failed', error);
+      // Fallback: just clear local storage and redirect
+      if (typeof window !== 'undefined') {
+        localStorage.removeItem('strike_app_user');
+        window.location.href = '/auth/login';
+      }
     }
   };
 

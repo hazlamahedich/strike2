@@ -7,6 +7,7 @@ type FetchOptions = {
 
 // Import Supabase client
 import supabase from '../supabase/client';
+import mockService from './mockService';
 
 // Base API URL from environment variable (with fallback)
 const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000';
@@ -49,12 +50,43 @@ class ApiClient {
 
   // Method to get the current session from Supabase
   async getSupabaseSession() {
-    const { data: { session } } = await supabase.auth.getSession();
-    return session;
+    try {
+      const { data: { session } } = await supabase.auth.getSession();
+      return session;
+    } catch (error) {
+      console.error('Failed to get Supabase session:', error);
+      return null;
+    }
+  }
+
+  // Method to refresh the Supabase token
+  async refreshSupabaseToken() {
+    try {
+      const { data: { session } } = await supabase.auth.refreshSession();
+      if (session?.access_token) {
+        this.setAuthToken(session.access_token);
+        return true;
+      }
+      return false;
+    } catch (error) {
+      console.error('Failed to refresh Supabase token:', error);
+      return false;
+    }
   }
 
   // Generic fetch method with authentication and error handling
   async fetch<T>(endpoint: string, options: FetchOptions = {}): Promise<T> {
+    // Check if we should use mock data
+    if (mockService.shouldUseMockData()) {
+      try {
+        console.log(`Using mock data for endpoint: ${endpoint}`);
+        return mockService.getMockData(endpoint) as T;
+      } catch (error) {
+        console.warn(`Mock service error for ${endpoint}:`, error);
+        // Continue with real API call as fallback
+      }
+    }
+    
     const url = `${API_BASE_URL}${endpoint.startsWith('/') ? endpoint : `/${endpoint}`}`;
     
     // Default headers
@@ -63,15 +95,20 @@ class ApiClient {
       ...options.headers,
     };
     
-    // Try to get token from Supabase first, then fall back to stored token
+    // Try to get token from stored token first
     let token = this.getAuthToken();
     
     // If no stored token, try to get from Supabase session
     if (!token) {
-      const session = await this.getSupabaseSession();
-      if (session?.access_token) {
-        token = session.access_token;
-        this.setAuthToken(token);
+      try {
+        const session = await this.getSupabaseSession();
+        if (session?.access_token) {
+          token = session.access_token;
+          this.setAuthToken(token);
+        }
+      } catch (error) {
+        console.warn('Failed to get Supabase session:', error);
+        // Continue without token
       }
     }
     
@@ -85,6 +122,8 @@ class ApiClient {
       method: options.method || 'GET',
       headers,
       credentials: options.credentials || 'include',
+      // Add a timeout using AbortController
+      signal: AbortSignal.timeout(10000), // 10 second timeout
     };
     
     // Add body for non-GET requests if provided
@@ -106,9 +145,27 @@ class ApiClient {
       
       // Handle 401 Unauthorized (token expired or invalid)
       if (response.status === 401) {
+        console.log('Received 401 unauthorized, attempting to refresh token');
+        
+        // Try to refresh the token
+        const refreshed = await this.refreshSupabaseToken();
+        
+        if (refreshed) {
+          console.log('Token refreshed successfully, retrying request');
+          // Retry the request with the new token
+          return this.fetch<T>(endpoint, options);
+        }
+        
+        // If refresh failed, clear auth and redirect to login
         this.clearAuthToken();
+        
         // Sign out from Supabase as well
-        await supabase.auth.signOut();
+        try {
+          await supabase.auth.signOut();
+        } catch (error) {
+          console.warn('Failed to sign out from Supabase:', error);
+        }
+        
         // Redirect to login in browser environment
         if (typeof window !== 'undefined') {
           window.location.href = '/auth/login';
@@ -117,7 +174,13 @@ class ApiClient {
       }
       
       // Parse JSON response
-      const data = await response.json();
+      let data;
+      try {
+        data = await response.json();
+      } catch (error) {
+        console.error('Failed to parse JSON response:', error);
+        throw new Error('Invalid response from server');
+      }
       
       // Handle API errors
       if (!response.ok) {
@@ -127,6 +190,12 @@ class ApiClient {
       
       return data as T;
     } catch (error) {
+      // Check if it's an AbortError (timeout)
+      if (error instanceof DOMException && error.name === 'AbortError') {
+        console.error('API request timed out:', url);
+        throw new Error('Request timed out. The server might be unavailable.');
+      }
+      
       console.error('API request failed:', error);
       throw error;
     }

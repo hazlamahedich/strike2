@@ -177,4 +177,148 @@ Coming soon...
 
 ## License
 
-This project is licensed under the MIT License - see the LICENSE file for details. 
+This project is licensed under the MIT License - see the LICENSE file for details.
+
+## Common Issues
+
+### Supabase Auth and Database Setup Issues
+
+You may encounter the following issues with Supabase authentication:
+
+1. **Missing auth schema**: The auth schema may not be properly set up.
+2. **Missing profiles table**: The profiles table may not exist or have the wrong structure.
+3. **Missing triggers**: The trigger to create a profile when a new user registers may be missing.
+4. **Incorrect permissions**: Row-level security policies may not be properly configured.
+5. **Type mismatches**: The user_id column in the profiles table must be a UUID type.
+6. **Database error saving new user**: This error occurs during registration when the trigger function fails.
+
+### How to Fix
+
+#### Option 1: Run the SQL Migration Script (Recommended)
+
+1. Log into your [Supabase Dashboard](https://app.supabase.com)
+2. Navigate to the SQL Editor
+3. Copy the contents of `frontend/lib/supabase/migrations/fix_auth_tables.sql`
+4. Paste into the SQL Editor and run the script
+5. This will:
+   - Create the auth schema if it doesn't exist
+   - Create the profiles table with the correct structure
+   - Enable Row Level Security on the profiles table
+   - Create policies for users to view and update their own profiles
+   - Create trigger functions to handle user creation, updates, and deletions
+   - Grant necessary permissions
+   - Create a test table for anonymous access testing
+
+#### Option 2: Manual Setup
+
+If you prefer to set up the database manually, follow these steps:
+
+1. Create the profiles table:
+```sql
+CREATE TABLE IF NOT EXISTS public.profiles (
+    id SERIAL PRIMARY KEY,
+    user_id UUID REFERENCES auth.users(id) ON DELETE CASCADE,
+    avatar_url VARCHAR,
+    preferences JSONB DEFAULT '{"theme": "light", "language": "en"}',
+    notification_settings JSONB DEFAULT '{"push": true, "email": true}',
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+```
+
+2. Enable Row Level Security and add policies:
+```sql
+ALTER TABLE public.profiles ENABLE ROW LEVEL SECURITY;
+
+CREATE POLICY "Users can view their own profile" 
+    ON public.profiles 
+    FOR SELECT 
+    USING (auth.uid() = user_id);
+
+CREATE POLICY "Users can update their own profile" 
+    ON public.profiles 
+    FOR UPDATE 
+    USING (auth.uid() = user_id);
+```
+
+3. Create a trigger for new users:
+```sql
+CREATE OR REPLACE FUNCTION auth.handle_new_user()
+RETURNS TRIGGER AS $$
+BEGIN
+    INSERT INTO public.profiles (user_id, avatar_url)
+    VALUES (new.id, 'https://randomuser.me/api/portraits/lego/1.jpg');
+    RETURN new;
+END;
+$$ LANGUAGE plpgsql SECURITY DEFINER;
+
+CREATE TRIGGER on_auth_user_created
+    AFTER INSERT ON auth.users
+    FOR EACH ROW EXECUTE FUNCTION auth.handle_new_user();
+```
+
+4. Create a test table for anonymous access:
+```sql
+CREATE TABLE IF NOT EXISTS public.test (
+    id SERIAL PRIMARY KEY,
+    content TEXT
+);
+
+ALTER TABLE public.test ENABLE ROW LEVEL SECURITY;
+
+CREATE POLICY "Allow anonymous read access" ON public.test FOR SELECT USING (true);
+
+INSERT INTO public.test (content) VALUES ('This is a test record') ON CONFLICT DO NOTHING;
+```
+
+### Verifying the Fix
+
+1. Visit the `/auth/test` page in your application to run the built-in tests
+2. Ensure all database connection tests pass
+3. Try to register a new user - it should work without errors
+4. Check the Supabase dashboard to verify that a new profile was created
+
+### Running the Test Script
+
+We've included a test script that can help diagnose issues with your Supabase setup:
+
+```bash
+# From the frontend directory
+node lib/supabase/test-script.mjs
+```
+
+The test script checks:
+1. Database connection
+2. Auth schema
+3. Profiles table structure
+4. Anonymous permissions
+5. Profile creation
+
+If any tests fail, follow the recommendations to fix the issues.
+
+### Troubleshooting
+
+If you're still experiencing issues:
+
+1. **Check Supabase Project Settings**:
+   - Ensure your project is on the correct plan
+   - Verify that the database is not paused
+
+2. **Check Database Permissions**:
+   - Ensure the `anon` role has appropriate permissions
+   - Check that RLS policies are correctly configured
+
+3. **Network Issues**:
+   - Verify that your application can reach the Supabase API
+   - Check for CORS issues in the browser console
+
+4. **Rate Limiting**:
+   - Supabase has rate limits that may affect authentication
+   - Check for rate limit errors in the console
+
+### Resources
+
+- [Supabase Auth Documentation](https://supabase.com/docs/guides/auth)
+- [Row Level Security Guide](https://supabase.com/docs/guides/auth/row-level-security)
+- [Supabase Discord](https://discord.supabase.com)
+- [GitHub Issues](https://github.com/supabase/supabase/issues) 

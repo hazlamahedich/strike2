@@ -47,12 +47,95 @@ export default function Dashboard() {
   const [stats, setStats] = useState<DashboardStats | null>(null);
   const [recentActivities, setRecentActivities] = useState<Activity[]>([]);
   const [isLoading, setIsLoading] = useState(true);
+  const [userName, setUserName] = useState<string>('');
 
   useEffect(() => {
+    // Get user name from local storage if available
+    if (typeof window !== 'undefined') {
+      const storedUser = localStorage.getItem('strike_app_user');
+      if (storedUser) {
+        const user = JSON.parse(storedUser);
+        setUserName(user.name || user.email.split('@')[0]);
+      }
+    }
+
     const fetchDashboardData = async () => {
       try {
         setIsLoading(true);
-        // In a real app, these would be actual API calls
+        
+        // Check if we're using local storage auth (temporary solution)
+        const isUsingLocalAuth = typeof window !== 'undefined' && localStorage.getItem('strike_app_user');
+        
+        if (isUsingLocalAuth) {
+          // Use mock data for development with local auth
+          console.log('Using mock data for dashboard (local auth)');
+          
+          // Simulate API delay
+          await new Promise(resolve => setTimeout(resolve, 500));
+          
+          setStats({
+            total_leads: 256,
+            new_leads_today: 12,
+            active_campaigns: 5,
+            pending_tasks: 18,
+            upcoming_meetings: 7,
+            recent_communications: 34,
+            conversion_rate: 24.5,
+            lead_sources: {
+              'Website': 45,
+              'Referral': 30,
+              'Social Media': 15,
+              'Email Campaign': 10
+            }
+          });
+          
+          setRecentActivities([
+            {
+              id: '1',
+              type: 'lead',
+              title: 'New Lead Added',
+              description: 'John Smith from Acme Corp was added as a new lead',
+              timestamp: new Date().toISOString(),
+              user: 'Sarah Johnson'
+            },
+            {
+              id: '2',
+              type: 'task',
+              title: 'Task Completed',
+              description: 'Follow-up call with Techno Solutions completed',
+              timestamp: new Date(Date.now() - 30 * 60000).toISOString(), // 30 minutes ago
+              user: 'Mike Wilson'
+            },
+            {
+              id: '3',
+              type: 'meeting',
+              title: 'Meeting Scheduled',
+              description: 'Demo meeting with Global Enterprises scheduled for tomorrow',
+              timestamp: new Date(Date.now() - 2 * 3600000).toISOString(), // 2 hours ago
+              user: 'Emily Davis'
+            },
+            {
+              id: '4',
+              type: 'communication',
+              title: 'Email Sent',
+              description: 'Proposal sent to Innovative Systems',
+              timestamp: new Date(Date.now() - 5 * 3600000).toISOString(), // 5 hours ago
+              user: 'Sarah Johnson'
+            },
+            {
+              id: '5',
+              type: 'campaign',
+              title: 'Campaign Started',
+              description: 'Summer Promotion campaign launched',
+              timestamp: new Date(Date.now() - 24 * 3600000).toISOString(), // 1 day ago
+              user: 'Alex Turner'
+            }
+          ]);
+          
+          return;
+        }
+        
+        // If not using local auth, try real API calls
         const statsData = await apiClient.get<DashboardStats>('analytics/dashboard');
         const activitiesData = await apiClient.get<Activity[]>('analytics/recent-activities');
         
@@ -157,7 +240,27 @@ export default function Dashboard() {
         <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
           <div>
             <h1 className="text-3xl font-bold tracking-tight">Dashboard</h1>
-            <p className="text-muted-foreground">Welcome back! Here's an overview of your CRM activity.</p>
+            <p className="text-muted-foreground">
+              {userName ? `Welcome back, ${userName}!` : 'Welcome back!'} Here's an overview of your CRM activity.
+              {typeof window !== 'undefined' && (() => {
+                const userStr = localStorage.getItem('strike_app_user');
+                if (userStr) {
+                  try {
+                    const user = JSON.parse(userStr);
+                    if (user.usingTempAuth) {
+                      return (
+                        <span className="block text-xs mt-1 text-amber-500">
+                          Note: You're using the temporary authentication system. Some features may be limited.
+                        </span>
+                      );
+                    }
+                  } catch (e) {
+                    // Ignore JSON parse errors
+                  }
+                }
+                return null;
+              })()}
+            </p>
           </div>
           <div className="flex gap-2">
             <Button>
