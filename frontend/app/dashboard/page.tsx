@@ -20,6 +20,7 @@ import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle }
 import { Button } from '@/components/ui/button';
 import DashboardLayout from '@/components/layout/DashboardLayout';
 import apiClient from '@/lib/api/client';
+import { DashboardCards } from '@/components/dashboard/DashboardCards';
 
 // Dashboard stats type
 type DashboardStats = {
@@ -273,6 +274,9 @@ export default function Dashboard() {
             </Button>
           </div>
         </div>
+
+        {/* Dashboard Cards */}
+        <DashboardCards />
 
         {/* Stats Overview */}
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
