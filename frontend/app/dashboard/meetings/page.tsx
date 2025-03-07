@@ -1,57 +1,50 @@
 'use client';
 
-import { useState } from 'react';
-import { MeetingList } from '@/components/meetings';
-import { SimpleMeetingForm } from '@/components/meetings/SimpleMeetingForm';
-import { Button } from '@/components/ui/button';
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog';
-import { Plus } from 'lucide-react';
+import { useState, useEffect } from 'react';
+import { MeetingView } from '@/components/meetings/MeetingView';
 
 export default function MeetingsPage() {
-  const [showDialog, setShowDialog] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  
+  // Log component mount for debugging
+  useEffect(() => {
+    console.log('MeetingsPage mounted');
+    
+    // Check if we're in a browser environment
+    if (typeof window !== 'undefined') {
+      console.log('Browser environment detected');
+      
+      // Check if localStorage is available
+      try {
+        localStorage.setItem('test', 'test');
+        localStorage.removeItem('test');
+        console.log('localStorage is available');
+      } catch (err) {
+        console.error('localStorage is not available:', err);
+        setError('localStorage is not available. Some features may not work properly.');
+      }
+    }
+    
+    return () => {
+      console.log('MeetingsPage unmounted');
+    };
+  }, []);
   
   return (
     <div className="flex-1 space-y-4 p-4 md:p-8 pt-6">
-      <div className="flex items-center justify-between">
-        <h2 className="text-3xl font-bold tracking-tight">Meetings</h2>
-        <div className="flex space-x-2">
-          <Button onClick={() => setShowDialog(true)}>
-            <Plus className="mr-2 h-4 w-4" />
-            Direct Schedule
-          </Button>
-          <Dialog>
-            <DialogTrigger asChild>
-              <Button variant="outline">
-                <Plus className="mr-2 h-4 w-4" />
-                Dialog Trigger
-              </Button>
-            </DialogTrigger>
-            <DialogContent>
-              <DialogHeader>
-                <DialogTitle>Schedule Meeting (Page)</DialogTitle>
-              </DialogHeader>
-              <SimpleMeetingForm onSuccess={() => {}} />
-            </DialogContent>
-          </Dialog>
+      {error && (
+        <div className="bg-red-100 border border-red-400 text-red-700 px-4 py-3 rounded relative" role="alert">
+          <span className="block sm:inline">{error}</span>
         </div>
-      </div>
-      
-      {/* Direct dialog */}
-      {showDialog && (
-        <Dialog open={true} onOpenChange={setShowDialog}>
-          <DialogContent>
-            <DialogHeader>
-              <DialogTitle>Schedule Meeting (Direct)</DialogTitle>
-            </DialogHeader>
-            <SimpleMeetingForm 
-              onSuccess={() => setShowDialog(false)} 
-              onCancel={() => setShowDialog(false)} 
-            />
-          </DialogContent>
-        </Dialog>
       )}
       
-      <MeetingList />
+      <div className="flex items-center justify-between">
+        <h2 className="text-3xl font-bold tracking-tight">Meetings</h2>
+      </div>
+      
+      <div className="w-full">
+        <MeetingView />
+      </div>
     </div>
   );
 } 

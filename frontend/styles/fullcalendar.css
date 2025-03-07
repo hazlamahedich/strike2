@@ -1,0 +1,171 @@
+/* FullCalendar Styles */
+
+/* Calendar container */
+.fc {
+  --fc-border-color: hsl(var(--border));
+  --fc-page-bg-color: hsl(var(--background));
+  --fc-neutral-bg-color: hsl(var(--muted));
+  --fc-list-event-hover-bg-color: hsl(var(--accent));
+  --fc-today-bg-color: hsl(var(--accent) / 0.2);
+  --fc-event-bg-color: hsl(var(--primary));
+  --fc-event-border-color: hsl(var(--primary));
+  --fc-event-text-color: hsl(var(--primary-foreground));
+  --fc-button-bg-color: hsl(var(--primary));
+  --fc-button-border-color: hsl(var(--primary));
+  --fc-button-hover-bg-color: hsl(var(--primary-foreground));
+  --fc-button-hover-border-color: hsl(var(--primary-foreground));
+  --fc-button-active-bg-color: hsl(var(--primary));
+  --fc-button-active-border-color: hsl(var(--primary));
+  --fc-event-selected-overlay-color: rgba(0, 0, 0, 0.25);
+  --fc-more-link-bg-color: hsl(var(--background));
+  --fc-more-link-text-color: hsl(var(--primary));
+  --fc-event-resizer-thickness: 8px;
+  --fc-event-resizer-dot-total-width: 8px;
+  --fc-non-business-color: hsl(var(--muted) / 0.2);
+  --fc-bg-event-color: hsl(var(--accent));
+  --fc-bg-event-opacity: 0.3;
+  --fc-highlight-color: hsl(var(--accent) / 0.1);
+  --fc-now-indicator-color: hsl(var(--destructive));
+  --fc-list-event-dot-width: 10px;
+  --fc-list-event-hover-bg-color: hsl(var(--accent) / 0.1);
+}
+
+/* Calendar header */
+.fc .fc-toolbar {
+  margin-bottom: 1.5em;
+}
+
+.fc .fc-toolbar-title {
+  font-size: 1.5rem;
+  font-weight: 600;
+}
+
+/* Calendar buttons */
+.fc .fc-button {
+  font-weight: 500;
+  border-radius: 0.375rem;
+  padding: 0.5rem 1rem;
+  font-size: 0.875rem;
+  line-height: 1.25rem;
+  transition-property: color, background-color, border-color, text-decoration-color, fill, stroke;
+  transition-timing-function: cubic-bezier(0.4, 0, 0.2, 1);
+  transition-duration: 150ms;
+}
+
+.fc .fc-button:focus {
+  outline: 2px solid transparent;
+  outline-offset: 2px;
+  box-shadow: 0 0 0 2px hsl(var(--background)), 0 0 0 4px hsl(var(--ring));
+}
+
+.fc .fc-button-primary {
+  background-color: hsl(var(--primary));
+  border-color: hsl(var(--primary));
+  color: hsl(var(--primary-foreground));
+}
+
+.fc .fc-button-primary:hover {
+  background-color: hsl(var(--primary) / 0.9);
+  border-color: hsl(var(--primary) / 0.9);
+}
+
+.fc .fc-button-primary:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.fc .fc-button-primary:not(:disabled).fc-button-active,
+.fc .fc-button-primary:not(:disabled):active {
+  background-color: hsl(var(--primary) / 0.8);
+  border-color: hsl(var(--primary) / 0.8);
+  color: hsl(var(--primary-foreground));
+}
+
+/* Calendar events */
+.fc-event {
+  border-radius: 0.25rem;
+  padding: 0.125rem 0.25rem;
+  font-size: 0.875rem;
+  cursor: pointer;
+}
+
+.fc-event:hover {
+  opacity: 0.9;
+}
+
+.fc-daygrid-event {
+  white-space: normal;
+}
+
+/* Calendar cells */
+.fc-daygrid-day {
+  transition: background-color 0.2s;
+}
+
+.fc-daygrid-day:hover {
+  background-color: hsl(var(--accent) / 0.1);
+}
+
+.fc-col-header-cell {
+  background-color: hsl(var(--muted) / 0.5);
+  font-weight: 600;
+  text-transform: uppercase;
+  font-size: 0.75rem;
+}
+
+.fc-day-today {
+  background-color: hsl(var(--accent) / 0.2) !important;
+}
+
+/* Time grid view */
+.fc-timegrid-slot {
+  height: 3em;
+}
+
+.fc-timegrid-now-indicator-line {
+  border-color: hsl(var(--destructive));
+}
+
+.fc-timegrid-now-indicator-arrow {
+  border-color: hsl(var(--destructive));
+  border-top-color: transparent;
+  border-bottom-color: transparent;
+}
+
+/* List view */
+.fc-list-day-cushion {
+  background-color: hsl(var(--muted) / 0.5);
+}
+
+.fc-list-event:hover td {
+  background-color: hsl(var(--accent) / 0.1);
+}
+
+/* Dark mode adjustments */
+.dark .fc {
+  --fc-page-bg-color: hsl(var(--background));
+  --fc-neutral-bg-color: hsl(var(--muted) / 0.5);
+  --fc-today-bg-color: hsl(var(--accent) / 0.1);
+  --fc-neutral-text-color: hsl(var(--foreground));
+  --fc-list-event-hover-bg-color: hsl(var(--accent) / 0.2);
+}
+
+.dark .fc-col-header-cell {
+  background-color: hsl(var(--muted) / 0.3);
+}
+
+.dark .fc-list-day-cushion {
+  background-color: hsl(var(--muted) / 0.3);
+}
+
+/* Responsive adjustments */
+@media (max-width: 640px) {
+  .fc .fc-toolbar {
+    flex-direction: column;
+    gap: 1rem;
+  }
+  
+  .fc .fc-toolbar-title {
+    font-size: 1.25rem;
+  }
+} 

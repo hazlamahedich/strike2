@@ -1,19 +1,33 @@
 import { format, parseISO } from 'date-fns';
-import { Calendar, Clock, MapPin, User, Video } from 'lucide-react';
+import { Calendar, Clock, MapPin, User, Video, X } from 'lucide-react';
 import { Meeting, MeetingLocationType, MeetingStatus } from '@/lib/types/meeting';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardFooter, CardHeader, CardTitle } from '@/components/ui/card';
 import { cn } from '@/lib/utils';
+import { MeetingActions } from './MeetingActions';
 
 type MeetingCardProps = {
   meeting: Meeting;
   onEdit?: (meeting: Meeting) => void;
   onDelete?: (meeting: Meeting) => void;
   onJoin?: (meeting: Meeting) => void;
+  onUpdate?: (updatedMeeting: Meeting) => void;
+  onCancel?: (canceledMeeting: Meeting) => void;
+  showActions?: boolean;
+  actionsDisplayMode?: 'compact' | 'full';
 };
 
-export function MeetingCard({ meeting, onEdit, onDelete, onJoin }: MeetingCardProps) {
+export function MeetingCard({ 
+  meeting, 
+  onEdit, 
+  onDelete, 
+  onJoin, 
+  onUpdate, 
+  onCancel,
+  showActions = true,
+  actionsDisplayMode = 'compact'
+}: MeetingCardProps) {
   const startTime = parseISO(meeting.start_time);
   const endTime = parseISO(meeting.end_time);
   
@@ -46,6 +60,26 @@ export function MeetingCard({ meeting, onEdit, onDelete, onJoin }: MeetingCardPr
                   meeting.status === MeetingStatus.CONFIRMED) &&
                  new Date() >= new Date(startTime.getTime() - 5 * 60000) && // 5 minutes before
                  new Date() <= endTime;
+  
+  // Handle meeting updates
+  const handleUpdate = (updatedMeeting: Meeting) => {
+    if (onUpdate) {
+      onUpdate(updatedMeeting);
+    } else if (onEdit) {
+      // Fallback to onEdit if onUpdate is not provided
+      onEdit(updatedMeeting);
+    }
+  };
+  
+  // Handle meeting cancellation
+  const handleCancel = (canceledMeeting: Meeting) => {
+    if (onCancel) {
+      onCancel(canceledMeeting);
+    } else if (onDelete) {
+      // Fallback to onDelete if onCancel is not provided
+      onDelete(canceledMeeting);
+    }
+  };
   
   return (
     <Card className="overflow-hidden">
@@ -105,36 +139,49 @@ export function MeetingCard({ meeting, onEdit, onDelete, onJoin }: MeetingCardPr
         </div>
       </CardContent>
       <CardFooter className="flex justify-end space-x-2 pt-2">
-        {onDelete && (
-          <Button 
-            variant="outline" 
-            size="sm" 
-            onClick={() => onDelete(meeting)}
-            className="text-red-600 hover:text-red-700"
-          >
-            Cancel
-          </Button>
-        )}
-        
-        {onEdit && (
-          <Button 
-            variant="outline" 
-            size="sm" 
-            onClick={() => onEdit(meeting)}
-          >
-            Edit
-          </Button>
-        )}
-        
-        {canJoin && onJoin && (
-          <Button 
-            variant="default" 
-            size="sm" 
-            onClick={() => onJoin(meeting)}
-            className="bg-green-600 hover:bg-green-700"
-          >
-            Join
-          </Button>
+        {showActions ? (
+          <MeetingActions 
+            meeting={meeting}
+            onUpdate={handleUpdate}
+            onCancel={handleCancel}
+            onJoin={onJoin}
+            displayMode={actionsDisplayMode}
+          />
+        ) : (
+          <>
+            {onDelete && meeting.status !== MeetingStatus.CANCELED && meeting.status !== MeetingStatus.COMPLETED && (
+              <Button 
+                variant="destructive" 
+                size="sm" 
+                onClick={() => onDelete(meeting)}
+                className="flex items-center"
+              >
+                <X className="h-4 w-4 mr-1" />
+                Cancel
+              </Button>
+            )}
+            
+            {onEdit && (
+              <Button 
+                variant="outline" 
+                size="sm" 
+                onClick={() => onEdit(meeting)}
+              >
+                Edit
+              </Button>
+            )}
+            
+            {canJoin && onJoin && (
+              <Button 
+                variant="default" 
+                size="sm" 
+                onClick={() => onJoin(meeting)}
+                className="bg-green-600 hover:bg-green-700"
+              >
+                Join
+              </Button>
+            )}
+          </>
         )}
       </CardFooter>
     </Card>
