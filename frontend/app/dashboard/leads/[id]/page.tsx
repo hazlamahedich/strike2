@@ -591,12 +591,16 @@ const TaskItem = ({
         </div>
         
         <div className="flex gap-2">
-          <Button variant="ghost" size="sm" onClick={() => onEdit(task)}>
-            <Edit className="h-4 w-4" />
-          </Button>
-          <Button variant="ghost" size="sm" onClick={() => onDelete(task.id)}>
-            <Trash className="h-4 w-4" />
-          </Button>
+          <SimpleTooltip content="Edit this task">
+            <Button variant="ghost" size="sm" onClick={() => onEdit(task)} aria-label="Edit Task">
+              <Edit className="h-4 w-4" />
+            </Button>
+          </SimpleTooltip>
+          <SimpleTooltip content="Delete Task">
+            <Button variant="ghost" size="sm" onClick={() => onDelete(task.id)} aria-label="Delete Task">
+              <Trash className="h-4 w-4" />
+            </Button>
+          </SimpleTooltip>
         </div>
       </div>
     </div>
@@ -614,6 +618,7 @@ const CustomLeadDetail = ({
   onAddToCampaign,
   onAddNote,
   onAddTask,
+  onEditTask,
   onStatusChange,
   activeTab,
   setActiveTab,
@@ -628,6 +633,7 @@ const CustomLeadDetail = ({
   onAddToCampaign: () => void;
   onAddNote: () => void;
   onAddTask: () => void;
+  onEditTask: (task: Task) => void;
   onStatusChange: (status: LeadStatus) => void;
   activeTab: string;
   setActiveTab: (tab: string) => void;
@@ -924,9 +930,10 @@ const CustomLeadDetail = ({
                     }
                   }}
                   onEdit={(task) => {
-                    // Set the editing task and open the dialog
-                    setEditingTask(task);
-                    onAddTask();
+                    // Use the dedicated edit task function
+                    onEditTask(task);
+                    // Log for debugging
+                    console.log('Editing task:', task);
                   }}
                   onDelete={(taskId) => {
                     // This will be handled by the parent component
@@ -1100,15 +1107,15 @@ export default function LeadDetailPage() {
   // Initialize task when editing
   useEffect(() => {
     if (editingTask) {
+      console.log('Initializing form with task:', editingTask);
       setNewTask({
-        title: editingTask.title,
+        title: editingTask.title || '',
         description: editingTask.description || '',
         due_date: editingTask.due_date || '',
-        priority: editingTask.priority,
-        status: editingTask.status,
-        assigned_to: editingTask.assigned_to
+        priority: editingTask.priority || 'medium',
+        status: editingTask.status || 'pending',
+        assigned_to: editingTask.assigned_to || undefined
       });
-      setShowTaskDialog(true);
     }
   }, [editingTask]);
   
@@ -1215,12 +1222,21 @@ export default function LeadDetailPage() {
     setShowTaskDialog(true);
   };
   
+  // Handle editing a task
+  const handleEditTask = (task: Task) => {
+    // Set the task to be edited
+    setEditingTask(task);
+    // Open the dialog
+    setShowTaskDialog(true);
+  };
+  
   // Handle saving a task
   const handleSaveTask = () => {
     const lead = mockLeadDetails[leadId];
     if (lead && newTask.title) {
       if (editingTask) {
         // Update existing task
+        console.log('Updating existing task:', editingTask.id, 'with data:', newTask);
         const taskIndex = lead.tasks.findIndex((t: Task) => t.id === editingTask.id);
         if (taskIndex !== -1) {
           lead.tasks[taskIndex] = {
@@ -1235,6 +1251,7 @@ export default function LeadDetailPage() {
         }
       } else {
         // Add new task
+        console.log('Adding new task with data:', newTask);
         const newTaskWithId: Task = {
           id: `task-${Date.now()}`,
           title: newTask.title,
@@ -1331,6 +1348,7 @@ export default function LeadDetailPage() {
         onAddToCampaign={handleAddToCampaign}
         onAddNote={handleAddNote}
         onAddTask={handleAddTask}
+        onEditTask={handleEditTask}
         onStatusChange={handleStatusChange}
         activeTab={activeTab}
         setActiveTab={setActiveTab}
@@ -1505,8 +1523,8 @@ export default function LeadDetailPage() {
             <DialogTitle>{editingTask ? 'Edit Task' : 'Add Task'}</DialogTitle>
             <DialogDescription>
               {editingTask 
-                ? "Update the task details. Click save when you're done."
-                : "Create a new task for this lead. Click save when you're done."}
+                ? "Update the task details below. All changes will be saved when you click 'Update Task'."
+                : "Create a new task for this lead. Click 'Add Task' when you're done."}
             </DialogDescription>
           </DialogHeader>
           
