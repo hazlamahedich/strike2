@@ -53,8 +53,53 @@ export const getLead = async (
 };
 
 // Create a new lead
-export const createLead = async (leadData: LeadCreate): Promise<Lead> => {
-  return apiClient.post<Lead>(BASE_URL, leadData);
+export const createLead = async (
+  leadData: LeadCreate, 
+  handleDuplicates: string = 'skip'
+): Promise<Lead> => {
+  const params = new URLSearchParams();
+  params.append('handle_duplicates', handleDuplicates);
+  
+  return apiClient.post<Lead>(`${BASE_URL}?${params.toString()}`, leadData);
+};
+
+// Bulk create leads
+export const bulkCreateLeads = async (
+  leads: LeadCreate[],
+  handleDuplicates: string = 'skip',
+  campaignIds?: number[]
+): Promise<any> => {
+  const importData: LeadImport = {
+    data: leads.map(lead => {
+      // Convert each lead to a plain object
+      const leadObj: Record<string, any> = {};
+      Object.entries(lead).forEach(([key, value]) => {
+        if (value !== undefined) {
+          leadObj[key] = value;
+        }
+      });
+      return leadObj;
+    }),
+    field_mapping: {
+      // Direct mapping (field name in API = field name in CSV)
+      first_name: 'first_name',
+      last_name: 'last_name',
+      email: 'email',
+      phone: 'phone',
+      company: 'company',
+      title: 'title',
+      source: 'source',
+      status: 'status',
+      notes: 'notes',
+      linkedin_url: 'linkedin_url',
+      facebook_url: 'facebook_url',
+      twitter_url: 'twitter_url'
+    },
+    handle_duplicates: handleDuplicates,
+    campaign_ids: campaignIds
+  };
+  
+  return apiClient.post<any>(`${BASE_URL}/bulk`, importData);
 };
 
 // Update an existing lead

@@ -33,6 +33,9 @@ class LeadBase(BaseModel):
     owner_id: Optional[int] = None
     team_id: Optional[int] = None
     custom_fields: Dict[str, Any] = Field(default_factory=dict)
+    linkedin_url: Optional[str] = None
+    facebook_url: Optional[str] = None
+    twitter_url: Optional[str] = None
 
 class LeadCreate(LeadBase):
     campaign_ids: Optional[List[int]] = None  # Optional list of campaign IDs to associate with the lead
@@ -54,6 +57,9 @@ class LeadUpdate(BaseModel):
     add_to_campaigns: Optional[List[int]] = None
     # New field for removing the lead from campaigns
     remove_from_campaigns: Optional[List[int]] = None
+    linkedin_url: Optional[str] = None
+    facebook_url: Optional[str] = None
+    twitter_url: Optional[str] = None
 
 class Lead(LeadBase):
     id: int

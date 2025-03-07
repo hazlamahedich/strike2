@@ -9,6 +9,7 @@ import { LeadKanban } from '../../components/leads/LeadKanban';
 import { LeadCreateDialog } from '../../components/leads/LeadCreateDialog';
 import { LeadViewDialog } from '../../components/leads/LeadViewDialog';
 import { LeadEditDialog } from '../../components/leads/LeadEditDialog';
+import { LeadBulkUploadDialog } from '../../components/leads/LeadBulkUploadDialog';
 import { useToast } from '../../components/ui/use-toast';
 import { Toaster } from '../../components/ui/toaster';
 import { Plus, Filter, Download, Upload, MoreHorizontal, RefreshCcw, Settings, FileText, Sparkles } from 'lucide-react';
@@ -35,6 +36,7 @@ export default function LeadsPage() {
   const [editDialogOpen, setEditDialogOpen] = useState(false);
   const [emailDialogOpen, setEmailDialogOpen] = useState(false);
   const [testDialogOpen, setTestDialogOpen] = useState(false);
+  const [bulkUploadDialogOpen, setBulkUploadDialogOpen] = useState(false);
   const [selectedLeadId, setSelectedLeadId] = useState<string | null>(null);
   const [selectedLead, setSelectedLead] = useState<any>(null);
   const [activeTab, setActiveTab] = useState('table');
@@ -155,11 +157,7 @@ export default function LeadsPage() {
   };
 
   const handleImportLeads = () => {
-    toast({
-      title: 'Import Leads',
-      description: 'Opening lead import interface',
-    });
-    // Implementation for importing leads
+    setBulkUploadDialogOpen(true);
   };
 
   const handleExportLeads = () => {
@@ -201,6 +199,15 @@ export default function LeadsPage() {
     
     setEmailDialogOpen(false);
     setSelectedLead(null);
+  };
+
+  const handleBulkUploadSuccess = () => {
+    setBulkUploadDialogOpen(false);
+    refetch();
+    toast({
+      title: 'Leads Imported',
+      description: 'Leads have been successfully imported',
+    });
   };
 
   // Render content based on loading/error state
@@ -374,26 +381,28 @@ export default function LeadsPage() {
         onSuccess={handleCreateSuccess}
       />
       
-      {selectedLeadId && (
-        <>
-          <LeadViewDialog
-            leadId={selectedLeadId}
-            isOpen={viewDialogOpen}
-            onClose={() => setViewDialogOpen(false)}
-            onEdit={handleEditLead}
-            onSendEmail={handleSendEmail}
-            onScheduleMeeting={handleScheduleMeeting}
-            onCallLead={handleCallLead}
-          />
-          
-          <LeadEditDialog
-            leadId={selectedLeadId}
-            isOpen={editDialogOpen}
-            onClose={() => setEditDialogOpen(false)}
-            onSuccess={handleUpdateSuccess}
-          />
-        </>
-      )}
+      <LeadViewDialog
+        isOpen={viewDialogOpen}
+        onClose={() => setViewDialogOpen(false)}
+        leadId={selectedLeadId || ''}
+        onEdit={handleEditLead}
+        onSendEmail={handleSendEmail}
+        onScheduleMeeting={handleScheduleMeeting}
+        onCallLead={handleCallLead}
+      />
+      
+      <LeadEditDialog
+        isOpen={editDialogOpen}
+        onClose={() => setEditDialogOpen(false)}
+        leadId={selectedLeadId || ''}
+        onSuccess={handleUpdateSuccess}
+      />
+      
+      <LeadBulkUploadDialog
+        isOpen={bulkUploadDialogOpen}
+        onClose={() => setBulkUploadDialogOpen(false)}
+        onSuccess={handleBulkUploadSuccess}
+      />
       
       {/* Email Dialog */}
       <Dialog 

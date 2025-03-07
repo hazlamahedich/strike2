@@ -56,4 +56,8 @@ export interface LeadFormValues {
   notes?: string;
   owner_id?: string;
   custom_fields?: Record<string, any>;
+  linkedin_url?: string;
+  facebook_url?: string;
+  twitter_url?: string;
+  campaign_id?: string;
 } 

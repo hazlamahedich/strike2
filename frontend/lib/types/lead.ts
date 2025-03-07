@@ -45,6 +45,9 @@ export interface Lead {
   created_at: string;
   updated_at: string;
   full_name: string;
+  linkedin_url?: string;
+  facebook_url?: string;
+  twitter_url?: string;
 }
 
 export interface LeadDetail extends Lead {
@@ -72,6 +75,9 @@ export interface LeadCreate {
   team_id?: number;
   custom_fields: Record<string, any>;
   campaign_ids?: number[];
+  linkedin_url?: string;
+  facebook_url?: string;
+  twitter_url?: string;
 }
 
 export interface LeadUpdate {
@@ -89,6 +95,9 @@ export interface LeadUpdate {
   lead_score?: number;
   add_to_campaigns?: number[];
   remove_from_campaigns?: number[];
+  linkedin_url?: string;
+  facebook_url?: string;
+  twitter_url?: string;
 }
 
 export interface LeadFilter {

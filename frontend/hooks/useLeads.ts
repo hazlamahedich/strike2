@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
 import { useToast } from '../components/ui/use-toast';
-import { Lead, LeadCreate, LeadUpdate, LeadFormValues } from '../types/lead';
+import { Lead, LeadCreate as FrontendLeadCreate, LeadUpdate, LeadFormValues } from '../types/lead';
+import { createLead as apiCreateLead, bulkCreateLeads as apiBulkCreateLeads } from '../lib/api/leads';
 
 // Mock data for development
 const mockLeads: Lead[] = [
@@ -163,34 +164,59 @@ export function useLeads() {
 export function useCreateLead() {
   const { toast } = useToast();
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [duplicateFound, setDuplicateFound] = useState(false);
+  const [duplicateHandling, setDuplicateHandling] = useState<'skip' | 'update' | 'create_new'>('skip');
 
-  const createLead = async (leadData: LeadFormValues): Promise<Lead | null> => {
+  const createLead = async (
+    leadData: LeadFormValues, 
+    handleDuplicates: 'skip' | 'update' | 'create_new' = 'skip'
+  ): Promise<Lead | null> => {
     try {
       setIsSubmitting(true);
+      setDuplicateFound(false);
       
-      // In a real app, this would be an API call
-      // const response = await fetch('/api/leads', {
-      //   method: 'POST',
-      //   headers: {
-      //     'Content-Type': 'application/json',
-      //   },
-      //   body: JSON.stringify(leadData),
-      // });
-      // const data = await response.json();
-      
-      // Simulate API call
-      await new Promise(resolve => setTimeout(resolve, 1000));
-      
-      // Create a new lead with mock data
-      const newLead: Lead = {
-        id: `new-${Date.now()}`,
-        ...leadData,
-        created_at: new Date().toISOString(),
-        updated_at: new Date().toISOString(),
+      // Map frontend form values to API model
+      const apiLeadData = {
+        first_name: leadData.first_name,
+        last_name: leadData.last_name,
+        email: leadData.email || undefined,
+        phone: leadData.phone || undefined,
+        company: leadData.company_name || undefined,
+        title: leadData.job_title || undefined,
+        source: leadData.source || 'website',
+        status: leadData.status || 'new',
+        owner_id: leadData.owner_id ? leadData.owner_id : undefined,
+        custom_fields: leadData.custom_fields || {},
+        linkedin_url: leadData.linkedin_url || undefined,
+        facebook_url: leadData.facebook_url || undefined,
+        twitter_url: leadData.twitter_url || undefined,
+        campaign_ids: leadData.campaign_id ? [leadData.campaign_id] : undefined
       };
       
-      setIsSubmitting(false);
-      return newLead;
+      // Call the API
+      try {
+        const newLead = await apiCreateLead(apiLeadData as any, handleDuplicates);
+        
+        // Convert API response to frontend model
+        const frontendLead: Lead = {
+          ...newLead,
+          id: String(newLead.id),
+          company_name: newLead.company || '',
+          job_title: newLead.title || '',
+          owner_id: newLead.owner_id ? String(newLead.owner_id) : undefined
+        };
+        
+        setIsSubmitting(false);
+        return frontendLead;
+      } catch (error: any) {
+        // Check if the error is due to a duplicate
+        if (error.response && error.response.status === 409) {
+          setDuplicateFound(true);
+          setDuplicateHandling('skip'); // Reset to default
+          throw new Error('Duplicate lead found');
+        }
+        throw error;
+      }
     } catch (error) {
       setIsSubmitting(false);
       toast({
@@ -205,6 +231,9 @@ export function useCreateLead() {
   return {
     createLead,
     isSubmitting,
+    duplicateFound,
+    duplicateHandling,
+    setDuplicateHandling
   };
 }
 
@@ -298,5 +327,58 @@ export function useGetLead() {
     isLoading,
     error,
     fetchLead,
+  };
+}
+
+export function useBulkCreateLeads() {
+  const { toast } = useToast();
+  const [isSubmitting, setIsSubmitting] = useState(false);
+
+  const bulkCreateLeads = async (
+    leadsData: LeadFormValues[], 
+    duplicateHandling: 'skip' | 'update' | 'create_new' = 'skip',
+    campaignId?: string
+  ): Promise<boolean> => {
+    try {
+      setIsSubmitting(true);
+      
+      // Map frontend form values to API model
+      const apiLeadsData = leadsData.map(leadData => ({
+        first_name: leadData.first_name,
+        last_name: leadData.last_name,
+        email: leadData.email || undefined,
+        phone: leadData.phone || undefined,
+        company: leadData.company_name || undefined,
+        title: leadData.job_title || undefined,
+        source: leadData.source || 'website',
+        status: leadData.status || 'new',
+        owner_id: leadData.owner_id ? leadData.owner_id : undefined,
+        custom_fields: leadData.custom_fields || {},
+        linkedin_url: leadData.linkedin_url || undefined,
+        facebook_url: leadData.facebook_url || undefined,
+        twitter_url: leadData.twitter_url || undefined,
+        campaign_ids: leadData.campaign_id ? [leadData.campaign_id] : undefined
+      }));
+      
+      // Call the API
+      const campaignIds = campaignId ? [parseInt(campaignId)] : undefined;
+      const result = await apiBulkCreateLeads(apiLeadsData as any, duplicateHandling, campaignIds);
+      
+      setIsSubmitting(false);
+      return result.success;
+    } catch (error) {
+      setIsSubmitting(false);
+      toast({
+        title: 'Error',
+        description: 'Failed to create leads. Please try again.',
+        variant: 'destructive',
+      });
+      return false;
+    }
+  };
+
+  return {
+    bulkCreateLeads,
+    isSubmitting,
   };
 } 

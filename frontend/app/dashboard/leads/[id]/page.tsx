@@ -1461,7 +1461,7 @@ export default function LeadDetailPage() {
                       <SelectValue placeholder="Select campaign" />
                     </SelectTrigger>
                     <SelectContent>
-                      <SelectItem value="">Unassigned</SelectItem>
+                      <SelectItem value="unassigned">Unassigned</SelectItem>
                       {mockCampaigns.map(campaign => (
                         <SelectItem key={campaign.id} value={campaign.id}>
                           {campaign.name}

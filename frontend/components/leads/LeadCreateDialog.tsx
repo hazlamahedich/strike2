@@ -4,6 +4,7 @@ import {
   DialogContent,
   DialogHeader,
   DialogTitle,
+  DialogDescription,
 } from '../ui/dialog';
 import { useCreateLead } from '../../hooks/useLeads';
 import { useToast } from '../ui/use-toast';
@@ -54,7 +55,10 @@ export function LeadCreateDialog({
     <Dialog open={isOpen} onOpenChange={onClose}>
       <DialogContent className="sm:max-w-[600px]">
         <DialogHeader>
-          <DialogTitle>Create New Lead</DialogTitle>
+          <DialogTitle>Add New Lead</DialogTitle>
+          <DialogDescription>
+            Enter the details of the new lead. Required fields are marked with an asterisk (*).
+          </DialogDescription>
         </DialogHeader>
         
         <LeadForm

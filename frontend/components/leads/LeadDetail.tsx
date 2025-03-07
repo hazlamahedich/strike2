@@ -19,7 +19,10 @@ import {
   MessageSquare, 
   Activity, 
   BarChart, 
-  Trash 
+  Trash,
+  Linkedin,
+  Facebook,
+  Twitter
 } from 'lucide-react';
 import { formatDistanceToNow } from 'date-fns';
 import { LeadDetail as LeadDetailType, LeadSource, LeadStatus } from '../../lib/types/lead';
@@ -217,6 +220,67 @@ const LeadDetail: React.FC<LeadDetailProps> = ({
           </CardContent>
         </Card>
       </div>
+      
+      {/* Social Media Profiles */}
+      <Card className="mt-4">
+        <CardHeader className="pb-2">
+          <CardTitle className="text-sm font-medium">Social Media Profiles</CardTitle>
+        </CardHeader>
+        <CardContent>
+          <div className="flex flex-wrap gap-4">
+            {lead.linkedin_url ? (
+              <a 
+                href={lead.linkedin_url} 
+                target="_blank" 
+                rel="noopener noreferrer"
+                className="flex items-center text-blue-600 hover:underline"
+              >
+                <Linkedin className="mr-2 h-5 w-5" />
+                LinkedIn Profile
+              </a>
+            ) : (
+              <span className="flex items-center text-muted-foreground">
+                <Linkedin className="mr-2 h-5 w-5" />
+                No LinkedIn Profile
+              </span>
+            )}
+            
+            {lead.facebook_url ? (
+              <a 
+                href={lead.facebook_url} 
+                target="_blank" 
+                rel="noopener noreferrer"
+                className="flex items-center text-blue-600 hover:underline"
+              >
+                <Facebook className="mr-2 h-5 w-5" />
+                Facebook Profile
+              </a>
+            ) : (
+              <span className="flex items-center text-muted-foreground">
+                <Facebook className="mr-2 h-5 w-5" />
+                No Facebook Profile
+              </span>
+            )}
+            
+            {lead.twitter_url ? (
+              <a 
+                href={lead.twitter_url} 
+                target="_blank" 
+                rel="noopener noreferrer"
+                className="flex items-center text-blue-600 hover:underline"
+              >
+                <Twitter className="mr-2 h-5 w-5" />
+                Twitter Profile
+              </a>
+            ) : (
+              <span className="flex items-center text-muted-foreground">
+                <Twitter className="mr-2 h-5 w-5" />
+                No Twitter Profile
+              </span>
+            )}
+          </div>
+        </CardContent>
+      </Card>
       
       <div className="flex flex-wrap gap-2">
         <Button onClick={handleSendEmail}>

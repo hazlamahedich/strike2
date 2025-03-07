@@ -63,7 +63,7 @@ export function LeadForm({
       company_name: lead?.company_name || '',
       job_title: lead?.job_title || '',
       status: lead?.status || 'New',
-      source: lead?.source || '',
+      source: lead?.source || 'Website',
       notes: lead?.notes || '',
       owner_id: lead?.owner_id || '',
       custom_fields: lead?.custom_fields || {},
@@ -167,7 +167,7 @@ export function LeadForm({
                 <FormLabel>Status</FormLabel>
                 <Select
                   onValueChange={field.onChange}
-                  defaultValue={field.value}
+                  defaultValue={field.value || 'New'}
                 >
                   <FormControl>
                     <SelectTrigger>
@@ -196,7 +196,7 @@ export function LeadForm({
                 <FormLabel>Source</FormLabel>
                 <Select
                   onValueChange={field.onChange}
-                  defaultValue={field.value}
+                  defaultValue={field.value || 'Website'}
                 >
                   <FormControl>
                     <SelectTrigger>

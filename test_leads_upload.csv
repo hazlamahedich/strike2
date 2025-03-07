@@ -1,0 +1,11 @@
+first_name,last_name,email,phone,company,title,source,status,linkedin_url,facebook_url,twitter_url,notes,campaign_id
+John,Doe,john.doe@example.com,555-123-4567,Acme Inc,CEO,linkedin,new,https://linkedin.com/in/johndoe,https://facebook.com/johndoe,https://twitter.com/johndoe,Potential enterprise client,1
+Jane,Smith,jane.smith@example.com,555-987-6543,Tech Solutions,CTO,referral,contacted,https://linkedin.com/in/janesmith,,,Met at TechConf 2023,1
+Michael,Johnson,michael.j@example.com,555-456-7890,Global Services,Director,email_campaign,qualified,https://linkedin.com/in/michaelj,https://facebook.com/mjohnson,,Interested in premium plan,2
+Sarah,Williams,sarah.w@example.com,555-789-0123,Innovate LLC,VP Sales,website,proposal,https://linkedin.com/in/sarahw,,,Requested demo last week,
+Robert,Brown,robert.b@example.com,555-234-5678,NextGen Corp,Manager,event,negotiation,https://linkedin.com/in/robertb,https://facebook.com/rbrown,https://twitter.com/rbrown,Follow up on pricing discussion,3
+Emily,Davis,emily.d@example.com,555-345-6789,Future Tech,Developer,cold_call,new,,,,New contact from cold outreach,2
+David,Miller,david.m@example.com,555-456-7890,Smart Solutions,Analyst,website,contacted,https://linkedin.com/in/davidm,,,Downloaded whitepaper,1
+Lisa,Wilson,lisa.w@example.com,555-567-8901,Growth Inc,Marketing,referral,qualified,https://linkedin.com/in/lisaw,https://facebook.com/lwilson,https://twitter.com/lwilson,Referred by John Doe,3
+James,Taylor,james.t@example.com,555-678-9012,Advance Corp,CFO,linkedin,proposal,https://linkedin.com/in/jamest,,,Interested in enterprise solution,2
+Amanda,Anderson,amanda.a@example.com,555-789-0123,Bright Ideas,CEO,event,new,https://linkedin.com/in/amandaa,https://facebook.com/aanderson,,Met at industry conference,1 
