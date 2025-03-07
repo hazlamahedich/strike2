@@ -17,7 +17,7 @@ export const leadKeys = {
   details: () => [...leadKeys.all, 'detail'] as const,
   detail: (id: number) => [...leadKeys.details(), id] as const,
   campaigns: (id: number) => [...leadKeys.detail(id), 'campaigns'] as const,
-  timeline: (id: number) => [...leadKeys.detail(id), 'timeline'] as const,
+  timeline: (id: number, interactionTypes?: string[]) => [...leadKeys.detail(id), 'timeline', ...(interactionTypes || [])] as const,
   insights: (id: number) => [...leadKeys.detail(id), 'insights'] as const,
 };
 
@@ -129,10 +129,14 @@ export const useExportLeads = () => {
 };
 
 // Get lead timeline
-export const useLeadTimeline = (leadId: number, limit: number = 20) => {
+export const useLeadTimeline = (
+  leadId: number, 
+  limit: number = 20,
+  interactionTypes?: string[]
+) => {
   return useQuery({
-    queryKey: leadKeys.timeline(leadId),
-    queryFn: () => leadApi.getLeadTimeline(leadId, limit),
+    queryKey: leadKeys.timeline(leadId, interactionTypes),
+    queryFn: () => leadApi.getLeadTimeline(leadId, limit, interactionTypes),
     enabled: !!leadId,
   });
 };

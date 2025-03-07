@@ -254,10 +254,20 @@ async def export_leads(
 async def get_lead_timeline(
     lead_id: int,
     limit: int = 20,
+    interaction_types: Optional[List[str]] = Query(None, description="Filter by interaction types (email, call, note, task, meeting, sms, activity)"),
     current_user: User = Depends(get_current_active_user),
 ) -> Any:
     """
     Get timeline of all interactions with a lead.
+    
+    Optionally filter by interaction types:
+    - email: Email communications
+    - call: Phone calls
+    - note: Notes
+    - task: Tasks
+    - meeting: Meetings
+    - sms: SMS messages
+    - activity: General activities (status changes, etc.)
     """
     # Check access to lead
     lead = await lead_service.get_lead_by_id(lead_id)
@@ -283,7 +293,7 @@ async def get_lead_timeline(
                 detail="Not enough permissions"
             )
     
-    timeline = await lead_service.get_lead_timeline(lead_id, limit=limit)
+    timeline = await lead_service.get_lead_timeline(lead_id, limit=limit, interaction_types=interaction_types)
     return timeline
 
 @router.get("/{lead_id}/campaigns", response_model=List[Dict[str, Any]])

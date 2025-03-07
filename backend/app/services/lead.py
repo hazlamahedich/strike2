@@ -302,9 +302,22 @@ async def get_lead_detail(lead_id: int, include_campaign_data: bool = True) -> L
         campaigns=campaigns
     )
 
-async def get_lead_timeline(lead_id: int, limit: int = 20) -> List[Dict[str, Any]]:
+async def get_lead_timeline(
+    lead_id: int, 
+    limit: int = 20, 
+    interaction_types: Optional[List[str]] = None
+) -> List[Dict[str, Any]]:
     """
     Get a timeline of all interactions with a lead.
+    
+    Args:
+        lead_id: ID of the lead
+        limit: Maximum number of items to return
+        interaction_types: Optional list of interaction types to filter by
+                          (e.g., ["email", "call", "note", "task", "meeting", "sms", "activity"])
+    
+    Returns:
+        List of timeline events sorted by timestamp (newest first)
     """
     # Get all relevant activities
     activities = await fetch_all("activities", {"lead_id": lead_id}, limit=limit, order_by={"created_at": "desc"})
@@ -320,101 +333,156 @@ async def get_lead_timeline(lead_id: int, limit: int = 20) -> List[Dict[str, Any
     # Build the timeline
     timeline = []
     
+    # Get user information for all user IDs
+    user_ids = set()
+    for collection in [activities, emails, calls, sms, meetings, notes, tasks]:
+        for item in collection:
+            user_id = item.get("user_id") or item.get("created_by")
+            if user_id:
+                user_ids.add(user_id)
+    
+    # Fetch user information
+    users = {}
+    for user_id in user_ids:
+        user_data = await fetch_one("users", {"id": user_id})
+        if user_data:
+            users[user_id] = {
+                "id": user_data["id"],
+                "name": user_data["name"],
+                "email": user_data["email"],
+                "avatar": user_data.get("avatar_url")
+            }
+    
     # Add activities
-    for activity in activities:
-        timeline.append({
-            "type": "activity",
-            "subtype": activity["activity_type"],
-            "timestamp": activity["created_at"].isoformat() if isinstance(activity["created_at"], datetime) else activity["created_at"],
-            "data": activity["metadata"],
-            "user_id": activity["user_id"]
-        })
+    if not interaction_types or "activity" in interaction_types:
+        for activity in activities:
+            user_id = activity["user_id"]
+            timeline.append({
+                "type": "activity",
+                "subtype": activity["activity_type"],
+                "timestamp": activity["created_at"].isoformat() if isinstance(activity["created_at"], datetime) else activity["created_at"],
+                "data": activity["metadata"],
+                "user_id": user_id,
+                "user": users.get(user_id),
+                "full_content": activity["metadata"],
+                "has_expanded_view": False
+            })
     
     # Add emails
-    for email in emails:
-        timeline.append({
-            "type": "email",
-            "subtype": "sent" if email["status"] in ["sent", "delivered", "opened", "clicked"] else "draft",
-            "timestamp": (email["sent_at"] or email["created_at"]).isoformat() if isinstance(email.get("sent_at") or email["created_at"], datetime) else (email.get("sent_at") or email["created_at"]),
-            "data": {
-                "subject": email["subject"],
-                "body_preview": email["body"][:100] + "..." if len(email["body"]) > 100 else email["body"],
-                "status": email["status"],
-                "sentiment_score": email.get("sentiment_score")
-            },
-            "user_id": email["user_id"]
-        })
+    if not interaction_types or "email" in interaction_types:
+        for email in emails:
+            user_id = email["user_id"]
+            timeline.append({
+                "type": "email",
+                "subtype": "sent" if email["status"] in ["sent", "delivered", "opened", "clicked"] else "draft",
+                "timestamp": (email["sent_at"] or email["created_at"]).isoformat() if isinstance(email.get("sent_at") or email["created_at"], datetime) else (email.get("sent_at") or email["created_at"]),
+                "data": {
+                    "subject": email["subject"],
+                    "body_preview": email["body"][:100] + "..." if len(email["body"]) > 100 else email["body"],
+                    "status": email["status"],
+                    "sentiment_score": email.get("sentiment_score")
+                },
+                "user_id": user_id,
+                "user": users.get(user_id),
+                "full_content": email["body"],
+                "has_expanded_view": len(email["body"]) > 100
+            })
     
     # Add calls
-    for call in calls:
-        timeline.append({
-            "type": "call",
-            "subtype": call["direction"],
-            "timestamp": (call["call_time"] or call["created_at"]).isoformat(),
-            "data": {
-                "duration": call["duration"],
-                "status": call["status"],
-                "notes": call["notes"],
-                "sentiment_score": call.get("sentiment_score")
-            },
-            "user_id": call["user_id"]
-        })
+    if not interaction_types or "call" in interaction_types:
+        for call in calls:
+            user_id = call["user_id"]
+            timeline.append({
+                "type": "call",
+                "subtype": call["direction"],
+                "timestamp": (call["call_time"] or call["created_at"]).isoformat(),
+                "data": {
+                    "duration": call["duration"],
+                    "status": call["status"],
+                    "notes": call["notes"],
+                    "sentiment_score": call.get("sentiment_score")
+                },
+                "user_id": user_id,
+                "user": users.get(user_id),
+                "full_content": call["notes"],
+                "has_expanded_view": call["notes"] and len(call["notes"]) > 100
+            })
     
     # Add SMS
-    for msg in sms:
-        timeline.append({
-            "type": "sms",
-            "subtype": "sent" if msg["status"] in ["sent", "delivered"] else "draft",
-            "timestamp": (msg["sent_at"] or msg["created_at"]).isoformat(),
-            "data": {
-                "body_preview": msg["body"][:100] + "..." if len(msg["body"]) > 100 else msg["body"],
-                "status": msg["status"],
-                "sentiment_score": msg.get("sentiment_score")
-            },
-            "user_id": msg["user_id"]
-        })
+    if not interaction_types or "sms" in interaction_types:
+        for msg in sms:
+            user_id = msg["user_id"]
+            timeline.append({
+                "type": "sms",
+                "subtype": "sent" if msg["status"] in ["sent", "delivered"] else "draft",
+                "timestamp": (msg["sent_at"] or msg["created_at"]).isoformat(),
+                "data": {
+                    "body_preview": msg["body"][:100] + "..." if len(msg["body"]) > 100 else msg["body"],
+                    "status": msg["status"],
+                    "sentiment_score": msg.get("sentiment_score")
+                },
+                "user_id": user_id,
+                "user": users.get(user_id),
+                "full_content": msg["body"],
+                "has_expanded_view": len(msg["body"]) > 100
+            })
     
     # Add meetings
-    for meeting in meetings:
-        timeline.append({
-            "type": "meeting",
-            "subtype": meeting["status"],
-            "timestamp": meeting["start_time"].isoformat(),
-            "data": {
-                "title": meeting["title"],
-                "description": meeting["description"],
-                "location": meeting["location"],
-                "end_time": meeting["end_time"].isoformat()
-            },
-            "user_id": meeting["created_by"]
-        })
+    if not interaction_types or "meeting" in interaction_types:
+        for meeting in meetings:
+            user_id = meeting["created_by"]
+            timeline.append({
+                "type": "meeting",
+                "subtype": meeting["status"],
+                "timestamp": meeting["start_time"].isoformat(),
+                "data": {
+                    "title": meeting["title"],
+                    "description": meeting["description"],
+                    "location": meeting["location"],
+                    "end_time": meeting["end_time"].isoformat()
+                },
+                "user_id": user_id,
+                "user": users.get(user_id),
+                "full_content": meeting["description"],
+                "has_expanded_view": meeting["description"] and len(meeting["description"]) > 100
+            })
     
     # Add notes
-    for note in notes:
-        timeline.append({
-            "type": "note",
-            "subtype": "note",
-            "timestamp": note["created_at"].isoformat(),
-            "data": {
-                "body": note["body"]
-            },
-            "user_id": note["created_by"]
-        })
+    if not interaction_types or "note" in interaction_types:
+        for note in notes:
+            user_id = note["created_by"]
+            timeline.append({
+                "type": "note",
+                "subtype": "note",
+                "timestamp": note["created_at"].isoformat(),
+                "data": {
+                    "body": note["body"][:100] + "..." if len(note["body"]) > 100 else note["body"]
+                },
+                "user_id": user_id,
+                "user": users.get(user_id),
+                "full_content": note["body"],
+                "has_expanded_view": len(note["body"]) > 100
+            })
     
     # Add tasks
-    for task in tasks:
-        timeline.append({
-            "type": "task",
-            "subtype": task["status"],
-            "timestamp": task["created_at"].isoformat(),
-            "data": {
-                "title": task["title"],
-                "description": task["description"],
-                "due_date": task["due_date"].isoformat() if task["due_date"] else None,
-                "priority": task["priority"]
-            },
-            "user_id": task["created_by"]
-        })
+    if not interaction_types or "task" in interaction_types:
+        for task in tasks:
+            user_id = task["created_by"]
+            timeline.append({
+                "type": "task",
+                "subtype": task["status"],
+                "timestamp": task["created_at"].isoformat(),
+                "data": {
+                    "title": task["title"],
+                    "description": task["description"][:100] + "..." if task["description"] and len(task["description"]) > 100 else task["description"],
+                    "due_date": task["due_date"].isoformat() if task["due_date"] else None,
+                    "priority": task["priority"]
+                },
+                "user_id": user_id,
+                "user": users.get(user_id),
+                "full_content": task["description"],
+                "has_expanded_view": task["description"] and len(task["description"]) > 100
+            })
     
     # Sort by timestamp (newest first)
     timeline.sort(key=lambda x: x["timestamp"], reverse=True)
@@ -640,8 +708,12 @@ class LeadService:
         return await get_lead_detail(lead_id, include_campaign_data)
     
     @staticmethod
-    async def get_lead_timeline(lead_id: int, limit: int = 20) -> List[Dict[str, Any]]:
-        return await get_lead_timeline(lead_id, limit)
+    async def get_lead_timeline(
+        lead_id: int, 
+        limit: int = 20, 
+        interaction_types: Optional[List[str]] = None
+    ) -> List[Dict[str, Any]]:
+        return await get_lead_timeline(lead_id, limit, interaction_types)
     
     @staticmethod
     async def import_leads(

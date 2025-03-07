@@ -22,7 +22,10 @@ import {
   Trash,
   Linkedin,
   Facebook,
-  Twitter
+  Twitter,
+  CheckSquare,
+  Circle,
+  User as UserIcon
 } from 'lucide-react';
 import { formatDistanceToNow } from 'date-fns';
 import { LeadDetail as LeadDetailType, LeadSource, LeadStatus } from '../../lib/types/lead';
@@ -56,12 +59,19 @@ const LeadDetail: React.FC<LeadDetailProps> = ({
   const [activeTab, setActiveTab] = useState('overview');
   const [showEmailDialog, setShowEmailDialog] = useState(false);
   const [showPhoneDialog, setShowPhoneDialog] = useState(false);
+  const [selectedTimelineFilters, setSelectedTimelineFilters] = useState<string[]>([]);
+  const [expandedItems, setExpandedItems] = useState<Record<string, boolean>>({});
+  const [showDebugInfo, setShowDebugInfo] = useState(false); // For debugging purposes
   
   // Fetch lead data
   const { data: lead, isLoading, isError } = useLead(leadId);
   
+  // Debug lead data
+  console.log('Lead data:', lead);
+  console.log('Campaigns data:', lead?.campaigns);
+  
   // Fetch lead timeline
-  const { data: timeline } = useLeadTimeline(leadId);
+  const { data: timeline } = useLeadTimeline(leadId, 20, selectedTimelineFilters.length > 0 ? selectedTimelineFilters : undefined);
   
   // Fetch lead insights
   const { data: insights } = useLeadInsights(leadId);
@@ -123,6 +133,80 @@ const LeadDetail: React.FC<LeadDetailProps> = ({
   
   const handleCall = () => {
     setShowPhoneDialog(true);
+  };
+  
+  // Toggle expanded view for timeline items
+  const toggleExpanded = (index: number) => {
+    setExpandedItems(prev => ({
+      ...prev,
+      [index]: !prev[index]
+    }));
+  };
+  
+  // Get icon for timeline item type
+  const getTimelineIcon = (type: string) => {
+    switch (type) {
+      case 'email':
+        return <Mail className="h-4 w-4 text-blue-500" />;
+      case 'call':
+        return <Phone className="h-4 w-4 text-green-500" />;
+      case 'sms':
+        return <MessageSquare className="h-4 w-4 text-purple-500" />;
+      case 'meeting':
+        return <Calendar className="h-4 w-4 text-orange-500" />;
+      case 'note':
+        return <FileText className="h-4 w-4 text-yellow-500" />;
+      case 'task':
+        return <CheckSquare className="h-4 w-4 text-red-500" />;
+      case 'activity':
+        return <Activity className="h-4 w-4 text-gray-500" />;
+      default:
+        return <Circle className="h-4 w-4" />;
+    }
+  };
+  
+  // Get title for timeline item
+  const getTimelineTitle = (event: any) => {
+    switch (event.type) {
+      case 'email':
+        return `Email: ${event.data.subject || 'No subject'}`;
+      case 'call':
+        return `Call: ${event.subtype} (${event.data.duration || 0} seconds)`;
+      case 'sms':
+        return `SMS: ${event.subtype}`;
+      case 'meeting':
+        return `Meeting: ${event.data.title || 'Untitled'}`;
+      case 'note':
+        return 'Note added';
+      case 'task':
+        return `Task: ${event.data.title || 'Untitled'} (${event.subtype})`;
+      case 'activity':
+        return `Activity: ${event.subtype.replace(/_/g, ' ')}`;
+      default:
+        return 'Interaction';
+    }
+  };
+  
+  // Timeline filter options
+  const timelineFilterOptions = [
+    { value: 'email', label: 'Emails' },
+    { value: 'call', label: 'Calls' },
+    { value: 'sms', label: 'SMS' },
+    { value: 'meeting', label: 'Meetings' },
+    { value: 'note', label: 'Notes' },
+    { value: 'task', label: 'Tasks' },
+    { value: 'activity', label: 'Activities' }
+  ];
+  
+  // Handle timeline filter change
+  const handleTimelineFilterChange = (value: string) => {
+    setSelectedTimelineFilters(prev => {
+      if (prev.includes(value)) {
+        return prev.filter(item => item !== value);
+      } else {
+        return [...prev, value];
+      }
+    });
   };
   
   if (isLoading) {
@@ -391,20 +475,143 @@ const LeadDetail: React.FC<LeadDetailProps> = ({
         
         <TabsContent value="timeline" className="space-y-4">
           <Card>
-            <CardHeader>
-              <CardTitle>Timeline</CardTitle>
-              <CardDescription>All interactions with this lead</CardDescription>
+            <CardHeader className="pb-2">
+              <div className="flex justify-between items-center">
+                <div>
+                  <CardTitle>Timeline</CardTitle>
+                  <CardDescription>All interactions with this lead</CardDescription>
+                </div>
+              </div>
             </CardHeader>
             <CardContent>
+              <div className="mb-4 flex flex-wrap gap-2">
+                {timelineFilterOptions.map(option => (
+                  <Badge 
+                    key={option.value}
+                    variant={selectedTimelineFilters.includes(option.value) ? "default" : "outline"}
+                    className="cursor-pointer"
+                    onClick={() => handleTimelineFilterChange(option.value)}
+                  >
+                    {option.label}
+                  </Badge>
+                ))}
+                {selectedTimelineFilters.length > 0 && (
+                  <Badge 
+                    variant="secondary"
+                    className="cursor-pointer"
+                    onClick={() => setSelectedTimelineFilters([])}
+                  >
+                    Clear filters
+                  </Badge>
+                )}
+              </div>
+              
               {timeline && timeline.length > 0 ? (
                 <div className="space-y-4">
                   {timeline.map((event, index) => (
                     <div key={index} className="flex items-start gap-4 pb-4 border-b last:border-0">
-                      <div className="w-2 h-2 rounded-full bg-blue-500 mt-2"></div>
+                      <div className="mt-1">
+                        {getTimelineIcon(event.type)}
+                      </div>
                       <div className="flex-1">
-                        <p className="font-medium">{event.description}</p>
-                        <p className="text-sm text-muted-foreground">{formatDate(event.timestamp)}</p>
-                        {event.details && <p className="mt-1">{event.details}</p>}
+                        <div className="flex justify-between items-start">
+                          <p className="font-medium">{getTimelineTitle(event)}</p>
+                          {event.has_expanded_view && (
+                            <Button 
+                              variant="ghost" 
+                              size="sm" 
+                              onClick={() => toggleExpanded(index)}
+                              className="h-6 px-2"
+                            >
+                              {expandedItems[index] ? 'Show less' : 'Show more'}
+                            </Button>
+                          )}
+                        </div>
+                        
+                        <div className="flex items-center gap-2 text-sm text-muted-foreground mt-1">
+                          <Calendar className="h-3 w-3" />
+                          <span>{formatDate(event.timestamp)}</span>
+                          
+                          {event.user && (
+                            <>
+                              <span className="mx-1">•</span>
+                              <UserIcon className="h-3 w-3" />
+                              <span>{event.user.name}</span>
+                            </>
+                          )}
+                        </div>
+                        
+                        {/* Content preview or full content */}
+                        <div className="mt-2">
+                          {event.type === 'email' && (
+                            <>
+                              <p className="text-sm font-medium">Subject: {event.data.subject}</p>
+                              <p className="text-sm mt-1">
+                                {expandedItems[index] ? event.full_content : event.data.body_preview}
+                              </p>
+                            </>
+                          )}
+                          
+                          {event.type === 'call' && (
+                            <>
+                              <p className="text-sm">Duration: {event.data.duration} seconds</p>
+                              {event.data.notes && (
+                                <p className="text-sm mt-1">
+                                  Notes: {expandedItems[index] ? event.full_content : event.data.notes}
+                                </p>
+                              )}
+                            </>
+                          )}
+                          
+                          {event.type === 'sms' && (
+                            <p className="text-sm">
+                              {expandedItems[index] ? event.full_content : event.data.body_preview}
+                            </p>
+                          )}
+                          
+                          {event.type === 'meeting' && (
+                            <>
+                              <p className="text-sm">Location: {event.data.location}</p>
+                              {event.data.description && (
+                                <p className="text-sm mt-1">
+                                  {expandedItems[index] ? event.full_content : event.data.description}
+                                </p>
+                              )}
+                            </>
+                          )}
+                          
+                          {event.type === 'note' && (
+                            <p className="text-sm">
+                              {expandedItems[index] ? event.full_content : event.data.body}
+                            </p>
+                          )}
+                          
+                          {event.type === 'task' && (
+                            <>
+                              <div className="flex items-center gap-2">
+                                <p className="text-sm font-medium">{event.data.title}</p>
+                                <Badge variant={event.subtype === 'completed' ? 'success' : 'secondary'}>
+                                  {event.subtype}
+                                </Badge>
+                              </div>
+                              {event.data.description && (
+                                <p className="text-sm mt-1">
+                                  {expandedItems[index] ? event.full_content : event.data.description}
+                                </p>
+                              )}
+                            </>
+                          )}
+                          
+                          {event.type === 'activity' && (
+                            <div>
+                              {Object.entries(event.data).map(([key, value]) => (
+                                <p key={key} className="text-sm">
+                                  <span className="font-medium">{key.replace(/_/g, ' ')}:</span> {String(value)}
+                                </p>
+                              ))}
+                            </div>
+                          )}
+                        </div>
                       </div>
                     </div>
                   ))}
@@ -455,24 +662,209 @@ const LeadDetail: React.FC<LeadDetailProps> = ({
                 <CardTitle>Campaigns</CardTitle>
                 <CardDescription>Campaigns this lead is part of</CardDescription>
               </div>
-              <Button size="sm" onClick={onAddToCampaign}>
-                <Tag className="mr-2 h-4 w-4" /> Add to Campaign
-              </Button>
+              <div className="flex gap-2">
+                <Button size="sm" onClick={onAddToCampaign}>
+                  <Tag className="mr-2 h-4 w-4" /> Add to Campaign
+                </Button>
+                {/* Debug button - only visible in development */}
+                {process.env.NODE_ENV === 'development' && (
+                  <Button 
+                    size="sm" 
+                    variant="outline" 
+                    onClick={() => setShowDebugInfo(!showDebugInfo)}
+                  >
+                    {showDebugInfo ? 'Hide Debug' : 'Debug'}
+                  </Button>
+                )}
+              </div>
             </CardHeader>
             <CardContent>
+              {/* Debug information */}
+              {showDebugInfo && lead.campaigns && (
+                <div className="mb-4 p-4 bg-gray-100 rounded overflow-auto max-h-60">
+                  <h4 className="font-medium mb-2">Raw Campaign Data:</h4>
+                  <pre className="text-xs">
+                    {JSON.stringify(lead.campaigns, null, 2)}
+                  </pre>
+                </div>
+              )}
+              
               {lead.campaigns && lead.campaigns.length > 0 ? (
-                <div className="space-y-4">
-                  {lead.campaigns.map((campaign, index) => (
-                    <div key={index} className="flex items-start gap-4 pb-4 border-b last:border-0">
-                      <div className="flex-1">
-                        <p className="font-medium">{campaign.name}</p>
-                        <div className="flex items-center gap-2 mt-1">
-                          <Badge>{campaign.status}</Badge>
-                          <span className="text-sm text-muted-foreground">Added: {formatDate(campaign.added_at)}</span>
+                <div className="space-y-6">
+                  {lead.campaigns.map((campaignData, index) => {
+                    // Simple fallback for when the data is just a string or simple object
+                    if (typeof campaignData === 'string' || (typeof campaignData === 'object' && !campaignData.name && !campaignData.campaign)) {
+                      return (
+                        <div key={index} className="border rounded-lg p-4">
+                          <div className="flex justify-between items-start mb-2">
+                            <div>
+                              <h3 className="font-medium text-lg">
+                                {typeof campaignData === 'string' 
+                                  ? campaignData 
+                                  : campaignData.name || campaignData.campaign?.name || 'Campaign ' + (index + 1)}
+                              </h3>
+                            </div>
+                          </div>
+                          {typeof campaignData === 'object' && (
+                            <pre className="text-xs bg-gray-50 p-2 rounded mt-2 overflow-auto max-h-40">
+                              {JSON.stringify(campaignData, null, 2)}
+                            </pre>
+                          )}
+                        </div>
+                      );
+                    }
+                    
+                    // Handle different possible data structures
+                    let campaignRelation, campaign;
+                    
+                    try {
+                      // Try to determine the structure
+                      if (typeof campaignData === 'object') {
+                        if ('campaign' in campaignData && campaignData.campaign) {
+                          // Structure is { ...relationData, campaign: { ...campaignData } }
+                          campaignRelation = campaignData;
+                          campaign = campaignData.campaign;
+                        } else if ('name' in campaignData) {
+                          // Structure is just the campaign object
+                          campaignRelation = campaignData;
+                          campaign = campaignData;
+                        } else {
+                          // Unknown structure, use as is
+                          campaignRelation = campaignData;
+                          campaign = campaignData;
+                        }
+                      } else {
+                        console.warn('Campaign data is not an object:', campaignData);
+                        return (
+                          <div key={index} className="border border-red-200 rounded-lg p-4 bg-red-50">
+                            <p className="text-red-500">Invalid campaign data format</p>
+                          </div>
+                        );
+                      }
+                      
+                      // Ensure we have a name to display
+                      if (!campaign || !campaign.name) {
+                        console.warn('Campaign data missing name:', campaignData);
+                        return (
+                          <div key={index} className="border border-yellow-200 rounded-lg p-4 bg-yellow-50">
+                            <p className="text-yellow-700">Campaign data missing required fields</p>
+                            <pre className="text-xs mt-2 overflow-auto max-h-20">
+                              {JSON.stringify(campaignData, null, 2)}
+                            </pre>
+                          </div>
+                        );
+                      }
+                    } catch (error) {
+                      console.error('Error processing campaign data:', error, campaignData);
+                      return (
+                        <div key={index} className="border border-red-200 rounded-lg p-4 bg-red-50">
+                          <p className="text-red-500">Error processing campaign data</p>
+                          <p className="text-xs mt-1">{String(error)}</p>
+                        </div>
+                      );
+                    }
+                    
+                    return (
+                      <div key={index} className="border rounded-lg p-4">
+                        <div className="flex justify-between items-start mb-2">
+                          <div>
+                            <h3 className="font-medium text-lg">{campaign.name}</h3>
+                            {campaign.description && (
+                              <p className="text-sm text-muted-foreground mt-1">{campaign.description}</p>
+                            )}
+                          </div>
+                          <div className="flex gap-2">
+                            <Badge variant="outline" className={
+                              campaignRelation.status === 'ACTIVE' ? 'bg-green-100 text-green-800 border-green-300' :
+                              campaignRelation.status === 'COMPLETED' ? 'bg-blue-100 text-blue-800 border-blue-300' :
+                              campaignRelation.status === 'PAUSED' ? 'bg-yellow-100 text-yellow-800 border-yellow-300' :
+                              campaignRelation.status === 'UNSUBSCRIBED' ? 'bg-red-100 text-red-800 border-red-300' :
+                              'bg-gray-100 text-gray-800 border-gray-300'
+                            }>
+                              {campaignRelation.status?.replace(/_/g, ' ')}
+                            </Badge>
+                            {campaign.type && (
+                              <Badge variant="secondary">
+                                {campaign.type?.replace(/_/g, ' ')}
+                              </Badge>
+                            )}
+                          </div>
+                        </div>
+                        
+                        <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mt-4">
+                          <div>
+                            <h4 className="text-xs font-medium text-muted-foreground mb-1">Campaign Status</h4>
+                            <p className="text-sm">{campaign.status?.replace(/_/g, ' ') || 'N/A'}</p>
+                          </div>
+                          <div>
+                            <h4 className="text-xs font-medium text-muted-foreground mb-1">Added On</h4>
+                            <p className="text-sm">{formatDate(campaignRelation.added_at || campaignRelation.created_at)}</p>
+                          </div>
+                          <div>
+                            <h4 className="text-xs font-medium text-muted-foreground mb-1">Last Updated</h4>
+                            <p className="text-sm">{formatDate(campaignRelation.updated_at)}</p>
+                          </div>
+                        </div>
+                        
+                        {(campaign.start_date || campaign.end_date) && (
+                          <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mt-4">
+                            {campaign.start_date && (
+                              <div>
+                                <h4 className="text-xs font-medium text-muted-foreground mb-1">Start Date</h4>
+                                <p className="text-sm">{new Date(campaign.start_date).toLocaleDateString()}</p>
+                              </div>
+                            )}
+                            {campaign.end_date && (
+                              <div>
+                                <h4 className="text-xs font-medium text-muted-foreground mb-1">End Date</h4>
+                                <p className="text-sm">{new Date(campaign.end_date).toLocaleDateString()}</p>
+                              </div>
+                            )}
+                          </div>
+                        )}
+                        
+                        {campaign.metrics && Object.keys(campaign.metrics).length > 0 && (
+                          <div className="mt-4">
+                            <h4 className="text-xs font-medium text-muted-foreground mb-2">Campaign Metrics</h4>
+                            <div className="grid grid-cols-2 md:grid-cols-4 gap-2">
+                              {Object.entries(campaign.metrics).map(([key, value]) => (
+                                <div key={key} className="bg-gray-50 p-2 rounded">
+                                  <p className="text-xs text-muted-foreground">{key.replace(/_/g, ' ')}</p>
+                                  <p className="text-sm font-medium">{String(value)}</p>
+                                </div>
+                              ))}
+                            </div>
+                          </div>
+                        )}
+                        
+                        {campaignRelation.notes && (
+                          <div className="mt-4">
+                            <h4 className="text-xs font-medium text-muted-foreground mb-1">Notes</h4>
+                            <p className="text-sm bg-gray-50 p-2 rounded">{campaignRelation.notes}</p>
+                          </div>
+                        )}
+                        
+                        {/* Interaction metrics specific to this lead in the campaign */}
+                        <div className="mt-4 flex flex-wrap gap-2">
+                          {campaignRelation.open_count !== undefined && (
+                            <div className="bg-blue-50 text-blue-800 px-2 py-1 rounded text-xs">
+                              Opens: {campaignRelation.open_count}
+                            </div>
+                          )}
+                          {campaignRelation.click_count !== undefined && (
+                            <div className="bg-green-50 text-green-800 px-2 py-1 rounded text-xs">
+                              Clicks: {campaignRelation.click_count}
+                            </div>
+                          )}
+                          {campaignRelation.response_count !== undefined && (
+                            <div className="bg-purple-50 text-purple-800 px-2 py-1 rounded text-xs">
+                              Responses: {campaignRelation.response_count}
+                            </div>
+                          )}
                         </div>
                       </div>
-                    </div>
-                  ))}
+                    );
+                  })}
                 </div>
               ) : (
                 <p className="text-muted-foreground">Not part of any campaigns</p>

@@ -155,8 +155,21 @@ export const exportLeads = async (exportConfig: LeadExport): Promise<any> => {
 };
 
 // Get lead timeline
-export const getLeadTimeline = async (leadId: number, limit: number = 20): Promise<any[]> => {
-  return apiClient.get<any[]>(`${BASE_URL}/${leadId}/timeline?limit=${limit}`);
+export const getLeadTimeline = async (
+  leadId: number, 
+  limit: number = 20,
+  interactionTypes?: string[]
+): Promise<any[]> => {
+  const queryParams = new URLSearchParams();
+  queryParams.append('limit', limit.toString());
+  
+  if (interactionTypes && interactionTypes.length > 0) {
+    interactionTypes.forEach(type => {
+      queryParams.append('interaction_types', type);
+    });
+  }
+  
+  return apiClient.get<any[]>(`${BASE_URL}/${leadId}/timeline?${queryParams.toString()}`);
 };
 
 // Get lead campaigns
