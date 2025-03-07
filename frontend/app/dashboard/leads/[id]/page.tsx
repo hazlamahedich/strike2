@@ -47,9 +47,10 @@ import {
 import { cn } from '@/lib/utils';
 import { MeetingDialog } from '@/components/meetings/MeetingDialog';
 import { openMeetingDialog } from '@/lib/utils/dialogUtils';
-import { toast } from '@/components/ui/use-toast';
+import { toast } from 'sonner';
 import { EmailDialog } from '@/components/communications/EmailDialog';
 import { PhoneDialog } from '@/components/communications/PhoneDialog';
+import { NoteDialog } from '../../../../components/leads/NoteDialog';
 
 // Task type definition
 type Task = {
@@ -1024,8 +1025,7 @@ const CustomLeadDetail = ({
         id={`lead-meeting-dialog-${leadId}`} 
         lead={lead}
         onSuccess={() => {
-          toast({
-            title: "Meeting scheduled",
+          toast.success("Meeting scheduled", {
             description: "The meeting has been successfully scheduled.",
           });
         }}
@@ -1319,9 +1319,10 @@ export default function LeadDetailPage() {
     alert(`Adding lead ${leadId} to campaign`);
   };
 
+  const [showNoteDialog, setShowNoteDialog] = useState(false);
+  
   const handleAddNote = () => {
-    // In a real app, open note dialog
-    alert(`Adding note for lead ${leadId}`);
+    setShowNoteDialog(true);
   };
 
   return (
@@ -1657,6 +1658,21 @@ export default function LeadDetailPage() {
           onOpenChange={(open) => setShowPhoneDialog(open)}
           leadPhone={mockLeadDetails[leadId].phone}
           leadName={mockLeadDetails[leadId].full_name}
+        />
+      )}
+
+      {/* Add Note Dialog */}
+      {mockLeadDetails[leadId] && (
+        <NoteDialog
+          open={showNoteDialog}
+          onOpenChange={setShowNoteDialog}
+          leadId={parseInt(leadId)}
+          leadName={mockLeadDetails[leadId].full_name}
+          isMock={true}
+          onSuccess={() => {
+            // In a real app, this would refresh the timeline data
+            toast.success('Note added to timeline');
+          }}
         />
       )}
     </div>

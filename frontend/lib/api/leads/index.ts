@@ -226,4 +226,16 @@ export const bulkAddLeadsToCampaign = async (
 // Get lead insights
 export const getLeadInsights = async (leadId: number): Promise<any> => {
   return apiClient.get<any>(`${BASE_URL}/${leadId}/insights`);
+};
+
+// Add a note to a lead
+export const addLeadNote = async (
+  leadId: number,
+  content: string,
+  isPrivate: boolean = false
+): Promise<any> => {
+  return apiClient.post<any>(`${BASE_URL}/${leadId}/notes`, {
+    content,
+    is_private: isPrivate
+  });
 }; 

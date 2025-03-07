@@ -4,6 +4,7 @@ import "./globals.css";
 import { ThemeProvider } from "@/components/shared/theme-provider";
 import { Toaster } from "sonner";
 import AuthProviderWrapper from "@/components/shared/auth-provider-wrapper";
+import { QueryClientProvider } from "@/components/shared/query-client-provider";
 
 const inter = Inter({ subsets: ["latin"] });
 
@@ -27,8 +28,10 @@ export default function RootLayout({
           disableTransitionOnChange
         >
           <AuthProviderWrapper>
-            {children}
-            <Toaster position="top-right" />
+            <QueryClientProvider>
+              {children}
+              <Toaster position="top-right" />
+            </QueryClientProvider>
           </AuthProviderWrapper>
         </ThemeProvider>
       </body>

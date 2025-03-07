@@ -130,4 +130,113 @@ class LeadFilter(BaseModel):
     updated_before: Optional[datetime] = None
     custom_filters: Optional[Dict[str, Any]] = None
     # Add campaign filter
-    campaign_id: Optional[Union[int, List[int]]] = None 
+    campaign_id: Optional[Union[int, List[int]]] = None
+
+class LeadNoteCreate(BaseModel):
+    """
+    Schema for creating a new lead note
+    """
+    content: str
+    is_private: bool = False
+
+class LeadNote(BaseModel):
+    """
+    Schema for a lead note
+    """
+    id: int
+    lead_id: int
+    content: str
+    is_private: bool
+    created_by: Optional[int] = None
+    created_at: datetime
+    
+    class Config:
+        orm_mode = True
+
+class TaskPriority(str, Enum):
+    LOW = "low"
+    MEDIUM = "medium"
+    HIGH = "high"
+
+class TaskStatus(str, Enum):
+    PENDING = "pending"
+    IN_PROGRESS = "in_progress"
+    COMPLETED = "completed"
+
+class TaskCreate(BaseModel):
+    """
+    Schema for creating a new task for a lead
+    """
+    title: str
+    description: Optional[str] = None
+    due_date: Optional[datetime] = None
+    priority: TaskPriority = TaskPriority.MEDIUM
+    status: TaskStatus = TaskStatus.PENDING
+    assigned_to: Optional[int] = None
+
+class Task(BaseModel):
+    """
+    Schema for a lead task
+    """
+    id: int
+    lead_id: int
+    title: str
+    description: Optional[str] = None
+    due_date: Optional[datetime] = None
+    priority: TaskPriority
+    status: TaskStatus
+    assigned_to: Optional[int] = None
+    created_by: Optional[int] = None
+    created_at: datetime
+    updated_at: datetime
+    
+    class Config:
+        orm_mode = True
+
+class LeadCampaignStatus(str, Enum):
+    ADDED = "added"
+    CONTACTED = "contacted"
+    RESPONDED = "responded"
+    QUALIFIED = "qualified"
+    CONVERTED = "converted"
+    REJECTED = "rejected"
+    UNSUBSCRIBED = "unsubscribed"
+
+class CampaignLeadCreate(BaseModel):
+    """
+    Schema for adding a lead to a campaign
+    """
+    campaign_id: int
+    status: LeadCampaignStatus = LeadCampaignStatus.ADDED
+    notes: Optional[str] = None
+    metadata: Optional[Dict[str, Any]] = Field(default_factory=dict)
+
+class CampaignLead(BaseModel):
+    """
+    Schema for a lead-campaign association
+    """
+    campaign_id: int
+    lead_id: int
+    status: LeadCampaignStatus
+    added_by: Optional[int] = None
+    added_at: datetime
+    updated_at: datetime
+    notes: Optional[str] = None
+    metadata: Optional[Dict[str, Any]] = None
+    
+    class Config:
+        orm_mode = True
+
+class Campaign(BaseModel):
+    """
+    Schema for a campaign
+    """
+    id: int
+    name: str
+    description: Optional[str] = None
+    status: str
+    created_at: datetime
+    updated_at: datetime
+    
+    class Config:
+        orm_mode = True 

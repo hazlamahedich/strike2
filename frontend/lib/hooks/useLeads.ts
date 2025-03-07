@@ -246,4 +246,26 @@ export const useLeadInsights = (leadId: number) => {
     queryFn: () => leadApi.getLeadInsights(leadId),
     enabled: !!leadId,
   });
+};
+
+// Add a note to a lead
+export const useAddLeadNote = () => {
+  const queryClient = useQueryClient();
+  
+  return useMutation({
+    mutationFn: ({ 
+      leadId, 
+      content, 
+      isPrivate = false 
+    }: { 
+      leadId: number; 
+      content: string; 
+      isPrivate?: boolean;
+    }) => leadApi.addLeadNote(leadId, content, isPrivate),
+    onSuccess: (data, variables) => {
+      // Invalidate lead detail and timeline queries to refresh the data
+      queryClient.invalidateQueries({ queryKey: leadKeys.detail(variables.leadId) });
+      queryClient.invalidateQueries({ queryKey: leadKeys.timeline(variables.leadId) });
+    },
+  });
 }; 
