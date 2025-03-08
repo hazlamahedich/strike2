@@ -402,15 +402,11 @@ export const updateLead = async (leadId: number, leadData: LeadUpdate): Promise<
 };
 
 // Delete a lead
-export const deleteLead = async (leadId: number): Promise<void> => {
-  const { error } = await supabase
-    .from('leads')
-    .delete()
-    .eq('id', leadId);
+export const deleteLead = async (id: string): Promise<void> => {
+  const response = await apiClient.delete<any>('/api/leads', id);
   
-  if (error) {
-    console.error('Error deleting lead:', error);
-    throw new Error(error.message);
+  if (response.error) {
+    throw new Error(`Failed to delete lead: ${response.error.message}`);
   }
 };
 
@@ -581,51 +577,23 @@ export const getLeadCampaigns = async (leadId: number, includeRemoved: boolean =
 };
 
 // Add lead to campaign
-export const addLeadToCampaign = async (
-  leadId: number,
-  campaignId: number,
-  status: LeadCampaignStatus = LeadCampaignStatus.ADDED,
-  notes?: string,
-  metadata?: Record<string, any>
-): Promise<CampaignLead> => {
+export const addLeadToCampaign = async (campaignId: string, leadId: string): Promise<CampaignLead> => {
   const campaignLead = {
-    lead_id: leadId,
     campaign_id: campaignId,
-    status,
-    notes,
-    metadata,
+    lead_id: leadId,
+    status: 'active',
+    added_by: 'system',
     added_at: new Date().toISOString(),
-    updated_at: new Date().toISOString()
+    notes: ''
   };
   
-  const { data, error } = await supabase
-    .from('lead_campaigns')
-    .insert(campaignLead)
-    .select()
-    .single();
+  const response = await apiClient.post<any>('/api/campaign-leads', campaignLead);
   
-  if (error) {
-    console.error('Error adding lead to campaign:', error);
-    throw new Error(error.message);
+  if (response.error) {
+    throw new Error(`Failed to add lead to campaign: ${response.error.message}`);
   }
   
-  // Add to timeline
-  const { data: campaign } = await supabase
-    .from('campaigns')
-    .select('name')
-    .eq('id', campaignId)
-    .single();
-  
-  await supabase.from('lead_timeline').insert({
-    lead_id: leadId,
-    type: 'campaign',
-    content: `Added to campaign: "${campaign?.name || 'Unknown campaign'}"`,
-    data: { campaign_id: campaignId, campaign_name: campaign?.name, status },
-    created_at: new Date().toISOString(),
-    user_id: (await supabase.auth.getUser()).data.user?.id
-  });
-  
-  return data as CampaignLead;
+  return response.data as CampaignLead;
 };
 
 // Remove lead from campaign
@@ -637,9 +605,13 @@ export const removeLeadFromCampaign = async (
   const queryParams = new URLSearchParams();
   if (notes) queryParams.append('notes', notes);
   
-  return apiClient.delete<void>(
+  const response = await apiClient.delete<void>(
     `${BASE_URL}/${leadId}/campaigns/${campaignId}?${queryParams.toString()}`
   );
+  
+  if (response.error) {
+    throw new Error(`Failed to remove lead from campaign: ${response.error.message}`);
+  }
 };
 
 // Update lead campaign status
@@ -650,10 +622,16 @@ export const updateLeadCampaignStatus = async (
   notes?: string,
   metadata?: Record<string, any>
 ): Promise<CampaignLead> => {
-  return apiClient.put<CampaignLead>(
+  const response = await apiClient.put<CampaignLead>(
     `${BASE_URL}/${leadId}/campaigns/${campaignId}`,
     { status, notes, metadata }
   );
+  
+  if (response.error) {
+    throw new Error(`Failed to update lead campaign status: ${response.error.message}`);
+  }
+  
+  return response.data;
 };
 
 // Bulk add leads to campaign
@@ -1458,4 +1436,10 @@ export const calculateLeadInsights = async (
     console.error('Error in calculateLeadInsights function:', error);
     throw new Error(error.message || 'Failed to calculate lead insights');
   }
+};
+
+// Fix the getAuthToken issue
+export const getAuthToken = () => {
+  // Use the apiClient's getAuthToken method
+  return apiClient.getAuthToken();
 }; 

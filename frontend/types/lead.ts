@@ -16,6 +16,20 @@ export interface Lead {
   linkedin_url?: string;
   facebook_url?: string;
   twitter_url?: string;
+  lead_score?: number;
+  conversion_probability?: number;
+  last_contact?: string;
+  timeline?: Array<{
+    id: number | string;
+    type: string;
+    content: string;
+    created_at: string;
+    user?: {
+      id: string;
+      name: string;
+    };
+    metadata?: Record<string, any>;
+  }>;
 }
 
 export interface LeadCreate {

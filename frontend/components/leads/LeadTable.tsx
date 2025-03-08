@@ -11,13 +11,14 @@ import { Button } from '../ui/button';
 import { Lead } from '../../types/lead';
 import { formatDate } from '../../lib/utils';
 import { Badge } from '../ui/badge';
-import { MoreHorizontal, Mail, Phone, Calendar } from 'lucide-react';
+import { MoreHorizontal, Mail, Phone, Calendar, Clock, Activity } from 'lucide-react';
 import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from '../ui/dropdown-menu';
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '../ui/tooltip';
 
 interface LeadTableProps {
   leads: Lead[];
@@ -57,6 +58,33 @@ export default function LeadTable({
     }
   };
 
+  const getConversionProbabilityColor = (probability: number) => {
+    if (probability >= 0.7) return 'text-green-600';
+    if (probability >= 0.4) return 'text-amber-600';
+    return 'text-red-600';
+  };
+
+  const getConversionProbabilityLabel = (probability: number) => {
+    if (probability >= 0.7) return 'High';
+    if (probability >= 0.4) return 'Medium';
+    return 'Low';
+  };
+
+  const getTimelineIcon = (type: string) => {
+    switch (type.toLowerCase()) {
+      case 'email':
+        return <Mail className="h-3 w-3 text-blue-500" />;
+      case 'call':
+        return <Phone className="h-3 w-3 text-green-500" />;
+      case 'meeting':
+        return <Calendar className="h-3 w-3 text-purple-500" />;
+      case 'note':
+        return <Activity className="h-3 w-3 text-amber-500" />;
+      default:
+        return <Clock className="h-3 w-3 text-gray-500" />;
+    }
+  };
+
   return (
     <div className="rounded-md border">
       <Table>
@@ -67,14 +95,18 @@ export default function LeadTable({
             <TableHead>Email</TableHead>
             <TableHead>Phone</TableHead>
             <TableHead>Status</TableHead>
+            <TableHead>Lead Score</TableHead>
+            <TableHead>Conv. Probability</TableHead>
             <TableHead>Created</TableHead>
+            <TableHead>Last Contact</TableHead>
+            <TableHead>Recent Activities</TableHead>
             <TableHead>Actions</TableHead>
           </TableRow>
         </TableHeader>
         <TableBody>
           {leads.length === 0 ? (
             <TableRow>
-              <TableCell colSpan={7} className="text-center py-8 text-muted-foreground">
+              <TableCell colSpan={11} className="text-center py-8 text-muted-foreground">
                 No leads found. Create your first lead to get started.
               </TableCell>
             </TableRow>
@@ -92,7 +124,72 @@ export default function LeadTable({
                     {lead.status || 'New'}
                   </Badge>
                 </TableCell>
+                <TableCell>
+                  <div className="flex items-center">
+                    <div className="w-12 bg-gray-200 rounded-full h-1.5 mr-2">
+                      <div 
+                        className="bg-blue-600 h-1.5 rounded-full" 
+                        style={{ width: `${Math.min(100, Math.max(0, (lead.lead_score || 0) * 10))}%` }}
+                      ></div>
+                    </div>
+                    <span className="text-sm font-medium">{lead.lead_score || 'N/A'}</span>
+                  </div>
+                </TableCell>
+                <TableCell>
+                  {lead.conversion_probability !== undefined ? (
+                    <div className="flex items-center">
+                      <div className="w-12 bg-gray-200 rounded-full h-1.5 mr-2">
+                        <div 
+                          className={`h-1.5 rounded-full ${
+                            (lead.conversion_probability || 0) >= 0.7 ? 'bg-green-500' : 
+                            (lead.conversion_probability || 0) >= 0.4 ? 'bg-amber-500' : 
+                            'bg-red-500'
+                          }`}
+                          style={{ width: `${Math.min(100, Math.max(0, (lead.conversion_probability || 0) * 100))}%` }}
+                        ></div>
+                      </div>
+                      <span className={`text-sm font-medium ${getConversionProbabilityColor(lead.conversion_probability || 0)}`}>
+                        {Math.round((lead.conversion_probability || 0) * 100)}%
+                        <span className="text-xs ml-1 text-muted-foreground">
+                          ({getConversionProbabilityLabel(lead.conversion_probability || 0)})
+                        </span>
+                      </span>
+                    </div>
+                  ) : (
+                    <span className="text-sm text-muted-foreground">N/A</span>
+                  )}
+                </TableCell>
                 <TableCell>{formatDate(lead.created_at)}</TableCell>
+                <TableCell>{lead.last_contact ? formatDate(lead.last_contact) : 'Never'}</TableCell>
+                <TableCell>
+                  {lead.timeline && lead.timeline.length > 0 ? (
+                    <div className="flex flex-col gap-1">
+                      {lead.timeline.slice(0, 3).map((activity, index) => (
+                        <TooltipProvider key={index}>
+                          <Tooltip>
+                            <TooltipTrigger asChild>
+                              <div className="flex items-center text-xs">
+                                {getTimelineIcon(activity.type)}
+                                <span className="ml-1 truncate max-w-[120px]">
+                                  {activity.content || activity.type}
+                                </span>
+                              </div>
+                            </TooltipTrigger>
+                            <TooltipContent>
+                              <p className="text-xs">{formatDate(activity.created_at)}</p>
+                              <p>{activity.content || `${activity.type} activity`}</p>
+                            </TooltipContent>
+                          </Tooltip>
+                        </TooltipProvider>
+                      ))}
+                      {lead.timeline.length === 0 && (
+                        <span className="text-xs text-muted-foreground">No recent activities</span>
+                      )}
+                    </div>
+                  ) : (
+                    <span className="text-xs text-muted-foreground">No activities</span>
+                  )}
+                </TableCell>
                 <TableCell>
                   <div className="flex items-center gap-2">
                     <Button

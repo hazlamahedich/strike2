@@ -1,10 +1,14 @@
 'use client';
 
-import { useState, useEffect } from 'react';
-import DashboardLayout from '@/components/layout/DashboardLayout';
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
-import { Button } from '@/components/ui/button';
-import { Input } from '@/components/ui/input';
+import React, { useState, useEffect, useRef } from 'react';
+import { useRouter } from 'next/navigation';
+import { format } from 'date-fns';
+import { 
+  Card, 
+  CardContent, 
+  CardHeader, 
+  CardTitle 
+} from '@/components/ui/card';
 import { 
   Table, 
   TableBody, 
@@ -13,14 +17,8 @@ import {
   TableHeader, 
   TableRow 
 } from '@/components/ui/table';
-import { 
-  DropdownMenu, 
-  DropdownMenuContent, 
-  DropdownMenuItem, 
-  DropdownMenuLabel, 
-  DropdownMenuSeparator, 
-  DropdownMenuTrigger 
-} from '@/components/ui/dropdown-menu';
+import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
 import { 
   Dialog, 
   DialogContent, 
@@ -30,8 +28,6 @@ import {
   DialogTitle, 
   DialogTrigger 
 } from '@/components/ui/dialog';
-import { Label } from '@/components/ui/label';
-import { Textarea } from '@/components/ui/textarea';
 import { 
   Select, 
   SelectContent, 
@@ -40,60 +36,70 @@ import {
   SelectValue 
 } from '@/components/ui/select';
 import { 
-  UserPlus, 
-  MoreHorizontal, 
+  Tabs, 
+  TabsContent, 
+  TabsList, 
+  TabsTrigger 
+} from '@/components/ui/tabs';
+import { 
+  Form, 
+  FormControl, 
+  FormDescription, 
+  FormField, 
+  FormItem, 
+  FormLabel, 
+  FormMessage 
+} from '@/components/ui/form';
+import { 
+  Alert, 
+  AlertDescription, 
+  AlertTitle 
+} from '@/components/ui/alert';
+import { 
+  DropdownMenu, 
+  DropdownMenuContent, 
+  DropdownMenuItem, 
+  DropdownMenuLabel, 
+  DropdownMenuSeparator, 
+  DropdownMenuTrigger 
+} from '@/components/ui/dropdown-menu';
+import { Progress } from '@/components/ui/progress';
+import { Textarea } from '@/components/ui/textarea';
+import { Checkbox } from '@/components/ui/checkbox';
+import { toast, useToast } from '@/components/ui/use-toast';
+import { 
   Search, 
+  Plus, 
   Filter, 
+  MoreHorizontal, 
   Mail, 
   Phone, 
   Calendar, 
-  MessageSquare, 
-  Download, 
-  Upload, 
+  AlertCircle, 
   CheckCircle2, 
-  AlertCircle,
-  Plus,
-  Target,
+  Upload, 
+  Download, 
+  Trash2, 
+  Edit, 
+  Eye, 
+  FileText, 
+  Clock, 
   Calendar as CalendarIcon,
   Users,
-  DollarSign
+  DollarSign,
+  UserPlus,
+  Target
 } from 'lucide-react';
 import apiClient from '@/lib/api/client';
-import { useRouter } from 'next/navigation';
-import { MeetingDialog } from '@/components/meetings/MeetingDialog';
+import { useLeads } from '@/lib/hooks/useLeads';
+import { USE_MOCK_DATA } from '@/lib/config';
+import { DashboardLead, apiToDashboardLead, dashboardToApiLead } from '@/lib/utils/lead-mapper';
 import { openMeetingDialog } from '@/lib/utils/dialogUtils';
-import { toast } from '@/components/ui/use-toast';
-import { LeadStatus, LeadSource } from '@/lib/types/lead';
-import { EmailDialog } from '@/components/communications/EmailDialog';
-import { PhoneDialog } from '@/components/communications/PhoneDialog';
-import { useToast } from '@/components/ui/use-toast';
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { Progress } from "@/components/ui/progress";
-import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
+import { Label } from "@/components/ui/label";
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
-// import { useCreateLead, useBulkCreateLeads } from "../../hooks/useLeads";
-
-// Lead type definition
-type Lead = {
-  id: string;
-  name: string;
-  email: string;
-  phone: string;
-  status: 'new' | 'contacted' | 'qualified' | 'proposal' | 'negotiation' | 'closed_won' | 'closed_lost';
-  source: string;
-  created_at: string;
-  last_contact: string | null;
-  notes: string;
-  score?: number; // Lead score
-  address?: string; // Lead address
-  campaign_id?: string; // Campaign assignment
-  campaign_name?: string; // Campaign name for display
-  company_name: string;
-  position: string;
-  linkedin_url?: string; // LinkedIn profile URL
-  facebook_url?: string; // Facebook profile URL
-  twitter_url?: string; // Twitter profile URL
-};
+import { TaskDialog } from '@/components/leads/TaskDialog';
+import { MeetingDialogNew } from '@/components/meetings/MeetingDialogNew';
+import { Lead, LeadSource as ApiLeadSource, LeadStatus as ApiLeadStatus } from '@/lib/types/lead';
 
 // Define Campaign type
 type Campaign = {
@@ -110,10 +116,31 @@ type Campaign = {
   created_at: string;
 };
 
+// Define the enums that are missing
+enum LeadStatus {
+  NEW = 'new',
+  CONTACTED = 'contacted',
+  QUALIFIED = 'qualified',
+  PROPOSAL = 'proposal',
+  NEGOTIATION = 'negotiation',
+  WON = 'closed_won',
+  LOST = 'closed_lost'
+}
+
+enum LeadSource {
+  WEBSITE = 'website',
+  REFERRAL = 'referral',
+  LINKEDIN = 'linkedin',
+  COLD_CALL = 'cold_call',
+  EMAIL_CAMPAIGN = 'email_campaign',
+  EVENT = 'event',
+  OTHER = 'other'
+}
+
 export default function LeadsPage() {
   const router = useRouter();
   const { toast } = useToast();
-  const [leads, setLeads] = useState<Lead[]>([]);
+  const [leads, setLeads] = useState<DashboardLead[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState('');
   const [statusFilter, setStatusFilter] = useState<string | null>(null);
@@ -121,7 +148,7 @@ export default function LeadsPage() {
   const [showAddLeadDialog, setShowAddLeadDialog] = useState(false);
   const [showEmailDialog, setShowEmailDialog] = useState(false);
   const [showPhoneDialog, setShowPhoneDialog] = useState(false);
-  const [selectedLead, setSelectedLead] = useState<Lead | null>(null);
+  const [selectedLead, setSelectedLead] = useState<DashboardLead | null>(null);
   const [showDuplicateAlert, setShowDuplicateAlert] = useState(false);
   const [singleLeadDuplicateHandling, setSingleLeadDuplicateHandling] = useState<'skip' | 'update' | 'create_new'>('skip');
   const [newLead, setNewLead] = useState({
@@ -220,124 +247,291 @@ export default function LeadsPage() {
     }
   ];
 
+  // Add the missing state for bulk upload dialog
+  const [bulkUploadDialogOpen, setBulkUploadDialogOpen] = useState(false);
+
+  // Add state variables for dialogs
+  const [showEditLeadDialog, setShowEditLeadDialog] = useState(false);
+  const [showTaskDialog, setShowTaskDialog] = useState(false);
+  const [showMeetingDialog, setShowMeetingDialog] = useState(false);
+  const [selectedLeadId, setSelectedLeadId] = useState<string | null>(null);
+
+  // Add state for current lead
+  const [currentLead, setCurrentLead] = useState<any>(null);
+  const [isEditingTask, setIsEditingTask] = useState(false);
+  const [currentTask, setCurrentTask] = useState<any>(null);
+
   // Fetch leads data
   useEffect(() => {
     const fetchLeads = async () => {
       try {
         setIsLoading(true);
-        // For now, using mock data until API is ready
-        const mockLeads: Lead[] = [
-          {
-            id: '1',
-            name: 'John Smith',
-            email: 'john.smith@example.com',
-            phone: '(555) 123-4567',
-            status: 'new',
-            source: 'Website',
-            created_at: '2023-05-15T10:30:00Z',
-            last_contact: null,
-            notes: 'Interested in premium plan',
-            score: 85,
-            address: '123 Main St, San Francisco, CA 94105',
-            campaign_id: '1',
-            campaign_name: 'Summer Promotion',
-            company_name: 'Acme Inc.',
-            position: 'Marketing Manager',
-            linkedin_url: 'https://www.linkedin.com/in/john-smith',
-            facebook_url: 'https://www.facebook.com/john.smith',
-            twitter_url: 'https://twitter.com/john_smith'
-          },
-          {
-            id: '2',
-            name: 'Sarah Johnson',
-            email: 'sarah.j@company.co',
-            phone: '(555) 987-6543',
-            status: 'contacted',
-            source: 'Referral',
-            created_at: '2023-05-10T14:20:00Z',
-            last_contact: '2023-05-12T09:15:00Z',
-            notes: 'Follow up next week',
-            score: 72,
-            address: '456 Market St, San Francisco, CA 94103',
-            campaign_id: '2',
-            campaign_name: 'New Product Launch',
-            company_name: 'Tech Solutions',
-            position: 'Marketing Specialist',
-            linkedin_url: 'https://www.linkedin.com/in/sarah-johnson',
-            facebook_url: 'https://www.facebook.com/sarah.johnson',
-            twitter_url: 'https://twitter.com/sarah_johnson'
-          },
-          {
-            id: '3',
-            name: 'Michael Brown',
-            email: 'mbrown@business.org',
-            phone: '(555) 456-7890',
-            status: 'qualified',
-            source: 'LinkedIn',
-            created_at: '2023-05-05T11:45:00Z',
-            last_contact: '2023-05-11T16:30:00Z',
-            notes: 'Needs custom solution',
-            score: 91,
-            address: '789 Howard St, San Francisco, CA 94103',
-            campaign_id: '1',
-            campaign_name: 'Summer Promotion',
-            company_name: 'Business Solutions',
-            position: 'Senior Account Manager',
-            linkedin_url: 'https://www.linkedin.com/in/michael-brown',
-            facebook_url: 'https://www.facebook.com/michael.brown',
-            twitter_url: 'https://twitter.com/michael_brown'
-          },
-          {
-            id: '4',
-            name: 'Emily Davis',
-            email: 'emily.davis@tech.io',
-            phone: '(555) 234-5678',
-            status: 'proposal',
-            source: 'Conference',
-            created_at: '2023-04-28T09:00:00Z',
-            last_contact: '2023-05-09T13:45:00Z',
-            notes: 'Sent proposal on 5/9',
-            score: 65,
-            address: '101 California St, San Francisco, CA 94111',
-            campaign_id: '3',
-            campaign_name: 'Enterprise Outreach',
-            company_name: 'Tech Solutions',
-            position: 'Product Manager',
-            linkedin_url: 'https://www.linkedin.com/in/emily-davis',
-            facebook_url: 'https://www.facebook.com/emily.davis',
-            twitter_url: 'https://twitter.com/emily_davis'
-          },
-          {
-            id: '5',
-            name: 'David Wilson',
-            email: 'dwilson@enterprise.net',
-            phone: '(555) 876-5432',
-            status: 'negotiation',
-            source: 'Cold Call',
-            created_at: '2023-04-20T15:10:00Z',
-            last_contact: '2023-05-08T10:20:00Z',
-            notes: 'Negotiating contract terms',
-            score: 88,
-            address: '555 Mission St, San Francisco, CA 94105',
-            campaign_id: '2',
-            campaign_name: 'New Product Launch',
-            company_name: 'Enterprise Solutions',
-            position: 'Sales Representative',
-            linkedin_url: 'https://www.linkedin.com/in/david-wilson',
-            facebook_url: 'https://www.facebook.com/david.wilson',
-            twitter_url: 'https://twitter.com/david_wilson'
+        
+        if (USE_MOCK_DATA) {
+          // Generate mock timeline data for leads that don't have it
+          const generateMockTimeline = (leadId: string) => {
+            const types = ['email', 'call', 'meeting', 'note'];
+            const activities = [];
+            
+            for (let i = 0; i < 3; i++) {
+              const type = types[Math.floor(Math.random() * types.length)];
+              activities.push({
+                id: `${leadId}-${i}`,
+                type,
+                content: `Mock ${type} activity ${i + 1}`,
+                created_at: new Date(Date.now() - (i * 86400000)).toISOString(),
+                user: { id: 'user1', name: 'Sales Rep' }
+              });
+            }
+            
+            return activities;
+          };
+          
+          // For now, using mock data until API is ready
+          const mockLeads: DashboardLead[] = [
+            {
+              id: '1',
+              name: 'John Smith',
+              email: 'john.smith@example.com',
+              phone: '(555) 123-4567',
+              status: 'new',
+              source: 'Website',
+              created_at: '2023-05-15T10:30:00Z',
+              last_contact: new Date().toISOString(),
+              notes: 'Interested in premium plan',
+              score: 85,
+              conversion_probability: 0.75,
+              address: '123 Main St, San Francisco, CA 94105',
+              campaign_id: '1',
+              campaign_name: 'Summer Promotion',
+              company_name: 'Acme Inc.',
+              position: 'Marketing Manager',
+              linkedin_url: 'https://www.linkedin.com/in/john-smith',
+              facebook_url: 'https://www.facebook.com/john.smith',
+              timeline: [
+                {
+                  id: 101,
+                  type: 'email',
+                  content: 'Sent introduction email',
+                  created_at: new Date().toISOString(),
+                  user: { id: 'user1', name: 'Sales Rep' }
+                },
+                {
+                  id: 102,
+                  type: 'note',
+                  content: 'Customer interested in premium plan',
+                  created_at: new Date(Date.now() - 3600000).toISOString(),
+                  user: { id: 'user1', name: 'Sales Rep' }
+                },
+                {
+                  id: 103,
+                  type: 'call',
+                  content: 'Discussed product features',
+                  created_at: new Date(Date.now() - 7200000).toISOString(),
+                  user: { id: 'user1', name: 'Sales Rep' }
+                }
+              ]
+            },
+            {
+              id: '2',
+              name: 'Sarah Johnson',
+              email: 'sarah.johnson@example.com',
+              phone: '(555) 987-6543',
+              status: 'contacted',
+              source: 'Referral',
+              created_at: '2023-05-10T14:45:00Z',
+              last_contact: '2023-05-12T09:15:00Z',
+              notes: 'Follow up next week',
+              score: 72,
+              conversion_probability: 0.62,
+              address: '456 Market St, San Francisco, CA 94105',
+              campaign_id: '2',
+              campaign_name: 'Enterprise Outreach',
+              company_name: 'XYZ Corp',
+              position: 'CTO',
+              linkedin_url: 'https://www.linkedin.com/in/sarah-johnson',
+              timeline: [
+                {
+                  id: 201,
+                  type: 'meeting',
+                  content: 'Initial discovery call',
+                  created_at: new Date(Date.now() - 86400000).toISOString(),
+                  user: { id: 'user1', name: 'Sales Rep' }
+                },
+                {
+                  id: 202,
+                  type: 'email',
+                  content: 'Sent follow-up materials',
+                  created_at: new Date(Date.now() - 90000000).toISOString(),
+                  user: { id: 'user1', name: 'Sales Rep' }
+                }
+              ]
+            },
+            {
+              id: '3',
+              name: 'Michael Brown',
+              email: 'michael.brown@example.com',
+              phone: '(555) 456-7890',
+              status: 'qualified',
+              source: 'LinkedIn',
+              created_at: '2023-05-05T11:20:00Z',
+              last_contact: '2023-05-11T16:30:00Z',
+              notes: 'Needs custom solution',
+              score: 91,
+              conversion_probability: 0.85,
+              address: '789 Howard St, San Francisco, CA 94105',
+              campaign_id: '1',
+              campaign_name: 'Summer Promotion',
+              company_name: 'ABC Enterprises',
+              position: 'CEO',
+              linkedin_url: 'https://www.linkedin.com/in/michael-brown',
+              timeline: [
+                {
+                  id: 301,
+                  type: 'call',
+                  content: 'Discussed pricing options',
+                  created_at: new Date(Date.now() - 172800000).toISOString(),
+                  user: { id: 'user2', name: 'Account Manager' }
+                },
+                {
+                  id: 302,
+                  type: 'email',
+                  content: 'Sent proposal document',
+                  created_at: new Date(Date.now() - 180000000).toISOString(),
+                  user: { id: 'user2', name: 'Account Manager' }
+                },
+                {
+                  id: 303,
+                  type: 'note',
+                  content: 'Customer requested demo for team',
+                  created_at: new Date(Date.now() - 190000000).toISOString(),
+                  user: { id: 'user2', name: 'Account Manager' }
+                }
+              ]
+            },
+            {
+              id: '4',
+              name: 'Emily Davis',
+              email: 'emily.davis@example.com',
+              phone: '(555) 789-0123',
+              status: 'proposal',
+              source: 'Event',
+              created_at: '2023-04-28T09:10:00Z',
+              last_contact: '2023-05-09T13:45:00Z',
+              notes: 'Proposal sent, awaiting feedback',
+              score: 88,
+              conversion_probability: 0.78,
+              address: '101 California St, San Francisco, CA 94111',
+              campaign_id: '2',
+              campaign_name: 'Enterprise Outreach',
+              company_name: 'Davis Enterprises',
+              position: 'CTO',
+              linkedin_url: 'https://www.linkedin.com/in/emily-davis',
+              timeline: [
+                {
+                  id: 401,
+                  type: 'meeting',
+                  content: 'Technical review with IT team',
+                  created_at: new Date(Date.now() - 259200000).toISOString(),
+                  user: { id: 'user1', name: 'Sales Rep' }
+                },
+                {
+                  id: 402,
+                  type: 'email',
+                  content: 'Sent technical specifications',
+                  created_at: new Date(Date.now() - 270000000).toISOString(),
+                  user: { id: 'user1', name: 'Sales Rep' }
+                }
+              ]
+            },
+            {
+              id: '5',
+              name: 'Robert Wilson',
+              email: 'robert.wilson@example.com',
+              phone: '(555) 234-5678',
+              status: 'negotiation',
+              source: 'Cold Call',
+              created_at: '2023-04-20T15:30:00Z',
+              last_contact: '2023-05-08T10:20:00Z',
+              notes: 'Negotiating contract terms',
+              score: 95,
+              conversion_probability: 0.92,
+              address: '555 Mission St, San Francisco, CA 94105',
+              campaign_id: '3',
+              campaign_name: 'Q2 Sales Push',
+              company_name: 'Wilson Tech',
+              position: 'Procurement Manager',
+              linkedin_url: 'https://www.linkedin.com/in/robert-wilson',
+              timeline: [
+                {
+                  id: 501,
+                  type: 'call',
+                  content: 'Contract finalization call',
+                  created_at: new Date(Date.now() - 345600000).toISOString(),
+                  user: { id: 'user2', name: 'Account Manager' }
+                },
+                {
+                  id: 502,
+                  type: 'email',
+                  content: 'Sent revised contract',
+                  created_at: new Date(Date.now() - 350000000).toISOString(),
+                  user: { id: 'user2', name: 'Account Manager' }
+                },
+                {
+                  id: 503,
+                  type: 'note',
+                  content: 'Customer requested pricing adjustment',
+                  created_at: new Date(Date.now() - 360000000).toISOString(),
+                  user: { id: 'user2', name: 'Account Manager' }
+                }
+              ]
+            }
+          ];
+          
+          // Ensure all leads have timeline data
+          const processedLeads = mockLeads.map(lead => {
+            if (!lead.timeline || lead.timeline.length === 0) {
+              lead.timeline = generateMockTimeline(lead.id);
+            }
+            
+            // Ensure conversion probability is initialized
+            if (lead.conversion_probability === undefined) {
+              lead.conversion_probability = lead.score ? lead.score / 100 : 0.5;
+            }
+            
+            return lead;
+          });
+          
+          setLeads(processedLeads);
+          setIsLoading(false);
+        } else {
+          // Use the useLeads hook to fetch data from Supabase
+          const response = await apiClient.get<any[]>('/api/leads');
+          
+          if (response.error) {
+            console.error('Error fetching leads:', response.error);
+            toast({
+              title: 'Error',
+              description: 'Failed to fetch leads. Please try again.',
+              variant: 'destructive',
+            });
+            setIsLoading(false);
+            return;
           }
-        ];
-        
-        setLeads(mockLeads);
-        setIsLoading(false);
-        
-        // Uncomment when API is ready
-        // const response = await apiClient.get<Lead[]>('leads');
-        // setLeads(response);
-        // setIsLoading(false);
+          
+          // Convert API leads to dashboard format
+          const dashboardLeads = response.data.map((apiLead: any) => apiToDashboardLead(apiLead));
+          
+          setLeads(dashboardLeads);
+          setIsLoading(false);
+        }
       } catch (error) {
         console.error('Error fetching leads:', error);
+        toast({
+          title: 'Error',
+          description: 'Failed to fetch leads. Please try again.',
+          variant: 'destructive',
+        });
         setIsLoading(false);
       }
     };
@@ -347,6 +541,17 @@ export default function LeadsPage() {
 
   // Filter leads based on search query and status filter
   const filteredLeads = leads.filter(lead => {
+    // Ensure timeline is initialized
+    if (!lead.timeline) {
+      lead.timeline = [];
+    }
+    
+    // Ensure conversion probability is initialized
+    if (lead.conversion_probability === undefined) {
+      // Calculate a simple conversion probability based on the lead score
+      lead.conversion_probability = lead.score ? lead.score / 100 : 0.5;
+    }
+    
     const matchesSearch = searchTerm === '' || 
       lead.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
       lead.email.toLowerCase().includes(searchTerm.toLowerCase()) ||
@@ -415,10 +620,6 @@ export default function LeadsPage() {
         return;
       }
 
-      // For now, just adding to local state
-      // TODO: In production, connect to the API using the hooks from useLeads.ts
-      const selectedCampaign = mockCampaigns.find(c => c.id === newLead.campaign_id);
-      
       // Calculate lead score
       const leadScore = calculateLeadScore({
         email: newLead.email,
@@ -441,60 +642,76 @@ export default function LeadsPage() {
         return;
       }
       
-      // In production, you would use the API like this:
-      // try {
-      //   const createdLead = await createLead(
-      //     {
-      //       first_name: newLead.name.split(' ')[0],
-      //       last_name: newLead.name.split(' ').slice(1).join(' '),
-      //       email: newLead.email,
-      //       phone: newLead.phone,
-      //       company_name: newLead.company_name,
-      //       job_title: newLead.position,
-      //       source: newLead.source,
-      //       status: newLead.status,
-      //       linkedin_url: newLead.linkedin_url,
-      //       facebook_url: newLead.facebook_url,
-      //       twitter_url: newLead.twitter_url,
-      //       notes: newLead.notes,
-      //       campaign_id: newLead.campaign_id
-      //     },
-      //     singleLeadDuplicateHandling
-      //   );
-      //   
-      //   if (createdLead) {
-      //     setLeads([createdLead, ...leads]);
-      //     setShowAddLeadDialog(false);
-      //     resetLeadForm();
-      //   }
-      // } catch (error) {
-      //   if (error.message === 'Duplicate lead found') {
-      //     setShowDuplicateAlert(true);
-      //     return;
-      //   }
-      //   throw error;
-      // }
-      
-      const newLeadWithId: Lead = {
-        ...newLead,
-        id: `temp-${Date.now()}`,
-        created_at: new Date().toISOString(),
-        last_contact: null,
-        status: newLead.status as Lead['status'],
-        campaign_name: selectedCampaign?.name || 'Unassigned',
-        score: leadScore
-      };
-      
-      setLeads([newLeadWithId, ...leads]);
-      setShowAddLeadDialog(false);
-      
-      // Reset form
-      resetLeadForm();
-      
-      toast({
-        title: 'Lead Added',
-        description: 'New lead has been added successfully.',
-      });
+      if (USE_MOCK_DATA) {
+        // For mock data, just add to local state
+        const selectedCampaign = mockCampaigns.find(c => c.id === newLead.campaign_id);
+        
+        const newLeadWithId: DashboardLead = {
+          ...newLead,
+          id: `temp-${Date.now()}`,
+          created_at: new Date().toISOString(),
+          last_contact: null,
+          status: newLead.status as DashboardLead['status'],
+          campaign_name: selectedCampaign?.name || 'Unassigned',
+          score: leadScore
+        };
+        
+        setLeads([newLeadWithId, ...leads]);
+        setShowAddLeadDialog(false);
+        resetLeadForm();
+        
+        toast({
+          title: 'Lead Added',
+          description: 'New lead has been added successfully.',
+        });
+      } else {
+        // When using Supabase
+        try {
+          // Ensure the lead has all required properties for DashboardLead
+          const completeNewLead: DashboardLead = {
+            ...newLead,
+            id: `temp-${Date.now()}`,
+            created_at: new Date().toISOString(),
+            last_contact: null,
+            timeline: [],
+            // Fix the type issue with status
+            status: (newLead.status as DashboardLead['status']) || 'new'
+          };
+          
+          // Convert dashboard lead to API format
+          const apiLead = dashboardToApiLead(completeNewLead);
+          
+          // Send to API
+          const response = await apiClient.post<any>('/api/leads', apiLead);
+          
+          if (response.error) {
+            toast({
+              title: "Error adding lead",
+              description: response.error.message,
+              variant: "destructive",
+            });
+            return;
+          }
+          
+          // Convert API lead to dashboard format and add to state
+          const createdLead = apiToDashboardLead(response.data as any);
+          setLeads([createdLead, ...leads]);
+          setShowAddLeadDialog(false);
+          resetLeadForm();
+          
+          toast({
+            title: "Lead added",
+            description: `${newLead.name} has been added successfully.`,
+          });
+        } catch (error) {
+          console.error("Error adding lead:", error);
+          toast({
+            title: "Error adding lead",
+            description: "There was an error adding the lead. Please try again.",
+            variant: "destructive",
+          });
+        }
+      }
     } catch (error) {
       console.error('Error adding lead:', error);
       toast({
@@ -512,12 +729,12 @@ export default function LeadsPage() {
       email: '',
       phone: '',
       status: 'new',
-      source: 'website',
+      source: '',
       notes: '',
       address: '',
       company_name: '',
       position: '',
-      campaign_id: 'unassigned',
+      campaign_id: '',
       linkedin_url: '',
       facebook_url: '',
       twitter_url: ''
@@ -527,22 +744,44 @@ export default function LeadsPage() {
   };
 
   // Calculate lead score based on available information
-  const calculateLeadScore = (lead: any): number => {
-    let score = 50; // Base score
+  const calculateLeadScore = (lead: Partial<DashboardLead>): number => {
+    let score = 0;
     
-    // Increase score for more complete information
-    if (lead.email) score += 10;
-    if (lead.phone) score += 10;
-    if (lead.company_name) score += 10;
-    if (lead.position) score += 5;
-    if (lead.notes && lead.notes.length > 20) score += 5;
+    // Email presence and validity
+    if (lead.email && /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(lead.email)) {
+      score += 20;
+    }
     
-    // Increase score for social media profiles
-    if (lead.linkedin_url) score += 7;
-    if (lead.facebook_url) score += 3;
-    if (lead.twitter_url) score += 3;
+    // Phone presence
+    if (lead.phone && lead.phone.length > 5) {
+      score += 15;
+    }
     
-    // Cap score at 100
+    // Company information
+    if (lead.company_name && lead.company_name.length > 0) {
+      score += 15;
+    }
+    
+    // Position/title
+    if (lead.position && lead.position.length > 0) {
+      score += 10;
+    }
+    
+    // Social media presence
+    if (lead.linkedin_url) score += 10;
+    if (lead.facebook_url) score += 5;
+    if (lead.twitter_url) score += 5;
+    
+    // Notes
+    if (lead.notes && lead.notes.length > 10) {
+      score += 10;
+    }
+    
+    // Address
+    if (lead.address && lead.address.length > 0) {
+      score += 10;
+    }
+    
     return Math.min(score, 100);
   };
 
@@ -700,19 +939,68 @@ export default function LeadsPage() {
   };
 
   const handleEditLead = (leadId: string) => {
-    // Navigate to lead detail page
-    router.push(`/dashboard/leads/${leadId}`);
+    // Set the selected lead and open the edit dialog
+    const lead = leads.find(l => l.id === leadId);
+    if (lead) {
+      setSelectedLeadId(leadId);
+      setNewLead({
+        name: lead.name,
+        email: lead.email,
+        phone: lead.phone,
+        status: lead.status as DashboardLead['status'],
+        source: lead.source,
+        notes: lead.notes || '',
+        address: lead.address || '',
+        company_name: lead.company_name,
+        position: lead.position,
+        campaign_id: lead.campaign_id || '',
+        linkedin_url: lead.linkedin_url || '',
+        facebook_url: lead.facebook_url || '',
+        twitter_url: lead.twitter_url || ''
+      });
+      setShowEditLeadDialog(true);
+    } else {
+      console.error(`Lead with ID ${leadId} not found`);
+      toast({
+        title: "Error",
+        description: "Lead not found. Please refresh the page and try again.",
+        variant: "destructive",
+      });
+    }
   };
 
   const handleAddTask = (leadId: string) => {
-    // Navigate to lead detail page with query parameter to open task dialog
-    router.push(`/dashboard/leads/${leadId}?openTask=true`);
+    // Set the selected lead and open the task dialog
+    const lead = leads.find(l => l.id === leadId);
+    if (lead) {
+      setSelectedLeadId(leadId);
+      setCurrentLead(lead);
+      setShowTaskDialog(true);
+    } else {
+      console.error(`Lead with ID ${leadId} not found`);
+      toast({
+        title: "Error",
+        description: "Lead not found. Please refresh the page and try again.",
+        variant: "destructive",
+      });
+    }
   };
 
   const handleScheduleMeeting = (leadId: string) => {
-    // Open the meeting dialog
-    console.log('Opening meeting dialog for lead:', leadId);
-    openMeetingDialog(`lead-meeting-dialog-${leadId}`);
+    // Set the selected lead and open the meeting dialog
+    const lead = leads.find(l => l.id === leadId);
+    if (lead) {
+      setSelectedLeadId(leadId);
+      setCurrentLead(lead);
+      setShowMeetingDialog(true);
+    } else {
+      console.error(`Lead with ID ${leadId} not found`);
+      toast({
+        title: "Error",
+        description: "Lead not found. Please refresh the page and try again.",
+        variant: "destructive",
+      });
+    }
   };
 
   const handleDeleteLead = (leadId: string) => {
@@ -816,145 +1104,374 @@ export default function LeadsPage() {
     }
   };
 
-  // Handle bulk upload
+  // Handle bulk upload of leads
   const handleBulkUpload = async () => {
-    if (!file || !validationResults?.valid) return;
-    
-    // Check if a campaign is selected
-    if (selectedCampaignId === 'unassigned') {
-      toast({
-        title: 'Campaign Required',
-        description: 'Please select or create a campaign for these leads.',
-        variant: 'destructive',
-      });
-      return;
-    }
-    
-    setIsUploading(true);
-    setUploadStatus('uploading');
-    setUploadProgress(0);
-    
     try {
+      if (!file || !validationResults?.valid) {
+        toast({
+          title: 'Invalid File',
+          description: 'Please upload a valid CSV file.',
+          variant: 'destructive',
+        });
+        return;
+      }
+      
+      setIsUploading(true);
+      setUploadProgress(10);
+      
+      // Parse CSV file
       const text = await file.text();
-      const rows = text.split('\n');
+      const rows = text.split('\n').filter(row => row.trim() !== '');
+      
+      if (rows.length < 2) {
+        toast({
+          title: 'Invalid File',
+          description: 'The CSV file must contain at least one lead.',
+          variant: 'destructive',
+        });
+        setIsUploading(false);
+        return;
+      }
+      
+      // Get headers
       const headers = rows[0].split(',').map(h => h.trim());
       
-      const newLeads: Lead[] = [];
+      const newLeads: DashboardLead[] = [];
       
       // Parse rows into lead objects
       for (let i = 1; i < rows.length; i++) {
-        if (!rows[i].trim()) continue; // Skip empty rows
+        const row = rows[i];
+        const values = row.split(',').map(v => v.trim());
         
-        const values = rows[i].split(',').map(v => v.trim());
-        const leadData: Record<string, any> = {};
-        
+        // Create object from headers and values
+        const leadData: Record<string, string> = {};
         headers.forEach((header, index) => {
-          if (values[index]) {
-            leadData[header] = values[index];
-          }
+          leadData[header.toLowerCase()] = values[index] || '';
         });
         
-        // Set default values for missing fields
-        const status = leadData.status || 'new';
-        const source = leadData.source || 'website';
-        const selectedCampaign = mockCampaigns.find(c => c.id === selectedCampaignId);
-        
-        // Calculate lead score
-        const leadScore = calculateLeadScore({
-          email: leadData.email,
-          phone: leadData.phone,
-          company_name: leadData.company_name,
-          position: leadData.position,
-          notes: leadData.notes,
-          linkedin_url: leadData.linkedin_url,
-          facebook_url: leadData.facebook_url,
-          twitter_url: leadData.twitter_url
-        });
+        // Map to expected fields
+        const status = leadData.status?.toLowerCase() || 'new';
+        const source = leadData.source?.toLowerCase() || 'import';
         
         // Create new lead
-        const newLead: Lead = {
+        const newLead: DashboardLead = {
           id: `temp-bulk-${Date.now()}-${i}`,
           name: leadData.name || `${leadData.first_name || ''} ${leadData.last_name || ''}`.trim(),
           email: leadData.email || '',
           phone: leadData.phone || '',
-          status: status as Lead['status'],
+          status: status as DashboardLead['status'],
           source: source,
           notes: leadData.notes || '',
-          address: leadData.address || '',
-          company_name: leadData.company_name || '',
-          position: leadData.position || leadData.job_title || '',
-          linkedin_url: leadData.linkedin_url || '',
-          facebook_url: leadData.facebook_url || '',
-          twitter_url: leadData.twitter_url || '',
           created_at: new Date().toISOString(),
           last_contact: null,
+          company_name: leadData.company || leadData.company_name || '',
+          position: leadData.position || leadData.job_title || '',
           campaign_id: selectedCampaignId,
-          campaign_name: selectedCampaign?.name || 'Unassigned',
-          score: leadScore
+          campaign_name: mockCampaigns.find(c => c.id === selectedCampaignId)?.name || 'Unassigned',
+          linkedin_url: leadData.linkedin_url || '',
+          facebook_url: leadData.facebook_url || '',
+          twitter_url: leadData.twitter_url || ''
         };
+        
+        // Calculate lead score
+        newLead.score = calculateLeadScore({
+          email: newLead.email,
+          phone: newLead.phone,
+          company_name: newLead.company_name,
+          position: newLead.position,
+          notes: newLead.notes,
+          linkedin_url: newLead.linkedin_url,
+          facebook_url: newLead.facebook_url,
+          twitter_url: newLead.twitter_url
+        });
         
         newLeads.push(newLead);
         
         // Update progress
-        const progress = Math.round((i / (rows.length - 1)) * 100);
-        setUploadProgress(progress);
+        setUploadProgress(10 + Math.floor((i / rows.length) * 50));
       }
       
-      // TODO: In production, connect to the API using the hooks from useLeads.ts
-      // Simulate upload delay for demonstration
-      await new Promise(resolve => setTimeout(resolve, 1500));
-      
-      // In production, you would use the API like this:
-      // const apiLeadsData = newLeads.map(lead => ({
-      //   first_name: lead.name.split(' ')[0],
-      //   last_name: lead.name.split(' ').slice(1).join(' '),
-      //   email: lead.email,
-      //   phone: lead.phone,
-      //   company: lead.company_name,
-      //   title: lead.position,
-      //   source: lead.source,
-      //   status: lead.status,
-      //   linkedin_url: lead.linkedin_url,
-      //   facebook_url: lead.facebook_url,
-      //   twitter_url: lead.twitter_url,
-      //   custom_fields: { notes: lead.notes },
-      //   campaign_ids: lead.campaign_id ? [parseInt(lead.campaign_id)] : []
-      // }));
-      // 
-      // const result = await bulkCreateLeads(
-      //   apiLeadsData, 
-      //   duplicateHandling,
-      //   selectedCampaignId !== 'unassigned' ? [parseInt(selectedCampaignId)] : undefined
-      // );
-      
-      // Add new leads to the list
-      setLeads([...newLeads, ...leads]);
-      
-      setUploadStatus('success');
-      toast({
-        title: 'Upload Successful',
-        description: `${newLeads.length} leads have been imported successfully.`,
-      });
-      
-      // Close dialog after a delay
-      setTimeout(() => {
-        setShowAddLeadDialog(false);
-        setFile(null);
-        setUploadStatus('idle');
-        setValidationResults(null);
-        setSelectedCampaignId('unassigned');
-      }, 2000);
+      if (USE_MOCK_DATA) {
+        // For mock data, just add to local state
+        setUploadProgress(75);
+        
+        // Add new leads to state
+        setLeads([...newLeads, ...leads]);
+        
+        setUploadProgress(100);
+        setUploadStatus('success');
+        setIsUploading(false);
+        
+        // Close dialog after a delay
+        setTimeout(() => {
+          setBulkUploadDialogOpen(false);
+          setUploadStatus('idle');
+          setFile(null);
+          setValidationResults(null);
+        }, 2000);
+        
+        toast({
+          title: 'Leads Imported',
+          description: `Successfully imported ${newLeads.length} leads.`,
+        });
+      } else {
+        // In production, use the API
+        setUploadProgress(60);
+        
+        // Convert dashboard leads to API format
+        const apiLeads = newLeads.map(lead => ({
+          first_name: lead.name.split(' ')[0],
+          last_name: lead.name.split(' ').slice(1).join(' '),
+          email: lead.email,
+          phone: lead.phone,
+          company_name: lead.company_name,
+          job_title: lead.position,
+          source: lead.source,
+          status: lead.status,
+          linkedin_url: lead.linkedin_url,
+          facebook_url: lead.facebook_url,
+          twitter_url: lead.twitter_url,
+          custom_fields: {
+            notes: lead.notes,
+            campaign_id: lead.campaign_id,
+            campaign_name: lead.campaign_name,
+            address: lead.address
+          }
+        }));
+        
+        // Send to API
+        const response = await apiClient.post('/api/leads/bulk', {
+          leads: apiLeads,
+          duplicate_handling: duplicateHandling,
+          campaign_id: selectedCampaignId
+        });
+        
+        if (response.error) {
+          console.error('Error importing leads:', response.error);
+          toast({
+            title: 'Error',
+            description: 'Failed to import leads. Please try again.',
+            variant: 'destructive',
+          });
+          setIsUploading(false);
+          return;
+        }
+        
+        setUploadProgress(100);
+        setUploadStatus('success');
+        setIsUploading(false);
+        
+        // Refresh leads to get the newly created ones
+        const fetchResponse = await apiClient.get<any[]>('/api/leads');
+        if (!fetchResponse.error) {
+          const dashboardLeads = fetchResponse.data.map((apiLead: any) => apiToDashboardLead(apiLead));
+          setLeads(dashboardLeads);
+        }
+        
+        // Close dialog after a delay
+        setTimeout(() => {
+          setBulkUploadDialogOpen(false);
+          setUploadStatus('idle');
+          setFile(null);
+          setValidationResults(null);
+        }, 2000);
+        
+        toast({
+          title: 'Leads Imported',
+          description: `Successfully imported ${newLeads.length} leads.`,
+        });
+      }
     } catch (error) {
-      setUploadStatus('error');
-      setErrorMessage('Failed to upload leads. Please try again.');
+      console.error('Error uploading leads:', error);
+      setIsUploading(false);
+      setUploadStatus('idle');
+      
       toast({
-        title: 'Upload Failed',
-        description: 'There was an error uploading the leads.',
+        title: 'Error',
+        description: 'Failed to import leads. Please try again.',
         variant: 'destructive',
       });
-    } finally {
-      setIsUploading(false);
     }
+  };
+
+  // Add helper function to get activity icon
+  const getActivityIcon = (type: string) => {
+    switch (type.toLowerCase()) {
+      case 'email':
+        return <Mail className="h-3 w-3 text-blue-500" />;
+      case 'call':
+        return <Phone className="h-3 w-3 text-green-500" />;
+      case 'meeting':
+        return <Calendar className="h-3 w-3 text-purple-500" />;
+      case 'note':
+        return <FileText className="h-3 w-3 text-amber-500" />;
+      default:
+        return <Clock className="h-3 w-3 text-gray-500" />;
+    }
+  };
+
+  // Add the handleUpdateLead function
+  const handleUpdateLead = (leadId: string) => {
+    // Find the lead in the leads array
+    const leadIndex = leads.findIndex(l => l.id === leadId);
+    
+    if (leadIndex === -1) {
+      console.error(`Lead with ID ${leadId} not found`);
+      toast({
+        title: "Error",
+        description: "Lead not found. Please refresh the page and try again.",
+        variant: "destructive",
+      });
+      return;
+    }
+    
+    // Create a copy of the leads array
+    const updatedLeads = [...leads];
+    
+    // Update the lead with the new data
+    updatedLeads[leadIndex] = {
+      ...updatedLeads[leadIndex],
+      name: newLead.name,
+      email: newLead.email,
+      phone: newLead.phone,
+      status: newLead.status as DashboardLead['status'],
+      source: newLead.source,
+      notes: newLead.notes,
+      address: newLead.address,
+      company_name: newLead.company_name,
+      position: newLead.position,
+      campaign_id: newLead.campaign_id,
+      linkedin_url: newLead.linkedin_url,
+      facebook_url: newLead.facebook_url,
+      twitter_url: newLead.twitter_url,
+      // Preserve fields that aren't in the form
+      id: leadId,
+      created_at: updatedLeads[leadIndex].created_at,
+      last_contact: updatedLeads[leadIndex].last_contact,
+      score: calculateLeadScore({
+        ...newLead,
+        status: newLead.status as DashboardLead['status']
+      }),
+      conversion_probability: calculateLeadScore({
+        ...newLead,
+        status: newLead.status as DashboardLead['status']
+      }) / 100,
+      timeline: updatedLeads[leadIndex].timeline
+    };
+    
+    // Update the state
+    setLeads(updatedLeads);
+    
+    // Close the dialog
+    setShowEditLeadDialog(false);
+    
+    // Show a success message
+    toast({
+      title: "Lead Updated",
+      description: `${newLead.name} has been updated successfully.`,
+    });
+    
+    // If not using mock data, update the lead in the API
+    if (!USE_MOCK_DATA) {
+      try {
+        // Ensure the lead has all required properties for DashboardLead
+        const completeUpdatedLead: DashboardLead = {
+          id: leadId,
+          name: newLead.name,
+          email: newLead.email,
+          phone: newLead.phone,
+          status: newLead.status as DashboardLead['status'],
+          source: newLead.source,
+          created_at: updatedLeads[leadIndex].created_at,
+          last_contact: updatedLeads[leadIndex].last_contact,
+          notes: newLead.notes,
+          company_name: newLead.company_name,
+          position: newLead.position,
+          address: newLead.address,
+          campaign_id: newLead.campaign_id,
+          linkedin_url: newLead.linkedin_url,
+          facebook_url: newLead.facebook_url,
+          twitter_url: newLead.twitter_url,
+          timeline: updatedLeads[leadIndex].timeline
+        };
+        
+        // Convert dashboard lead to API format
+        const apiLead = dashboardToApiLead(completeUpdatedLead);
+        
+        // Send to API
+        apiClient.put<any>(`/api/leads/${leadId}`, apiLead)
+          .then(response => {
+            if (response.error) {
+              console.error("Error updating lead:", response.error);
+              toast({
+                title: "Error",
+                description: "There was an error updating the lead on the server. The local changes have been saved.",
+                variant: "destructive",
+              });
+            }
+          })
+          .catch(error => {
+            console.error("Error updating lead:", error);
+            toast({
+              title: "Error",
+              description: "There was an error updating the lead on the server. The local changes have been saved.",
+              variant: "destructive",
+            });
+          });
+      } catch (error) {
+        console.error("Error updating lead:", error);
+        toast({
+          title: "Error",
+          description: "There was an error updating the lead on the server. The local changes have been saved.",
+          variant: "destructive",
+        });
+      }
+    }
+  };
+
+  // Add task handlers
+  const handleTaskCreate = (taskData: any) => {
+    // Create a new task and add it to the lead's timeline
+    if (!selectedLeadId) return;
+    
+    const leadIndex = leads.findIndex(l => l.id === selectedLeadId);
+    if (leadIndex === -1) return;
+    
+    const updatedLeads = [...leads];
+    const lead = updatedLeads[leadIndex];
+    
+    // Create a new task
+    const newTask = {
+      id: `task-${Date.now()}`,
+      type: 'task',
+      content: taskData.title,
+      description: taskData.description,
+      due_date: taskData.due_date,
+      priority: taskData.priority,
+      assignee: taskData.assignee,
+      completed: false,
+      created_at: new Date().toISOString(),
+      user: {
+        id: 'current-user',
+        name: 'Current User'
+      }
+    };
+    
+    // Add to timeline if it doesn't exist
+    if (!lead.timeline) {
+      lead.timeline = [];
+    }
+    
+    lead.timeline.unshift(newTask);
+    
+    // Update the leads state
+    setLeads(updatedLeads);
+    
+    // Show success message
+    toast({
+      title: "Task Created",
+      description: "The task has been created successfully.",
+    });
   };
 
   return (
@@ -1036,7 +1553,7 @@ export default function LeadsPage() {
                       <Label htmlFor="status">Status</Label>
                       <Select 
                         value={newLead.status} 
-                        onValueChange={(value) => setNewLead({...newLead, status: value as Lead['status']})}
+                        onValueChange={(value) => setNewLead({...newLead, status: value as DashboardLead['status']})}
                       >
                         <SelectTrigger id="status">
                           <SelectValue placeholder="Select status" />
@@ -1490,11 +2007,13 @@ export default function LeadsPage() {
                 <TableHead className="hidden md:table-cell">Email</TableHead>
                 <TableHead className="hidden md:table-cell">Phone</TableHead>
                 <TableHead className="hidden lg:table-cell">Score</TableHead>
+                <TableHead className="hidden lg:table-cell">Conv. Probability</TableHead>
                 <TableHead className="hidden lg:table-cell">Address</TableHead>
                 <TableHead className="hidden lg:table-cell">Campaign</TableHead>
                 <TableHead className="hidden lg:table-cell">Source</TableHead>
                 <TableHead className="hidden lg:table-cell">Created</TableHead>
                 <TableHead className="hidden lg:table-cell">Last Contact</TableHead>
+                <TableHead className="hidden lg:table-cell">Recent Activities</TableHead>
                 <TableHead className="text-right">Actions</TableHead>
               </TableRow>
             </TableHeader>
@@ -1544,11 +2063,52 @@ export default function LeadsPage() {
                         </span>
                       </div>
                     </TableCell>
+                    <TableCell className="hidden lg:table-cell">
+                      {lead.conversion_probability !== undefined ? (
+                        <div className="flex items-center">
+                          <div className="w-12 bg-gray-200 rounded-full h-1.5 mr-2">
+                            <div 
+                              className={`h-1.5 rounded-full ${
+                                (lead.conversion_probability || 0) >= 0.7 ? 'bg-green-500' : 
+                                (lead.conversion_probability || 0) >= 0.4 ? 'bg-amber-500' : 
+                                'bg-red-500'
+                              }`}
+                              style={{ width: `${Math.min(100, Math.max(0, (lead.conversion_probability || 0) * 100))}%` }}
+                            ></div>
+                          </div>
+                          <span className={`text-sm font-medium ${
+                            (lead.conversion_probability || 0) >= 0.7 ? 'text-green-600' :
+                            (lead.conversion_probability || 0) >= 0.4 ? 'text-amber-600' :
+                            'text-red-600'
+                          }`}>
+                            {Math.round((lead.conversion_probability || 0) * 100)}%
+                          </span>
+                        </div>
+                      ) : (
+                        <span className="text-sm text-muted-foreground">N/A</span>
+                      )}
+                    </TableCell>
                     <TableCell className="hidden lg:table-cell">{lead.address || 'N/A'}</TableCell>
                     <TableCell className="hidden lg:table-cell">{lead.campaign_name || 'Unassigned'}</TableCell>
                     <TableCell className="hidden lg:table-cell">{lead.source}</TableCell>
                     <TableCell className="hidden lg:table-cell">{formatDate(lead.created_at)}</TableCell>
                     <TableCell className="hidden lg:table-cell">{formatDate(lead.last_contact)}</TableCell>
+                    <TableCell className="hidden lg:table-cell">
+                      {lead.timeline && lead.timeline.length > 0 ? (
+                        <div className="flex flex-col gap-1">
+                          {lead.timeline.slice(0, 3).map((activity, index) => (
+                            <div key={index} className="flex items-center text-xs">
+                              {getActivityIcon(activity.type)}
+                              <span className="ml-1 truncate max-w-[120px]">
+                                {activity.content || activity.type}
+                              </span>
+                            </div>
+                          ))}
+                        </div>
+                      ) : (
+                        <span className="text-xs text-muted-foreground">No recent activities</span>
+                      )}
+                    </TableCell>
                     <TableCell className="text-right">
                       <div className="flex justify-end gap-2">
                         <Button 
@@ -1634,52 +2194,36 @@ export default function LeadsPage() {
         }
         
         return (
-          <MeetingDialog 
+          <MeetingDialogNew 
             key={`meeting-dialog-${lead.id}`}
-            id={`lead-meeting-dialog-${lead.id}`} 
+            open={false} // This will be controlled by the openMeetingDialog function
+            onOpenChange={() => {}}
             lead={{
               id: parseInt(lead.id),
-              email: lead.email,
               first_name: lead.name.split(' ')[0],
               last_name: lead.name.split(' ').slice(1).join(' '),
               full_name: lead.name,
-              status: leadStatus,
-              source: leadSource,
-              created_at: lead.created_at,
-              updated_at: lead.created_at,
-              company: '',
+              email: lead.email,
+              phone: lead.phone,
+              source: ApiLeadSource.WEBSITE, // Default source
+              status: ApiLeadStatus.NEW, // Default status
               custom_fields: {},
-              lead_score: 0
+              lead_score: lead.score || 0,
+              created_at: lead.created_at,
+              updated_at: lead.created_at
             }}
-            onSuccess={() => {
-              toast({
-                title: "Meeting scheduled",
-                description: "The meeting has been successfully scheduled.",
-              });
+            onSuccess={(meetingData) => {
+              if (meetingData) {
+                // Handle meeting creation
+                toast({
+                  title: "Meeting Scheduled",
+                  description: "The meeting has been scheduled successfully.",
+                });
+              }
             }}
           />
         );
       })}
-
-      {/* Add the EmailDialog component */}
-      {selectedLead && (
-        <EmailDialog 
-          open={showEmailDialog}
-          onOpenChange={setShowEmailDialog}
-          leadEmail={selectedLead.email}
-          leadName={selectedLead.name}
-        />
-      )}
-
-      {/* Add the PhoneDialog component */}
-      {selectedLead && (
-        <PhoneDialog 
-          open={showPhoneDialog}
-          onOpenChange={setShowPhoneDialog}
-          leadPhone={selectedLead.phone}
-          leadName={selectedLead.name}
-        />
-      )}
 
       {/* Campaign Creation Dialog */}
       <Dialog open={showCampaignDialog} onOpenChange={setShowCampaignDialog}>
@@ -1830,6 +2374,236 @@ export default function LeadsPage() {
           </DialogFooter>
         </DialogContent>
       </Dialog>
+      
+      {/* Edit Lead Dialog */}
+      {selectedLeadId && (
+        <Dialog open={showEditLeadDialog} onOpenChange={setShowEditLeadDialog}>
+          <DialogContent className="sm:max-w-[600px]">
+            <DialogHeader>
+              <DialogTitle>Edit Lead</DialogTitle>
+              <DialogDescription>
+                Update the lead information below.
+              </DialogDescription>
+            </DialogHeader>
+            <div className="grid gap-4 py-4">
+              {/* Same form fields as in the Add Lead dialog */}
+              <div className="grid grid-cols-2 gap-4">
+                <div className="col-span-2">
+                  <Label htmlFor="edit-name">Full Name *</Label>
+                  <Input
+                    id="edit-name"
+                    value={newLead.name}
+                    onChange={(e) => setNewLead({...newLead, name: e.target.value})}
+                    placeholder="John Doe"
+                  />
+                </div>
+                <div className="col-span-2 sm:col-span-1">
+                  <Label htmlFor="edit-email">Email</Label>
+                  <Input
+                    id="edit-email"
+                    type="email"
+                    value={newLead.email}
+                    onChange={(e) => setNewLead({...newLead, email: e.target.value})}
+                    placeholder="john.doe@example.com"
+                  />
+                </div>
+                <div className="col-span-2 sm:col-span-1">
+                  <Label htmlFor="edit-phone">Phone</Label>
+                  <Input
+                    id="edit-phone"
+                    value={newLead.phone}
+                    onChange={(e) => setNewLead({...newLead, phone: e.target.value})}
+                    placeholder="(123) 456-7890"
+                  />
+                </div>
+                <div className="col-span-2 sm:col-span-1">
+                  <Label htmlFor="edit-company_name">Company Name</Label>
+                  <Input
+                    id="edit-company_name"
+                    value={newLead.company_name}
+                    onChange={(e) => setNewLead({...newLead, company_name: e.target.value})}
+                    placeholder="Acme Inc."
+                  />
+                </div>
+                <div className="col-span-2 sm:col-span-1">
+                  <Label htmlFor="edit-position">Position</Label>
+                  <Input
+                    id="edit-position"
+                    value={newLead.position}
+                    onChange={(e) => setNewLead({...newLead, position: e.target.value})}
+                    placeholder="Marketing Manager"
+                  />
+                </div>
+                <div className="col-span-2 sm:col-span-1">
+                  <Label htmlFor="edit-status">Status</Label>
+                  <Select 
+                    value={newLead.status} 
+                    onValueChange={(value) => setNewLead({...newLead, status: value as DashboardLead['status']})}>
+                    <SelectTrigger>
+                      <SelectValue placeholder="Select status" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="new">New</SelectItem>
+                      <SelectItem value="contacted">Contacted</SelectItem>
+                      <SelectItem value="qualified">Qualified</SelectItem>
+                      <SelectItem value="proposal">Proposal</SelectItem>
+                      <SelectItem value="negotiation">Negotiation</SelectItem>
+                      <SelectItem value="closed_won">Closed (Won)</SelectItem>
+                      <SelectItem value="closed_lost">Closed (Lost)</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+                <div className="col-span-2 sm:col-span-1">
+                  <Label htmlFor="edit-source">Source</Label>
+                  <Input
+                    id="edit-source"
+                    value={newLead.source}
+                    onChange={(e) => setNewLead({...newLead, source: e.target.value})}
+                    placeholder="Website, Referral, etc."
+                  />
+                </div>
+                <div className="col-span-2 sm:col-span-1">
+                  <Label htmlFor="edit-address">Address</Label>
+                  <Input
+                    id="edit-address"
+                    value={newLead.address}
+                    onChange={(e) => setNewLead({...newLead, address: e.target.value})}
+                    placeholder="123 Main St, City, State"
+                  />
+                </div>
+                <div className="col-span-2 sm:col-span-1">
+                  <Label htmlFor="edit-campaign">Campaign</Label>
+                  <Select 
+                    value={newLead.campaign_id} 
+                    onValueChange={(value) => {
+                      const campaign = mockCampaigns.find(c => c.id === value);
+                      setNewLead({
+                        ...newLead, 
+                        campaign_id: value
+                      });
+                    }}>
+                    <SelectTrigger>
+                      <SelectValue placeholder="Select campaign" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {mockCampaigns.map(campaign => (
+                        <SelectItem key={campaign.id} value={campaign.id}>
+                          {campaign.name}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+                
+                <div className="col-span-2">
+                  <Label htmlFor="edit-notes">Notes</Label>
+                  <Textarea
+                    id="edit-notes"
+                    value={newLead.notes}
+                    onChange={(e) => setNewLead({...newLead, notes: e.target.value})}
+                    placeholder="Add any notes about this lead..."
+                    className="min-h-[100px]"
+                  />
+                </div>
+                
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                  <div>
+                    <Label htmlFor="edit-linkedin_url">LinkedIn</Label>
+                    <Input
+                      id="edit-linkedin_url"
+                      value={newLead.linkedin_url}
+                      onChange={(e) => setNewLead({...newLead, linkedin_url: e.target.value})}
+                      placeholder="LinkedIn URL"
+                    />
+                  </div>
+                  <div>
+                    <Label htmlFor="edit-facebook_url">Facebook</Label>
+                    <Input
+                      id="edit-facebook_url"
+                      value={newLead.facebook_url}
+                      onChange={(e) => setNewLead({...newLead, facebook_url: e.target.value})}
+                      placeholder="Facebook URL"
+                    />
+                  </div>
+                  <div>
+                    <Label htmlFor="edit-twitter_url">Twitter</Label>
+                    <Input
+                      id="edit-twitter_url"
+                      value={newLead.twitter_url}
+                      onChange={(e) => setNewLead({...newLead, twitter_url: e.target.value})}
+                      placeholder="Twitter URL"
+                    />
+                  </div>
+                </div>
+              </div>
+            </div>
+            <DialogFooter>
+              <Button variant="outline" onClick={() => setShowEditLeadDialog(false)}>
+                Cancel
+              </Button>
+              <Button onClick={() => handleUpdateLead(selectedLeadId)}>
+                Update Lead
+              </Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
+      )}
+      
+      {/* Task Dialog */}
+      {selectedLeadId && currentLead && (
+        <TaskDialog
+          open={showTaskDialog}
+          onOpenChange={setShowTaskDialog}
+          leadId={parseInt(selectedLeadId)}
+          leadName={currentLead.name || ''}
+          isMock={USE_MOCK_DATA}
+          onSuccess={(taskData) => {
+            if (isEditingTask && currentTask && taskData) {
+              // Handle task update
+              // handleTaskUpdate({
+              //   ...currentTask,
+              //   ...taskData
+              // });
+            } else if (taskData) {
+              // Handle task creation
+              handleTaskCreate(taskData);
+            }
+          }}
+          task={isEditingTask ? currentTask : undefined}
+          isEditing={isEditingTask}
+        />
+      )}
+      
+      {/* Meeting Dialog */}
+      {selectedLeadId && currentLead && (
+        <MeetingDialogNew
+          open={showMeetingDialog}
+          onOpenChange={setShowMeetingDialog}
+          lead={{
+            id: parseInt(selectedLeadId),
+            first_name: currentLead.name.split(' ')[0],
+            last_name: currentLead.name.split(' ').slice(1).join(' '),
+            full_name: currentLead.name,
+            email: currentLead.email,
+            phone: currentLead.phone,
+            source: ApiLeadSource.WEBSITE, // Default source
+            status: ApiLeadStatus.NEW, // Default status
+            custom_fields: {},
+            lead_score: currentLead.score || 0,
+            created_at: currentLead.created_at,
+            updated_at: currentLead.created_at
+          }}
+          onSuccess={(meetingData) => {
+            if (meetingData) {
+              // Handle meeting creation
+              toast({
+                title: "Meeting Scheduled",
+                description: "The meeting has been scheduled successfully.",
+              });
+            }
+          }}
+        />
+      )}
     </div>
   );
 } 

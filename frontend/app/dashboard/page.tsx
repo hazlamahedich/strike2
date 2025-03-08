@@ -21,6 +21,8 @@ import { Button } from '@/components/ui/button';
 import DashboardLayout from '@/components/layout/DashboardLayout';
 import apiClient from '@/lib/api/client';
 import { DashboardCards } from '@/components/dashboard/DashboardCards';
+import { toast } from '@/components/ui/use-toast';
+import { USE_MOCK_DATA } from '@/lib/config';
 
 // Dashboard stats type
 type DashboardStats = {
@@ -44,6 +46,66 @@ type Activity = {
   user: string;
 };
 
+// Mock data for dashboard
+const mockDashboardStats: DashboardStats = {
+  total_leads: 256,
+  new_leads_today: 12,
+  active_campaigns: 5,
+  pending_tasks: 18,
+  upcoming_meetings: 7,
+  recent_communications: 34,
+  conversion_rate: 24.5,
+  lead_sources: {
+    'Website': 45,
+    'Referral': 30,
+    'Social Media': 15,
+    'Email Campaign': 10
+  }
+};
+
+const mockRecentActivity: Activity[] = [
+  {
+    id: '1',
+    type: 'lead',
+    title: 'New Lead Added',
+    description: 'John Smith from Acme Corp was added as a new lead',
+    timestamp: new Date().toISOString(),
+    user: 'Sarah Johnson'
+  },
+  {
+    id: '2',
+    type: 'task',
+    title: 'Task Completed',
+    description: 'Follow-up call with Techno Solutions completed',
+    timestamp: new Date(Date.now() - 30 * 60000).toISOString(), // 30 minutes ago
+    user: 'Mike Wilson'
+  },
+  {
+    id: '3',
+    type: 'meeting',
+    title: 'Meeting Scheduled',
+    description: 'Demo meeting with Global Enterprises scheduled for tomorrow',
+    timestamp: new Date(Date.now() - 2 * 3600000).toISOString(), // 2 hours ago
+    user: 'Emily Davis'
+  },
+  {
+    id: '4',
+    type: 'communication',
+    title: 'Email Sent',
+    description: 'Proposal sent to Innovative Systems',
+    timestamp: new Date(Date.now() - 5 * 3600000).toISOString(), // 5 hours ago
+    user: 'Sarah Johnson'
+  },
+  {
+    id: '5',
+    type: 'campaign',
+    title: 'Campaign Started',
+    description: 'Summer Promotion campaign launched',
+    timestamp: new Date(Date.now() - 24 * 3600000).toISOString(), // 1 day ago
+    user: 'Alex Turner'
+  }
+];
+
 export default function Dashboard() {
   const [stats, setStats] = useState<DashboardStats | null>(null);
   const [recentActivities, setRecentActivities] = useState<Activity[]>([]);
@@ -61,149 +123,47 @@ export default function Dashboard() {
     }
 
     const fetchDashboardData = async () => {
+      setIsLoading(true);
+      
       try {
-        setIsLoading(true);
-        
-        // Check if we're using local storage auth (temporary solution)
-        const isUsingLocalAuth = typeof window !== 'undefined' && localStorage.getItem('strike_app_user');
-        
-        if (isUsingLocalAuth) {
-          // Use mock data for development with local auth
-          console.log('Using mock data for dashboard (local auth)');
+        if (USE_MOCK_DATA) {
+          // Use mock data
+          setStats(mockDashboardStats);
+          setRecentActivities(mockRecentActivity);
+        } else {
+          // Use API data
+          const statsResponse = await apiClient.get<DashboardStats>('/api/dashboard/stats');
+          const activityResponse = await apiClient.get<Activity[]>('/api/dashboard/activity');
           
-          // Simulate API delay
-          await new Promise(resolve => setTimeout(resolve, 500));
+          if (statsResponse.error) {
+            console.error('Error fetching dashboard stats:', statsResponse.error);
+            toast({
+              title: 'Error',
+              description: 'Failed to load dashboard statistics',
+              variant: 'destructive',
+            });
+          } else {
+            setStats(statsResponse.data);
+          }
           
-          setStats({
-            total_leads: 256,
-            new_leads_today: 12,
-            active_campaigns: 5,
-            pending_tasks: 18,
-            upcoming_meetings: 7,
-            recent_communications: 34,
-            conversion_rate: 24.5,
-            lead_sources: {
-              'Website': 45,
-              'Referral': 30,
-              'Social Media': 15,
-              'Email Campaign': 10
-            }
-          });
-          
-          setRecentActivities([
-            {
-              id: '1',
-              type: 'lead',
-              title: 'New Lead Added',
-              description: 'John Smith from Acme Corp was added as a new lead',
-              timestamp: new Date().toISOString(),
-              user: 'Sarah Johnson'
-            },
-            {
-              id: '2',
-              type: 'task',
-              title: 'Task Completed',
-              description: 'Follow-up call with Techno Solutions completed',
-              timestamp: new Date(Date.now() - 30 * 60000).toISOString(), // 30 minutes ago
-              user: 'Mike Wilson'
-            },
-            {
-              id: '3',
-              type: 'meeting',
-              title: 'Meeting Scheduled',
-              description: 'Demo meeting with Global Enterprises scheduled for tomorrow',
-              timestamp: new Date(Date.now() - 2 * 3600000).toISOString(), // 2 hours ago
-              user: 'Emily Davis'
-            },
-            {
-              id: '4',
-              type: 'communication',
-              title: 'Email Sent',
-              description: 'Proposal sent to Innovative Systems',
-              timestamp: new Date(Date.now() - 5 * 3600000).toISOString(), // 5 hours ago
-              user: 'Sarah Johnson'
-            },
-            {
-              id: '5',
-              type: 'campaign',
-              title: 'Campaign Started',
-              description: 'Summer Promotion campaign launched',
-              timestamp: new Date(Date.now() - 24 * 3600000).toISOString(), // 1 day ago
-              user: 'Alex Turner'
-            }
-          ]);
-          
-          return;
+          if (activityResponse.error) {
+            console.error('Error fetching recent activity:', activityResponse.error);
+            toast({
+              title: 'Error',
+              description: 'Failed to load recent activity',
+              variant: 'destructive',
+            });
+          } else {
+            setRecentActivities(activityResponse.data);
+          }
         }
-        
-        // If not using local auth, try real API calls
-        const statsData = await apiClient.get<DashboardStats>('analytics/dashboard');
-        const activitiesData = await apiClient.get<Activity[]>('analytics/recent-activities');
-        
-        setStats(statsData);
-        setRecentActivities(activitiesData);
       } catch (error) {
-        console.error('Failed to fetch dashboard data', error);
-        
-        // Fallback mock data for development
-        setStats({
-          total_leads: 256,
-          new_leads_today: 12,
-          active_campaigns: 5,
-          pending_tasks: 18,
-          upcoming_meetings: 7,
-          recent_communications: 34,
-          conversion_rate: 24.5,
-          lead_sources: {
-            'Website': 45,
-            'Referral': 30,
-            'Social Media': 15,
-            'Email Campaign': 10
-          }
+        console.error('Error fetching dashboard data:', error);
+        toast({
+          title: 'Error',
+          description: 'Failed to load dashboard data',
+          variant: 'destructive',
         });
-        
-        setRecentActivities([
-          {
-            id: '1',
-            type: 'lead',
-            title: 'New Lead Added',
-            description: 'John Smith from Acme Corp was added as a new lead',
-            timestamp: '2023-05-15T10:30:00Z',
-            user: 'Sarah Johnson'
-          },
-          {
-            id: '2',
-            type: 'task',
-            title: 'Task Completed',
-            description: 'Follow-up call with Techno Solutions completed',
-            timestamp: '2023-05-15T09:15:00Z',
-            user: 'Mike Wilson'
-          },
-          {
-            id: '3',
-            type: 'meeting',
-            title: 'Meeting Scheduled',
-            description: 'Demo meeting with Global Enterprises scheduled for tomorrow',
-            timestamp: '2023-05-15T08:45:00Z',
-            user: 'Emily Davis'
-          },
-          {
-            id: '4',
-            type: 'communication',
-            title: 'Email Sent',
-            description: 'Proposal sent to Innovative Systems',
-            timestamp: '2023-05-14T16:20:00Z',
-            user: 'Sarah Johnson'
-          },
-          {
-            id: '5',
-            type: 'campaign',
-            title: 'Campaign Started',
-            description: 'Summer Promotion campaign launched',
-            timestamp: '2023-05-14T14:00:00Z',
-            user: 'Alex Turner'
-          }
-        ]);
       } finally {
         setIsLoading(false);
       }

@@ -1,4 +1,4 @@
-import { supabase } from '@/lib/supabase/client';
+import supabase from '@/lib/supabase/client';
 import { LeadFeatures } from './types';
 import { LeadStatus, LeadSource } from '@/lib/types/lead';
 
@@ -64,13 +64,13 @@ export async function extractFeaturesForLead(leadId: number): Promise<LeadFeatur
     // Find last contact date from activities
     let lastContactDate = createdAt;
     if (activities && activities.length > 0) {
-      const contactActivities = activities.filter(a => 
+      const contactActivities = activities.filter((a: { activity_type: string }) => 
         ['email', 'call', 'meeting', 'note'].includes(a.activity_type)
       );
       
       if (contactActivities.length > 0) {
         const sortedActivities = contactActivities.sort(
-          (a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime()
+          (a: { created_at: string }, b: { created_at: string }) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime()
         );
         lastContactDate = new Date(sortedActivities[0].created_at);
       }
@@ -79,7 +79,7 @@ export async function extractFeaturesForLead(leadId: number): Promise<LeadFeatur
     const daysSinceLastContact = Math.floor((now.getTime() - lastContactDate.getTime()) / (1000 * 60 * 60 * 24));
     
     // Calculate task completion rate
-    const completedTasks = tasks ? tasks.filter(t => t.completed).length : 0;
+    const completedTasks = tasks ? tasks.filter((t: { completed: boolean }) => t.completed).length : 0;
     const taskCompletionRate = tasks && tasks.length > 0 ? completedTasks / tasks.length : 0;
     
     // One-hot encode status
@@ -97,7 +97,7 @@ export async function extractFeaturesForLead(leadId: number): Promise<LeadFeatur
       source_referral: lead.source === LeadSource.REFERRAL ? 1 : 0,
       source_event: lead.source === LeadSource.EVENT ? 1 : 0,
       source_cold_call: lead.source === LeadSource.COLD_CALL ? 1 : 0,
-      source_social: lead.source === LeadSource.SOCIAL ? 1 : 0,
+      source_social: lead.source === LeadSource.LINKEDIN ? 1 : 0,
     };
     
     // Extract BANT (Budget, Authority, Need, Timeline) from custom fields or notes

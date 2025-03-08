@@ -19,6 +19,32 @@ const mockLeads: Lead[] = [
     created_at: new Date().toISOString(),
     updated_at: new Date().toISOString(),
     owner_id: 'user1',
+    lead_score: 85,
+    conversion_probability: 0.75,
+    last_contact: new Date().toISOString(),
+    timeline: [
+      {
+        id: 101,
+        type: 'email',
+        content: 'Sent introduction email',
+        created_at: new Date().toISOString(),
+        user: { id: 'user1', name: 'Sales Rep' }
+      },
+      {
+        id: 102,
+        type: 'note',
+        content: 'Customer interested in premium plan',
+        created_at: new Date(Date.now() - 3600000).toISOString(),
+        user: { id: 'user1', name: 'Sales Rep' }
+      },
+      {
+        id: 103,
+        type: 'call',
+        content: 'Discussed product features',
+        created_at: new Date(Date.now() - 7200000).toISOString(),
+        user: { id: 'user1', name: 'Sales Rep' }
+      }
+    ]
   },
   {
     id: '2',
@@ -34,6 +60,25 @@ const mockLeads: Lead[] = [
     created_at: new Date(Date.now() - 86400000).toISOString(), // 1 day ago
     updated_at: new Date(Date.now() - 86400000).toISOString(),
     owner_id: 'user1',
+    lead_score: 72,
+    conversion_probability: 0.62,
+    last_contact: new Date(Date.now() - 86400000).toISOString(),
+    timeline: [
+      {
+        id: 201,
+        type: 'meeting',
+        content: 'Initial discovery call',
+        created_at: new Date(Date.now() - 86400000).toISOString(),
+        user: { id: 'user1', name: 'Sales Rep' }
+      },
+      {
+        id: 202,
+        type: 'email',
+        content: 'Sent follow-up materials',
+        created_at: new Date(Date.now() - 90000000).toISOString(),
+        user: { id: 'user1', name: 'Sales Rep' }
+      }
+    ]
   },
   {
     id: '3',
@@ -49,6 +94,32 @@ const mockLeads: Lead[] = [
     created_at: new Date(Date.now() - 172800000).toISOString(), // 2 days ago
     updated_at: new Date(Date.now() - 172800000).toISOString(),
     owner_id: 'user2',
+    lead_score: 91,
+    conversion_probability: 0.85,
+    last_contact: new Date(Date.now() - 172800000).toISOString(),
+    timeline: [
+      {
+        id: 301,
+        type: 'call',
+        content: 'Discussed pricing options',
+        created_at: new Date(Date.now() - 172800000).toISOString(),
+        user: { id: 'user2', name: 'Account Manager' }
+      },
+      {
+        id: 302,
+        type: 'email',
+        content: 'Sent proposal document',
+        created_at: new Date(Date.now() - 180000000).toISOString(),
+        user: { id: 'user2', name: 'Account Manager' }
+      },
+      {
+        id: 303,
+        type: 'note',
+        content: 'Customer requested demo for team',
+        created_at: new Date(Date.now() - 190000000).toISOString(),
+        user: { id: 'user2', name: 'Account Manager' }
+      }
+    ]
   },
   {
     id: '4',
@@ -64,6 +135,25 @@ const mockLeads: Lead[] = [
     created_at: new Date(Date.now() - 259200000).toISOString(), // 3 days ago
     updated_at: new Date(Date.now() - 259200000).toISOString(),
     owner_id: 'user1',
+    lead_score: 88,
+    conversion_probability: 0.78,
+    last_contact: new Date(Date.now() - 259200000).toISOString(),
+    timeline: [
+      {
+        id: 401,
+        type: 'meeting',
+        content: 'Technical review with IT team',
+        created_at: new Date(Date.now() - 259200000).toISOString(),
+        user: { id: 'user1', name: 'Sales Rep' }
+      },
+      {
+        id: 402,
+        type: 'email',
+        content: 'Sent technical specifications',
+        created_at: new Date(Date.now() - 270000000).toISOString(),
+        user: { id: 'user1', name: 'Sales Rep' }
+      }
+    ]
   },
   {
     id: '5',
@@ -79,6 +169,32 @@ const mockLeads: Lead[] = [
     created_at: new Date(Date.now() - 345600000).toISOString(), // 4 days ago
     updated_at: new Date(Date.now() - 345600000).toISOString(),
     owner_id: 'user2',
+    lead_score: 95,
+    conversion_probability: 0.95,
+    last_contact: new Date(Date.now() - 345600000).toISOString(),
+    timeline: [
+      {
+        id: 501,
+        type: 'call',
+        content: 'Contract finalization call',
+        created_at: new Date(Date.now() - 345600000).toISOString(),
+        user: { id: 'user2', name: 'Account Manager' }
+      },
+      {
+        id: 502,
+        type: 'email',
+        content: 'Sent welcome package',
+        created_at: new Date(Date.now() - 350000000).toISOString(),
+        user: { id: 'user2', name: 'Account Manager' }
+      },
+      {
+        id: 503,
+        type: 'note',
+        content: 'Scheduled onboarding session',
+        created_at: new Date(Date.now() - 360000000).toISOString(),
+        user: { id: 'user2', name: 'Account Manager' }
+      }
+    ]
   },
   {
     id: '6',
@@ -94,6 +210,25 @@ const mockLeads: Lead[] = [
     created_at: new Date(Date.now() - 432000000).toISOString(), // 5 days ago
     updated_at: new Date(Date.now() - 432000000).toISOString(),
     owner_id: 'user1',
+    lead_score: 45,
+    conversion_probability: 0.15,
+    last_contact: new Date(Date.now() - 432000000).toISOString(),
+    timeline: [
+      {
+        id: 601,
+        type: 'call',
+        content: 'Final attempt to save deal',
+        created_at: new Date(Date.now() - 432000000).toISOString(),
+        user: { id: 'user1', name: 'Sales Rep' }
+      },
+      {
+        id: 602,
+        type: 'note',
+        content: 'Customer chose competitor due to pricing',
+        created_at: new Date(Date.now() - 440000000).toISOString(),
+        user: { id: 'user1', name: 'Sales Rep' }
+      }
+    ]
   },
   {
     id: '7',
@@ -109,6 +244,25 @@ const mockLeads: Lead[] = [
     created_at: new Date(Date.now() - 518400000).toISOString(), // 6 days ago
     updated_at: new Date(Date.now() - 518400000).toISOString(),
     owner_id: 'user2',
+    lead_score: 35,
+    conversion_probability: 0.25,
+    last_contact: new Date(Date.now() - 518400000).toISOString(),
+    timeline: [
+      {
+        id: 701,
+        type: 'email',
+        content: 'Sent alternative options',
+        created_at: new Date(Date.now() - 518400000).toISOString(),
+        user: { id: 'user2', name: 'Account Manager' }
+      },
+      {
+        id: 702,
+        type: 'note',
+        content: 'Not a good fit for our enterprise solution',
+        created_at: new Date(Date.now() - 525000000).toISOString(),
+        user: { id: 'user2', name: 'Account Manager' }
+      }
+    ]
   },
 ];
 
