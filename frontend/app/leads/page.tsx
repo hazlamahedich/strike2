@@ -100,6 +100,16 @@ export default function LeadsPage() {
   };
 
   const handleEditLead = (id: string) => {
+    console.log('handleEditLead called with id:', id);
+    if (!id) {
+      console.error('Invalid lead ID:', id);
+      toast({
+        title: 'Error',
+        description: 'Invalid lead ID. Please try again.',
+        variant: 'destructive',
+      });
+      return;
+    }
     setSelectedLeadId(id);
     setEditDialogOpen(true);
   };
@@ -392,9 +402,9 @@ export default function LeadsPage() {
       />
       
       <LeadEditDialog
-        isOpen={editDialogOpen}
-        onClose={() => setEditDialogOpen(false)}
-        leadId={selectedLeadId || ''}
+        open={editDialogOpen}
+        onOpenChange={setEditDialogOpen}
+        leadId={selectedLeadId || '1'}
         onSuccess={handleUpdateSuccess}
       />
       

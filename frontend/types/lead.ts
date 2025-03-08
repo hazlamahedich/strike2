@@ -13,6 +13,9 @@ export interface Lead {
   updated_at: string;
   owner_id?: string;
   custom_fields?: Record<string, any>;
+  linkedin_url?: string;
+  facebook_url?: string;
+  twitter_url?: string;
 }
 
 export interface LeadCreate {
@@ -27,6 +30,9 @@ export interface LeadCreate {
   notes?: string;
   owner_id?: string;
   custom_fields?: Record<string, any>;
+  linkedin_url?: string;
+  facebook_url?: string;
+  twitter_url?: string;
 }
 
 export interface LeadUpdate {
@@ -42,6 +48,9 @@ export interface LeadUpdate {
   notes?: string;
   owner_id?: string;
   custom_fields?: Record<string, any>;
+  linkedin_url?: string;
+  facebook_url?: string;
+  twitter_url?: string;
 }
 
 export interface LeadFormValues {

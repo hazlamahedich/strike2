@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { useToast } from '../components/ui/use-toast';
 import { Lead, LeadCreate as FrontendLeadCreate, LeadUpdate, LeadFormValues } from '../types/lead';
 import { createLead as apiCreateLead, bulkCreateLeads as apiBulkCreateLeads } from '../lib/api/leads';
@@ -238,37 +238,98 @@ export function useCreateLead() {
 }
 
 export function useUpdateLead() {
-  const { toast } = useToast();
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const { toast } = useToast();
 
-  const updateLead = async (leadId: string, leadData: LeadFormValues): Promise<Lead | null> => {
+  // Use useCallback to memoize the updateLead function
+  const updateLead = useCallback(async (leadId: string, leadData: any): Promise<Lead | null> => {
     try {
       setIsSubmitting(true);
       
       // In a real app, this would be an API call
       // const response = await fetch(`/api/leads/${leadId}`, {
       //   method: 'PUT',
-      //   headers: {
-      //     'Content-Type': 'application/json',
-      //   },
+      //   headers: { 'Content-Type': 'application/json' },
       //   body: JSON.stringify(leadData),
       // });
       // const data = await response.json();
       
-      // Simulate API call
-      await new Promise(resolve => setTimeout(resolve, 1000));
+      // Simulate API call with mock data
+      await new Promise(resolve => setTimeout(resolve, 500));
       
-      // Update the lead with mock data
-      const updatedLead: Lead = {
-        id: leadId,
-        ...leadData,
-        created_at: new Date().toISOString(), // This would come from the server
-        updated_at: new Date().toISOString(),
-      };
+      // First try to update in mockLeads array
+      const leadIndex = mockLeads.findIndex(lead => String(lead.id) === String(leadId));
       
-      setIsSubmitting(false);
-      return updatedLead;
-    } catch (error) {
+      console.log('useUpdateLead - leadId:', leadId);
+      console.log('useUpdateLead - leadIndex:', leadIndex);
+      console.log('useUpdateLead - mockLeads:', mockLeads);
+      
+      if (leadIndex !== -1) {
+        // Update the lead in the mockLeads array
+        const updatedLead = {
+          ...mockLeads[leadIndex],
+          ...leadData,
+          // Map fields if needed
+          company_name: leadData.company_name || leadData.company,
+          job_title: leadData.job_title || leadData.title,
+          updated_at: new Date().toISOString()
+        };
+        
+        // Update the lead in the array
+        mockLeads[leadIndex] = updatedLead;
+        
+        console.log('Updated lead in mockLeads:', updatedLead);
+        
+        setIsSubmitting(false);
+        return updatedLead;
+      } else {
+        // If not found in mockLeads, try the hardcoded mockLeadDetails as fallback
+        // This is for compatibility with the lead detail page
+        const mockLeadDetails: Record<string, any> = {
+          '1': {
+            id: 1,
+            first_name: 'John',
+            last_name: 'Smith',
+            full_name: 'John Smith',
+            email: 'john.smith@example.com',
+            phone: '(555) 123-4567',
+            company: 'Smith Enterprises',
+            title: 'CEO',
+            source: 'website',
+            status: 'new',
+            owner_id: 1,
+            team_id: 1,
+            custom_fields: {
+              address: '123 Main St, San Francisco, CA 94105'
+            },
+            lead_score: 8.5,
+            created_at: '2023-05-15T10:30:00Z',
+            updated_at: '2023-05-15T10:30:00Z',
+            owner: { id: 1, name: 'Jane Doe' }
+          }
+        };
+        
+        if (mockLeadDetails[leadId]) {
+          // Update the lead in mockLeadDetails
+          const updatedLead = {
+            ...mockLeadDetails[leadId],
+            ...leadData,
+            full_name: `${leadData.first_name || mockLeadDetails[leadId].first_name} ${leadData.last_name || mockLeadDetails[leadId].last_name}`,
+            updated_at: new Date().toISOString()
+          };
+          
+          // Update the lead in the object
+          mockLeadDetails[leadId] = updatedLead;
+          
+          console.log('Updated lead in mockLeadDetails:', updatedLead);
+          
+          setIsSubmitting(false);
+          return updatedLead;
+        } else {
+          throw new Error('Lead not found');
+        }
+      }
+    } catch (err) {
       setIsSubmitting(false);
       toast({
         title: 'Error',
@@ -277,7 +338,7 @@ export function useUpdateLead() {
       });
       return null;
     }
-  };
+  }, [toast]); // Only depend on toast
 
   return {
     updateLead,
@@ -287,14 +348,19 @@ export function useUpdateLead() {
 
 export function useGetLead() {
   const [lead, setLead] = useState<Lead | null>(null);
-  const [isLoading, setIsLoading] = useState(true);
+  const [isLoading, setIsLoading] = useState(false); // Start with false to prevent immediate loading
   const [error, setError] = useState<Error | null>(null);
   const { toast } = useToast();
 
-  const fetchLead = async (leadId: string) => {
+  // Use useCallback to memoize the fetchLead function
+  const fetchLead = useCallback(async (leadId: string) => {
+    console.log('useGetLead - fetchLead called with leadId:', leadId);
+    
+    // Reset state before fetching
+    setError(null);
+    setIsLoading(true);
+    
     try {
-      setIsLoading(true);
-      
       // In a real app, this would be an API call
       // const response = await fetch(`/api/leads/${leadId}`);
       // const data = await response.json();
@@ -302,25 +368,74 @@ export function useGetLead() {
       // Simulate API call with mock data
       await new Promise(resolve => setTimeout(resolve, 500));
       
-      const foundLead = mockLeads.find(lead => lead.id === leadId);
+      // Find the lead in the mockLeads array
+      console.log('useGetLead - mockLeads:', mockLeads);
+      // Convert leadId to string for comparison if needed
+      const foundLead = mockLeads.find(lead => String(lead.id) === String(leadId));
+      console.log('useGetLead - foundLead from mockLeads:', foundLead);
       
       if (foundLead) {
-        setLead(foundLead);
+        // Convert the lead to the expected format if needed
+        const formattedLead = {
+          ...foundLead,
+          // Add any additional fields needed for the lead detail page
+          company: foundLead.company_name,
+          title: foundLead.job_title,
+          // Add any other fields needed
+        };
+        
+        console.log('useGetLead - formattedLead:', formattedLead);
+        setLead(formattedLead);
       } else {
-        throw new Error('Lead not found');
+        // If not found in mockLeads, try the hardcoded mockLeadDetails as fallback
+        // This is for compatibility with the lead detail page
+        const mockLeadDetails: Record<string, any> = {
+          '1': {
+            id: 1,
+            first_name: 'John',
+            last_name: 'Smith',
+            full_name: 'John Smith',
+            email: 'john.smith@example.com',
+            phone: '(555) 123-4567',
+            company: 'Smith Enterprises',
+            title: 'CEO',
+            source: 'website',
+            status: 'new',
+            owner_id: 1,
+            team_id: 1,
+            custom_fields: {
+              address: '123 Main St, San Francisco, CA 94105'
+            },
+            lead_score: 8.5,
+            created_at: '2023-05-15T10:30:00Z',
+            updated_at: '2023-05-15T10:30:00Z',
+            owner: { id: 1, name: 'Jane Doe' }
+          }
+        };
+        
+        console.log('useGetLead - mockLeadDetails:', mockLeadDetails);
+        const fallbackLead = mockLeadDetails[leadId];
+        console.log('useGetLead - fallbackLead from mockLeadDetails:', fallbackLead);
+        
+        if (fallbackLead) {
+          setLead(fallbackLead);
+        } else {
+          throw new Error('Lead not found');
+        }
       }
-      
-      setIsLoading(false);
     } catch (err) {
+      console.error('useGetLead - Error:', err);
       setError(err instanceof Error ? err : new Error('Failed to fetch lead'));
-      setIsLoading(false);
+      setLead(null); // Clear lead data on error
       toast({
         title: 'Error',
         description: 'Failed to fetch lead details. Please try again.',
         variant: 'destructive',
       });
+    } finally {
+      setIsLoading(false);
     }
-  };
+  }, [toast]); // Only depend on toast
 
   return {
     lead,

@@ -53,11 +53,20 @@ export const useLeads = (
 };
 
 // Get a single lead
-export const useLead = (leadId: number, includeCampaignData: boolean = true) => {
+export const useLead = (leadId: number, includeDetails: boolean = false) => {
+  const queryClient = useQueryClient();
+  
   return useQuery({
     queryKey: leadKeys.detail(leadId),
-    queryFn: () => leadApi.getLead(leadId, includeCampaignData),
-    enabled: !!leadId,
+    queryFn: async () => {
+      // Skip API call if leadId is -1 (used for mock data)
+      if (leadId === -1) {
+        return null;
+      }
+      
+      return await leadApi.getLead(leadId, includeDetails);
+    },
+    enabled: leadId !== -1, // Only run the query if leadId is not -1
   });
 };
 
@@ -129,15 +138,11 @@ export const useExportLeads = () => {
 };
 
 // Get lead timeline
-export const useLeadTimeline = (
-  leadId: number, 
-  limit: number = 20,
-  interactionTypes?: string[]
-) => {
+export const useLeadTimeline = (leadId: number, limit: number = 20, interactionTypes?: string[]) => {
   return useQuery({
     queryKey: leadKeys.timeline(leadId, interactionTypes),
     queryFn: () => leadApi.getLeadTimeline(leadId, limit, interactionTypes),
-    enabled: !!leadId,
+    enabled: leadId !== -1, // Only run the query if leadId is not -1
   });
 };
 
@@ -248,7 +253,7 @@ export const useLeadInsights = (leadId: number) => {
   return useQuery({
     queryKey: leadKeys.insights(leadId),
     queryFn: () => leadApi.getLeadInsights(leadId),
-    enabled: !!leadId,
+    enabled: leadId !== -1, // Only run the query if leadId is not -1
   });
 };
 

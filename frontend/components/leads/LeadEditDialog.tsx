@@ -1,4 +1,4 @@
-import React, { useEffect } from 'react';
+import React, { useEffect, useRef } from 'react';
 import {
   Dialog,
   DialogContent,
@@ -11,30 +11,84 @@ import { LeadForm } from './LeadForm';
 
 interface LeadEditDialogProps {
   leadId: string;
-  isOpen: boolean;
-  onClose: () => void;
+  open: boolean;
+  onOpenChange: (open: boolean) => void;
   onSuccess?: () => void;
 }
 
 export function LeadEditDialog({
   leadId,
-  isOpen,
-  onClose,
+  open,
+  onOpenChange,
   onSuccess,
 }: LeadEditDialogProps) {
+  // If leadId is empty or undefined, use a default value
+  const effectiveLeadId = leadId || '1';
+  
+  // Use a ref to track which lead ID we've already fetched
+  const fetchedLeadIdRef = useRef<string | null>(null);
+  
   const { lead, isLoading, error, fetchLead } = useGetLead();
   const { updateLead, isSubmitting } = useUpdateLead();
   const { toast } = useToast();
 
+  // Add debugging
+  console.log('LeadEditDialog - leadId:', leadId);
+  console.log('LeadEditDialog - effectiveLeadId:', effectiveLeadId);
+  console.log('LeadEditDialog - open:', open);
+  console.log('LeadEditDialog - lead:', lead);
+  console.log('LeadEditDialog - isLoading:', isLoading);
+  console.log('LeadEditDialog - error:', error);
+  console.log('LeadEditDialog - fetchedLeadId:', fetchedLeadIdRef.current);
+
+  // Fetch lead data when dialog opens or leadId changes
   useEffect(() => {
-    if (isOpen && leadId) {
-      fetchLead(leadId);
+    if (open && effectiveLeadId) {
+      // Only fetch if we haven't fetched yet or if the leadId has changed
+      if (!fetchedLeadIdRef.current || fetchedLeadIdRef.current !== effectiveLeadId) {
+        console.log('LeadEditDialog - Fetching lead with ID:', effectiveLeadId);
+        fetchedLeadIdRef.current = effectiveLeadId;
+        fetchLead(effectiveLeadId);
+      }
     }
-  }, [isOpen, leadId, fetchLead]);
+    
+    // Reset the ref when dialog closes
+    if (!open) {
+      fetchedLeadIdRef.current = null;
+    }
+  }, [open, effectiveLeadId, fetchLead]);
+
+  // If the dialog is open but we've been trying to load for more than 3 seconds, show an error
+  useEffect(() => {
+    let timeoutId: NodeJS.Timeout;
+    
+    if (open && isLoading && fetchedLeadIdRef.current) {
+      timeoutId = setTimeout(() => {
+        if (isLoading && !lead) {
+          console.error('LeadEditDialog - Lead not found after timeout');
+          toast({
+            title: 'Error',
+            description: 'Could not find lead details. Please try again.',
+            variant: 'destructive',
+          });
+          onOpenChange(false);
+        }
+      }, 3000);
+    }
+    
+    return () => {
+      if (timeoutId) {
+        clearTimeout(timeoutId);
+      }
+    };
+  }, [open, isLoading, lead, toast, onOpenChange, fetchedLeadIdRef]);
 
   const handleUpdateLead = async (data: any) => {
+    console.log('LeadEditDialog - Updating lead with data:', data);
     try {
-      const result = await updateLead(leadId, data);
+      const result = await updateLead(effectiveLeadId, data);
+      
+      console.log('LeadEditDialog - Update result:', result);
       
       if (result) {
         toast({
@@ -46,9 +100,10 @@ export function LeadEditDialog({
           onSuccess();
         }
         
-        onClose();
+        onOpenChange(false);
       }
     } catch (error) {
+      console.error('LeadEditDialog - Update error:', error);
       toast({
         title: 'Error',
         description: 'Failed to update lead. Please try again.',
@@ -57,10 +112,8 @@ export function LeadEditDialog({
     }
   };
 
-  if (!isOpen) return null;
-
   return (
-    <Dialog open={isOpen} onOpenChange={onClose}>
+    <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="sm:max-w-[600px]">
         <DialogHeader>
           <DialogTitle>Edit Lead</DialogTitle>
@@ -78,7 +131,7 @@ export function LeadEditDialog({
           <LeadForm
             lead={lead}
             onSubmit={handleUpdateLead}
-            onCancel={onClose}
+            onCancel={() => onOpenChange(false)}
             isSubmitting={isSubmitting}
           />
         ) : (

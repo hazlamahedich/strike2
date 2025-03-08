@@ -2,72 +2,57 @@
 
 import { useState, useEffect } from 'react';
 import { useRouter, useParams } from 'next/navigation';
-import { ArrowLeft, ChevronRight, CalendarIcon } from 'lucide-react';
-import { Button } from '@/components/ui/button';
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
-import { Badge } from '@/components/ui/badge';
 import { 
+  ArrowLeft, 
   Edit, 
   Mail, 
   Phone, 
   Calendar, 
+  MessageSquare, 
+  CheckCircle, 
+  Trash, 
+  User, 
+  Building, 
   Tag, 
   Clock, 
-  FileText, 
-  MessageSquare, 
-  Activity, 
   BarChart, 
-  Trash,
-  CheckCircle2,
-  XCircle,
-  CheckCircle,
-  Circle
+  Plus,
+  FileText,
+  Flag,
+  UserIcon,
+  Activity
 } from 'lucide-react';
-import { formatDistanceToNow, format } from 'date-fns';
-import { LeadStatus, LeadSource } from '@/lib/types/lead';
+import { Button } from '@/components/ui/button';
+import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import { 
-  Dialog, 
-  DialogContent, 
-  DialogDescription, 
-  DialogFooter, 
-  DialogHeader, 
-  DialogTitle 
-} from '@/components/ui/dialog';
-import { Input } from '@/components/ui/input';
-import { Label } from '@/components/ui/label';
-import { Textarea } from '@/components/ui/textarea';
-import { 
-  Select, 
-  SelectContent, 
-  SelectItem, 
-  SelectTrigger, 
-  SelectValue 
-} from '@/components/ui/select';
-import { cn } from '@/lib/utils';
-import { MeetingDialog } from '@/components/meetings/MeetingDialog';
-import { openMeetingDialog } from '@/lib/utils/dialogUtils';
+import { Badge } from '@/components/ui/badge';
 import { toast } from 'sonner';
+import { LeadStatus, LeadSource } from '@/lib/types/lead';
+import { StatusChangeDialog } from '@/components/leads/StatusChangeDialog';
+import { NoteDialog } from '@/components/leads/NoteDialog';
+import { TaskDialog } from '@/components/leads/TaskDialog';
 import { EmailDialog } from '@/components/communications/EmailDialog';
 import { PhoneDialog } from '@/components/communications/PhoneDialog';
-import { NoteDialog } from '../../../../components/leads/NoteDialog';
+import { MeetingDialog } from '@/components/meetings/MeetingDialog';
+import { MeetingDialogNew } from '@/components/meetings/MeetingDialogNew';
+import { LeadEditDialog } from '@/components/leads/LeadEditDialog';
+import { TaskActionsMenu } from '@/components/leads/TaskActionsMenu';
 
-// Task type definition
-type Task = {
-  id: string;
-  title: string;
-  description?: string;
-  due_date?: string;
-  priority: 'low' | 'medium' | 'high';
-  status: 'pending' | 'in_progress' | 'completed';
-  created_at: string;
-  assigned_to?: {
-    id: string;
-    name: string;
-  };
-};
+// Import API hooks
+import { 
+  useLead, 
+  useUpdateLead, 
+  useLeadTimeline, 
+  useLeadInsights,
+  useAddLeadNote
+} from '@/lib/hooks/useLeads';
+
+// Configuration flag to toggle between mock and real data
+// Set to true to use mock data, false to use real API data
+const USE_MOCK_DATA = true;
 
 // Mock lead details data
+// This is now just a fallback in case the mockService fails
 const mockLeadDetails: Record<string, any> = {
   '1': {
     id: 1,
@@ -86,133 +71,41 @@ const mockLeadDetails: Record<string, any> = {
       address: '123 Main St, San Francisco, CA 94105'
     },
     lead_score: 8.5,
+    conversion_probability: 0.65,
     created_at: '2023-05-15T10:30:00Z',
     updated_at: '2023-05-15T10:30:00Z',
-    tasks: [],
-    emails: [],
-    calls: [],
+    tasks: [
+      { 
+        id: 1, 
+        title: 'Follow up call', 
+        description: 'Call to discuss the proposal',
+        due_date: '2023-05-20T14:00:00Z', 
+        completed: false,
+        priority: 'high',
+        assignee: 'Jane Doe'
+      },
+      { 
+        id: 2, 
+        title: 'Send proposal', 
+        description: 'Prepare and send the detailed proposal',
+        due_date: '2023-05-25T10:00:00Z', 
+        completed: false,
+        priority: 'medium',
+        assignee: 'John Smith'
+      }
+    ],
+    emails: [
+      { id: 1, subject: 'Introduction', sent_at: '2023-05-15T11:00:00Z' }
+    ],
+    calls: [
+      { id: 1, duration: 15, notes: 'Initial contact', called_at: '2023-05-16T09:30:00Z' }
+    ],
     meetings: [],
     notes: [{ id: 1, content: 'Interested in premium plan', created_at: '2023-05-15T10:35:00Z' }],
     activities: [],
     owner: { id: 1, name: 'Jane Doe' },
     timeline: [],
     campaigns: [{ id: 1, name: 'Summer Promotion' }]
-  },
-  '2': {
-    id: 2,
-    first_name: 'Sarah',
-    last_name: 'Johnson',
-    full_name: 'Sarah Johnson',
-    email: 'sarah.j@company.co',
-    phone: '(555) 987-6543',
-    company: 'Johnson Media',
-    title: 'Marketing Director',
-    source: LeadSource.REFERRAL,
-    status: LeadStatus.CONTACTED,
-    owner_id: 2,
-    team_id: 1,
-    custom_fields: {
-      address: '456 Market St, San Francisco, CA 94103'
-    },
-    lead_score: 7.2,
-    created_at: '2023-05-10T14:20:00Z',
-    updated_at: '2023-05-12T09:15:00Z',
-    tasks: [],
-    emails: [],
-    calls: [],
-    meetings: [],
-    notes: [{ id: 2, content: 'Follow up next week', created_at: '2023-05-12T09:15:00Z' }],
-    activities: [],
-    owner: { id: 2, name: 'Mike Wilson' },
-    timeline: [],
-    campaigns: [{ id: 2, name: 'New Product Launch' }]
-  },
-  '3': {
-    id: 3,
-    first_name: 'Michael',
-    last_name: 'Brown',
-    full_name: 'Michael Brown',
-    email: 'mbrown@business.org',
-    phone: '(555) 456-7890',
-    company: 'Tech Innovations',
-    title: 'CTO',
-    source: LeadSource.LINKEDIN,
-    status: LeadStatus.QUALIFIED,
-    owner_id: 1,
-    team_id: 2,
-    custom_fields: {
-      address: '789 Howard St, San Francisco, CA 94103'
-    },
-    lead_score: 9.1,
-    created_at: '2023-05-05T11:45:00Z',
-    updated_at: '2023-05-11T16:30:00Z',
-    tasks: [],
-    emails: [],
-    calls: [],
-    meetings: [],
-    notes: [{ id: 3, content: 'Needs custom solution', created_at: '2023-05-11T16:30:00Z' }],
-    activities: [],
-    owner: { id: 1, name: 'Jane Doe' },
-    timeline: [],
-    campaigns: [{ id: 1, name: 'Summer Promotion' }]
-  },
-  '4': {
-    id: 4,
-    first_name: 'Emily',
-    last_name: 'Davis',
-    full_name: 'Emily Davis',
-    email: 'emily.davis@tech.io',
-    phone: '(555) 234-5678',
-    company: 'Davis Tech',
-    title: 'Product Manager',
-    source: LeadSource.EVENT,
-    status: LeadStatus.PROPOSAL,
-    owner_id: 3,
-    team_id: 2,
-    custom_fields: {
-      address: '101 California St, San Francisco, CA 94111'
-    },
-    lead_score: 6.5,
-    created_at: '2023-04-28T09:00:00Z',
-    updated_at: '2023-05-09T13:45:00Z',
-    tasks: [],
-    emails: [],
-    calls: [],
-    meetings: [],
-    notes: [{ id: 4, content: 'Sent proposal on 5/9', created_at: '2023-05-09T13:45:00Z' }],
-    activities: [],
-    owner: { id: 3, name: 'Alex Chen' },
-    timeline: [],
-    campaigns: [{ id: 3, name: 'Enterprise Outreach' }]
-  },
-  '5': {
-    id: 5,
-    first_name: 'David',
-    last_name: 'Wilson',
-    full_name: 'David Wilson',
-    email: 'dwilson@enterprise.net',
-    phone: '(555) 876-5432',
-    company: 'Wilson Enterprises',
-    title: 'VP of Sales',
-    source: LeadSource.COLD_CALL,
-    status: LeadStatus.NEGOTIATION,
-    owner_id: 2,
-    team_id: 1,
-    custom_fields: {
-      address: '555 Mission St, San Francisco, CA 94105'
-    },
-    lead_score: 8.8,
-    created_at: '2023-04-20T15:10:00Z',
-    updated_at: '2023-05-08T10:20:00Z',
-    tasks: [],
-    emails: [],
-    calls: [],
-    meetings: [],
-    notes: [{ id: 5, content: 'Negotiating contract terms', created_at: '2023-05-08T10:20:00Z' }],
-    activities: [],
-    owner: { id: 2, name: 'Mike Wilson' },
-    timeline: [],
-    campaigns: [{ id: 2, name: 'New Product Launch' }]
   }
 };
 
@@ -227,673 +120,773 @@ const mockTimeline = [
   },
   {
     id: 2,
-    type: 'status_change',
-    content: 'Changed status from New to Contacted',
-    created_at: '2023-05-14T14:20:00Z',
+    type: 'email',
+    content: 'Sent introduction email',
+    created_at: '2023-05-15T11:00:00Z',
     user: { id: 1, name: 'Jane Doe' }
   },
   {
     id: 3,
-    type: 'email',
-    content: 'Sent introduction email',
-    created_at: '2023-05-13T09:15:00Z',
+    type: 'call',
+    content: 'Made initial contact call (15 min)',
+    created_at: '2023-05-16T09:30:00Z',
     user: { id: 1, name: 'Jane Doe' }
   }
 ];
 
-// Mock insights data
-const mockInsights = {
-  engagement_score: 75,
-  response_time_avg: '2 hours',
-  last_contact: '2023-05-15T10:35:00Z',
-  total_interactions: 12,
-  conversion_probability: 65,
-  recommended_actions: [
-    'Schedule a follow-up call',
-    'Send product demo',
-    'Discuss pricing options'
-  ]
-};
-
-// Add tasks to mock lead details
-mockLeadDetails['1'].tasks = [
-  {
-    id: '1',
-    title: 'Follow up on proposal',
-    description: 'Send an email to check if they reviewed the proposal',
-    due_date: '2023-06-15T10:00:00Z',
-    priority: 'high',
-    status: 'pending',
-    created_at: '2023-05-20T14:30:00Z',
-    assigned_to: { id: '1', name: 'Jane Doe' }
-  }
-];
-
-mockLeadDetails['2'].tasks = [
-  {
-    id: '1',
-    title: 'Schedule demo',
-    description: 'Arrange a product demonstration',
-    due_date: '2023-06-10T15:00:00Z',
-    priority: 'medium',
-    status: 'in_progress',
-    created_at: '2023-05-18T09:15:00Z',
-    assigned_to: { id: '2', name: 'Mike Wilson' }
-  }
-];
-
-// Ensure other leads have an empty tasks array
-Object.keys(mockLeadDetails).forEach(key => {
-  if (!mockLeadDetails[key].tasks) {
-    mockLeadDetails[key].tasks = [];
-  }
-});
-
-// Mock team members for task assignment
-const mockTeamMembers = [
-  { id: '1', name: 'Jane Doe' },
-  { id: '2', name: 'Mike Wilson' },
-  { id: '3', name: 'Alex Chen' },
-  { id: '4', name: 'Sarah Johnson' }
-];
-
-// Simple Tooltip Component
-const SimpleTooltip = ({ 
-  children, 
-  content 
-}: { 
-  children: React.ReactNode, 
-  content: string 
-}) => {
-  const [showTooltip, setShowTooltip] = useState(false);
+export default function LeadDetailPage() {
+  const router = useRouter();
+  const params = useParams();
+  const leadId = params.id as string;
   
-  return (
-    <div 
-      className="relative inline-block"
-      onMouseEnter={() => setShowTooltip(true)}
-      onMouseLeave={() => setShowTooltip(false)}
-    >
-      {children}
-      {showTooltip && (
-        <div className="absolute bottom-full left-1/2 transform -translate-x-1/2 mb-2 px-2 py-1 bg-gray-800 text-white text-xs rounded whitespace-nowrap z-50">
-          {content}
-          <div className="absolute top-full left-1/2 transform -translate-x-1/2 border-4 border-transparent border-t-gray-800"></div>
-        </div>
-      )}
-    </div>
-  );
-};
-
-// Lead Pipeline Component
-const LeadPipeline = ({ 
-  currentStatus, 
-  onStatusChange 
-}: { 
-  currentStatus: LeadStatus, 
-  onStatusChange: (status: LeadStatus) => void 
-}) => {
-  // Define pipeline stages in order
-  const pipelineStages = [
-    { status: LeadStatus.NEW, label: 'New' },
-    { status: LeadStatus.CONTACTED, label: 'Contacted' },
-    { status: LeadStatus.QUALIFIED, label: 'Qualified' },
-    { status: LeadStatus.PROPOSAL, label: 'Proposal' },
-    { status: LeadStatus.NEGOTIATION, label: 'Negotiation' },
-    { status: LeadStatus.WON, label: 'Won' },
-    { status: LeadStatus.LOST, label: 'Lost' }
-  ];
+  // Set up mock user in localStorage for development
+  useEffect(() => {
+    if (USE_MOCK_DATA && typeof window !== 'undefined') {
+      // Check if we already have a mock user
+      if (!localStorage.getItem('strike_app_user')) {
+        // Set up a mock user to trigger the mockService
+        localStorage.setItem('strike_app_user', JSON.stringify({
+          id: '1',
+          email: 'demo@example.com',
+          name: 'Demo User',
+          role: 'admin'
+        }));
+      }
+    }
+  }, []);
   
-  // Find current stage index
-  const currentStageIndex = pipelineStages.findIndex(stage => stage.status === currentStatus);
+  // State for dialogs
+  const [showStatusDialog, setShowStatusDialog] = useState(false);
+  const [statusToChange, setStatusToChange] = useState<LeadStatus | null>(null);
+  const [showNoteDialog, setShowNoteDialog] = useState(false);
+  const [showTaskDialog, setShowTaskDialog] = useState(false);
+  const [showEmailDialog, setShowEmailDialog] = useState(false);
+  const [showCallDialog, setShowCallDialog] = useState(false);
+  const [showMeetingDialog, setShowMeetingDialog] = useState(false);
+  const [showEditDialog, setShowEditDialog] = useState(false);
+  const [currentTask, setCurrentTask] = useState<any>(null);
+  const [isEditingTask, setIsEditingTask] = useState(false);
+  
+  // API hooks for real data - only run when not using mock data
+  const { 
+    data: apiLead, 
+    isLoading: isLoadingLead, 
+    isError: isErrorLead 
+  } = useLead(USE_MOCK_DATA ? -1 : parseInt(leadId), true);
+  
+  const { 
+    data: apiTimeline, 
+    isLoading: isLoadingTimeline 
+  } = useLeadTimeline(USE_MOCK_DATA ? -1 : parseInt(leadId));
+  
+  const { 
+    data: apiInsights, 
+    isLoading: isLoadingInsights 
+  } = useLeadInsights(USE_MOCK_DATA ? -1 : parseInt(leadId));
+  
+  const updateLeadMutation = useUpdateLead();
+  
+  // Get the lead data based on the configuration flag
+  const lead = USE_MOCK_DATA ? mockLeadDetails[leadId] : apiLead;
+  const timeline = USE_MOCK_DATA ? mockTimeline : apiTimeline;
+  const isLoading = !USE_MOCK_DATA && (isLoadingLead || isLoadingTimeline || isLoadingInsights);
+  const isError = !USE_MOCK_DATA && isErrorLead;
+  
+  // Handle status change
+  const handleStatusChange = (status: LeadStatus, reason?: string) => {
+    if (USE_MOCK_DATA) {
+      // Mock data implementation
+      const lead = mockLeadDetails[leadId];
+      if (lead) {
+        // Update the mock data
+        const previousStatus = lead.status;
+        lead.status = status;
+        lead.updated_at = new Date().toISOString();
+        
+        // Add a note about the status change
+        const statusLabel = status.charAt(0).toUpperCase() + status.slice(1);
+        const previousStatusLabel = previousStatus.charAt(0).toUpperCase() + previousStatus.slice(1);
+        let noteContent = `Status changed to ${statusLabel}`;
+        
+        // Add reason if provided
+        if (reason) {
+          noteContent += `: "${reason}"`;
+        }
+        
+        if (lead.notes && lead.notes.length > 0) {
+          lead.notes.unshift({ 
+            id: lead.notes.length + 1, 
+            content: noteContent, 
+            created_at: new Date().toISOString() 
+          });
+        } else {
+          lead.notes = [{ 
+            id: 1, 
+            content: noteContent, 
+            created_at: new Date().toISOString() 
+          }];
+        }
+        
+        // Add to timeline
+        const timelineEntry = {
+          id: mockTimeline.length + 1,
+          type: 'status_change',
+          content: `Changed status from ${previousStatusLabel} to ${statusLabel}${reason ? `: "${reason}"` : ''}`,
+          created_at: new Date().toISOString(),
+          user: { id: 1, name: 'Jane Doe' }
+        };
+        
+        // Add to the beginning of the timeline
+        mockTimeline.unshift(timelineEntry);
+        
+        // Force re-render
+        router.refresh();
+      }
+    } else {
+      // Real API implementation
+      updateLeadMutation.mutate(
+        { 
+          leadId: parseInt(leadId), 
+          leadData: { 
+            status, 
+            status_change_notes: reason 
+          } 
+        },
+        {
+          onSuccess: () => {
+            toast.success(`Lead status updated to ${status.charAt(0).toUpperCase() + status.slice(1)}`);
+          },
+          onError: (error) => {
+            console.error('Failed to update lead status:', error);
+            toast.error('Failed to update lead status');
+          }
+        }
+      );
+    }
+  };
+  
+  // Format date for display
+  const formatDate = (dateString: string) => {
+    return new Date(dateString).toLocaleDateString('en-US', {
+      year: 'numeric',
+      month: 'short',
+      day: 'numeric',
+    });
+  };
+  
+  // Format status for display
+  const formatStatus = (status: LeadStatus): string => {
+    return status.charAt(0).toUpperCase() + status.slice(1).replace('_', ' ');
+  };
   
   // Get status color
-  const getStatusColor = (status: LeadStatus, isActive: boolean) => {
-    if (!isActive) return 'bg-gray-200 text-gray-500';
-    
+  const getStatusColor = (status: LeadStatus): string => {
     switch (status) {
       case LeadStatus.NEW:
-        return 'bg-blue-500 text-white';
+        return 'bg-blue-100 text-blue-800 dark:bg-blue-900 dark:text-blue-100';
       case LeadStatus.CONTACTED:
-        return 'bg-purple-500 text-white';
+        return 'bg-purple-100 text-purple-800 dark:bg-purple-900 dark:text-purple-100';
       case LeadStatus.QUALIFIED:
-        return 'bg-green-500 text-white';
+        return 'bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-100';
       case LeadStatus.PROPOSAL:
-        return 'bg-yellow-500 text-white';
+        return 'bg-amber-100 text-amber-800 dark:bg-amber-900 dark:text-amber-100';
       case LeadStatus.NEGOTIATION:
-        return 'bg-orange-500 text-white';
+        return 'bg-orange-100 text-orange-800 dark:bg-orange-900 dark:text-orange-100';
       case LeadStatus.WON:
-        return 'bg-emerald-500 text-white';
+        return 'bg-emerald-100 text-emerald-800 dark:bg-emerald-900 dark:text-emerald-100';
       case LeadStatus.LOST:
-        return 'bg-red-500 text-white';
+        return 'bg-red-100 text-red-800 dark:bg-red-900 dark:text-red-100';
       default:
-        return 'bg-gray-500 text-white';
+        return 'bg-gray-100 text-gray-800 dark:bg-gray-800 dark:text-gray-100';
     }
   };
   
-  // Handle moving to next stage
-  const handleMoveToNextStage = () => {
-    if (currentStageIndex < pipelineStages.length - 2) { // Don't auto-advance to Won/Lost
-      onStatusChange(pipelineStages[currentStageIndex + 1].status);
-    }
-  };
-  
-  // Handle moving to previous stage
-  const handleMoveToPreviousStage = () => {
-    if (currentStageIndex > 0) {
-      onStatusChange(pipelineStages[currentStageIndex - 1].status);
-    }
-  };
-  
-  // Handle marking as won
-  const handleMarkAsWon = () => {
-    onStatusChange(LeadStatus.WON);
-  };
-  
-  // Handle marking as lost
-  const handleMarkAsLost = () => {
-    onStatusChange(LeadStatus.LOST);
-  };
-  
-  return (
-    <Card>
-      <CardHeader>
-        <CardTitle className="text-xl">Lead Pipeline</CardTitle>
-        <CardDescription>
-          Track and update this lead's progress through your sales pipeline
-        </CardDescription>
-      </CardHeader>
-      <CardContent className="space-y-6">
-        {/* Pipeline visualization */}
-        <div className="relative">
-          <div className="flex justify-between mb-2">
-            {pipelineStages.slice(0, -2).map((stage, index) => (
-              <SimpleTooltip key={stage.status} content={stage.label}>
-                <div 
-                  className={`w-10 h-10 rounded-full flex items-center justify-center cursor-pointer ${
-                    index <= currentStageIndex ? getStatusColor(stage.status, true) : 'bg-gray-200 text-gray-500'
-                  }`}
-                  onClick={() => onStatusChange(stage.status)}
-                >
-                  {index + 1}
-                </div>
-              </SimpleTooltip>
-            ))}
-          </div>
+  // Handle task completion toggle
+  const handleToggleTaskComplete = (taskId: number, completed: boolean) => {
+    if (USE_MOCK_DATA) {
+      // Mock data implementation
+      const lead = mockLeadDetails[leadId];
+      if (lead && lead.tasks) {
+        // Find the task
+        const taskIndex = lead.tasks.findIndex((t: any) => t.id === taskId);
+        if (taskIndex !== -1) {
+          // Update the task
+          lead.tasks[taskIndex].completed = completed;
+          lead.updated_at = new Date().toISOString();
           
-          {/* Progress bar */}
-          <div className="h-2 bg-gray-200 absolute top-5 left-5 right-5 -z-10 rounded-full">
-            <div 
-              className="h-2 bg-blue-500 rounded-full transition-all duration-300"
-              style={{ 
-                width: `${Math.min(100, Math.max(0, (currentStageIndex / (pipelineStages.length - 3)) * 100))}%` 
-              }}
-            ></div>
-          </div>
+          // Add to timeline
+          const timelineEntry = {
+            id: mockTimeline.length + 1,
+            type: 'task_update',
+            content: `${completed ? 'Completed' : 'Reopened'} task: "${lead.tasks[taskIndex].title}"`,
+            created_at: new Date().toISOString(),
+            user: { id: 1, name: 'Jane Doe' }
+          };
           
-          {/* Stage labels */}
-          <div className="flex justify-between mt-2">
-            {pipelineStages.slice(0, -2).map((stage, index) => (
-              <div key={stage.status} className="text-xs text-center w-10">
-                {stage.label}
-              </div>
-            ))}
-          </div>
-        </div>
-        
-        {/* Current stage info */}
-        <div className="bg-gray-50 p-4 rounded-lg">
-          <div className="flex justify-between items-center">
-            <div>
-              <h3 className="font-medium">Current Stage</h3>
-              <div className="flex items-center mt-1">
-                <Badge className={getStatusColor(currentStatus, true)}>
-                  {pipelineStages.find(stage => stage.status === currentStatus)?.label || 'Unknown'}
-                </Badge>
-              </div>
-            </div>
-            <div className="flex gap-2">
-              {currentStatus !== LeadStatus.WON && currentStatus !== LeadStatus.LOST && (
-                <>
-                  <Button 
-                    variant="outline" 
-                    size="sm" 
-                    onClick={handleMoveToPreviousStage}
-                    disabled={currentStageIndex === 0}
-                  >
-                    Previous
-                  </Button>
-                  <Button 
-                    variant="outline" 
-                    size="sm" 
-                    onClick={handleMoveToNextStage}
-                    disabled={currentStageIndex >= pipelineStages.length - 3}
-                  >
-                    Next
-                  </Button>
-                </>
-              )}
-            </div>
-          </div>
-        </div>
-        
-        {/* Outcome buttons */}
-        {currentStatus !== LeadStatus.WON && currentStatus !== LeadStatus.LOST && (
-          <div className="flex gap-2">
-            <Button 
-              className="flex-1" 
-              variant="outline" 
-              onClick={handleMarkAsWon}
-            >
-              <CheckCircle2 className="mr-2 h-4 w-4 text-green-500" />
-              Mark as Won
-            </Button>
-            <Button 
-              className="flex-1" 
-              variant="outline" 
-              onClick={handleMarkAsLost}
-            >
-              <XCircle className="mr-2 h-4 w-4 text-red-500" />
-              Mark as Lost
-            </Button>
-          </div>
-        )}
-        
-        {/* Reset button if already won/lost */}
-        {(currentStatus === LeadStatus.WON || currentStatus === LeadStatus.LOST) && (
-          <Button 
-            variant="outline" 
-            onClick={() => onStatusChange(LeadStatus.NEGOTIATION)}
-            className="w-full"
-          >
-            Reopen Lead
-          </Button>
-        )}
-      </CardContent>
-    </Card>
-  );
-};
-
-// Task Item Component
-const TaskItem = ({ 
-  task, 
-  onStatusChange, 
-  onEdit, 
-  onDelete 
-}: { 
-  task: Task, 
-  onStatusChange: (taskId: string, status: 'pending' | 'in_progress' | 'completed') => void,
-  onEdit: (task: Task) => void,
-  onDelete: (taskId: string) => void
-}) => {
-  // Get priority color
-  const getPriorityColor = (priority: string) => {
-    switch (priority) {
-      case 'high':
-        return 'text-red-500';
-      case 'medium':
-        return 'text-amber-500';
-      case 'low':
-        return 'text-green-500';
-      default:
-        return 'text-gray-500';
+          // Add to the beginning of the timeline
+          mockTimeline.unshift(timelineEntry);
+          
+          // Force re-render
+          router.refresh();
+          
+          // Show toast
+          toast.success(`Task ${completed ? 'completed' : 'reopened'}`);
+        }
+      }
+    } else {
+      // Real API implementation would go here
+      toast.success(`Task ${completed ? 'completed' : 'reopened'}`);
     }
   };
   
-  // Format date
-  const formatDate = (dateString?: string) => {
-    if (!dateString) return 'No due date';
-    try {
-      return format(new Date(dateString), 'MMM d, yyyy');
-    } catch (error) {
-      return dateString;
+  // Handle task edit
+  const handleEditTask = (task: any) => {
+    setCurrentTask(task);
+    setIsEditingTask(true);
+    setShowTaskDialog(true);
+  };
+  
+  // Handle task delete
+  const handleDeleteTask = (taskId: number) => {
+    if (USE_MOCK_DATA) {
+      // Mock data implementation
+      const lead = mockLeadDetails[leadId];
+      if (lead && lead.tasks) {
+        // Find the task
+        const taskIndex = lead.tasks.findIndex((t: any) => t.id === taskId);
+        if (taskIndex !== -1) {
+          // Get task title for the timeline
+          const taskTitle = lead.tasks[taskIndex].title;
+          
+          // Remove the task
+          lead.tasks.splice(taskIndex, 1);
+          lead.updated_at = new Date().toISOString();
+          
+          // Add to timeline
+          const timelineEntry = {
+            id: mockTimeline.length + 1,
+            type: 'task_delete',
+            content: `Deleted task: "${taskTitle}"`,
+            created_at: new Date().toISOString(),
+            user: { id: 1, name: 'Jane Doe' }
+          };
+          
+          // Add to the beginning of the timeline
+          mockTimeline.unshift(timelineEntry);
+          
+          // Force re-render
+          router.refresh();
+          
+          // Show toast
+          toast.success('Task deleted');
+        }
+      }
+    } else {
+      // Real API implementation would go here
+      toast.success('Task deleted');
     }
   };
   
-  return (
-    <div className="p-4 border rounded-lg hover:bg-gray-50 transition-colors">
-      <div className="flex items-start justify-between">
-        <div className="flex items-start gap-3">
-          <button 
-            onClick={() => onStatusChange(
-              task.id, 
-              task.status === 'completed' ? 'pending' : 'completed'
-            )}
-            className="mt-0.5 flex-shrink-0"
-          >
-            {task.status === 'completed' ? (
-              <CheckCircle className="h-5 w-5 text-green-500" />
-            ) : (
-              <Circle className="h-5 w-5 text-gray-300" />
-            )}
-          </button>
+  // Handle task update
+  const handleTaskUpdate = (updatedTask: any) => {
+    if (USE_MOCK_DATA) {
+      // Mock data implementation
+      const lead = mockLeadDetails[leadId];
+      if (lead && lead.tasks) {
+        // Find the task
+        const taskIndex = lead.tasks.findIndex((t: any) => t.id === updatedTask.id);
+        if (taskIndex !== -1) {
+          // Update the task
+          lead.tasks[taskIndex] = {
+            ...lead.tasks[taskIndex],
+            ...updatedTask,
+            updated_at: new Date().toISOString()
+          };
           
-          <div>
-            <h4 className={`font-medium ${task.status === 'completed' ? 'line-through text-gray-500' : ''}`}>
-              {task.title}
-            </h4>
-            {task.description && (
-              <p className="text-sm text-gray-600 mt-1">{task.description}</p>
-            )}
-            <div className="flex items-center gap-3 mt-2">
-              <span className="text-xs flex items-center">
-                <Calendar className="h-3 w-3 mr-1" />
-                {formatDate(task.due_date)}
-              </span>
-              <span className={`text-xs ${getPriorityColor(task.priority)}`}>
-                {task.priority.charAt(0).toUpperCase() + task.priority.slice(1)} Priority
-              </span>
-              {task.assigned_to && (
-                <span className="text-xs text-gray-600">
-                  Assigned to {task.assigned_to.name}
-                </span>
-              )}
-            </div>
-          </div>
-        </div>
+          // Add to timeline
+          const timelineEntry = {
+            id: mockTimeline.length + 1,
+            type: 'task_update',
+            content: `Updated task: "${updatedTask.title}"`,
+            created_at: new Date().toISOString(),
+            user: { id: 1, name: 'Jane Doe' }
+          };
+          
+          // Add to the beginning of the timeline
+          mockTimeline.unshift(timelineEntry);
+          
+          // Force re-render
+          router.refresh();
+          
+          // Show toast
+          toast.success('Task updated');
+        }
+      }
+    } else {
+      // Real API implementation would go here
+      toast.success('Task updated');
+    }
+  };
+  
+  // Handle task creation
+  const handleTaskCreate = (newTask: any) => {
+    if (USE_MOCK_DATA) {
+      // Mock data implementation
+      const lead = mockLeadDetails[leadId];
+      if (lead) {
+        // Initialize tasks array if it doesn't exist
+        if (!lead.tasks) {
+          lead.tasks = [];
+        }
         
-        <div className="flex gap-2">
-          <SimpleTooltip content="Edit this task">
-            <Button variant="ghost" size="sm" onClick={() => onEdit(task)} aria-label="Edit Task">
-              <Edit className="h-4 w-4" />
-            </Button>
-          </SimpleTooltip>
-          <SimpleTooltip content="Delete Task">
-            <Button variant="ghost" size="sm" onClick={() => onDelete(task.id)} aria-label="Delete Task">
-              <Trash className="h-4 w-4" />
-            </Button>
-          </SimpleTooltip>
+        // Create a new task with a unique ID
+        const taskId = lead.tasks.length > 0 
+          ? Math.max(...lead.tasks.map((t: any) => t.id)) + 1 
+          : 1;
+        
+        const task = {
+          id: taskId,
+          ...newTask,
+          created_at: new Date().toISOString(),
+          updated_at: new Date().toISOString()
+        };
+        
+        // Add the task to the lead
+        lead.tasks.push(task);
+        lead.updated_at = new Date().toISOString();
+        
+        // Add to timeline
+        const timelineEntry = {
+          id: mockTimeline.length + 1,
+          type: 'task_create',
+          content: `Created task: "${task.title}"`,
+          created_at: new Date().toISOString(),
+          user: { id: 1, name: 'Jane Doe' }
+        };
+        
+        // Add to the beginning of the timeline
+        mockTimeline.unshift(timelineEntry);
+        
+        // Force re-render
+        router.refresh();
+        
+        // Show toast
+        toast.success('Task created');
+      }
+    } else {
+      // Real API implementation would go here
+      toast.success('Task created');
+    }
+  };
+  
+  // Get conversion probability label based on threshold
+  const getConversionProbabilityLabel = (probability: number): { label: string; color: string } => {
+    if (probability >= 0.7) {
+      return { label: 'High', color: 'text-green-500 dark:text-green-400' };
+    } else if (probability >= 0.4) {
+      return { label: 'Medium', color: 'text-amber-500 dark:text-amber-400' };
+    } else {
+      return { label: 'Low', color: 'text-red-500 dark:text-red-400' };
+    }
+  };
+  
+  // If loading or error, show appropriate UI
+  if (!USE_MOCK_DATA && isLoading) {
+    return (
+      <div className="flex items-center justify-center h-screen">
+        <div className="text-center">
+          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-primary mx-auto"></div>
+          <p className="mt-4 text-lg">Loading lead data...</p>
         </div>
       </div>
-    </div>
-  );
-};
-
-// Custom Lead Detail component that doesn't rely on hooks
-const CustomLeadDetail = ({
-  leadId,
-  onEdit,
-  onDelete,
-  onSendEmail,
-  onCall,
-  onScheduleMeeting,
-  onAddToCampaign,
-  onAddNote,
-  onAddTask,
-  onEditTask,
-  onStatusChange,
-  activeTab,
-  setActiveTab,
-  setEditingTask
-}: {
-  leadId: string;
-  onEdit: () => void;
-  onDelete: () => void;
-  onSendEmail: () => void;
-  onCall: () => void;
-  onScheduleMeeting: () => void;
-  onAddToCampaign: () => void;
-  onAddNote: () => void;
-  onAddTask: () => void;
-  onEditTask: (task: Task) => void;
-  onStatusChange: (status: LeadStatus) => void;
-  activeTab: string;
-  setActiveTab: (tab: string) => void;
-  setEditingTask: (task: Task | null) => void;
-}) => {
-  const lead = mockLeadDetails[leadId];
-  
-  if (!lead) {
-    return <div className="flex justify-center p-8 text-red-500">Lead not found</div>;
+    );
   }
   
-  // Get status badge color
-  const getStatusColor = (status: LeadStatus) => {
-    switch (status) {
-      case LeadStatus.NEW:
-        return 'bg-blue-100 text-blue-800';
-      case LeadStatus.CONTACTED:
-        return 'bg-purple-100 text-purple-800';
-      case LeadStatus.QUALIFIED:
-        return 'bg-green-100 text-green-800';
-      case LeadStatus.PROPOSAL:
-        return 'bg-yellow-100 text-yellow-800';
-      case LeadStatus.NEGOTIATION:
-        return 'bg-orange-100 text-orange-800';
-      case LeadStatus.WON:
-        return 'bg-green-100 text-green-800';
-      case LeadStatus.LOST:
-        return 'bg-red-100 text-red-800';
-      default:
-        return 'bg-gray-100 text-gray-800';
-    }
-  };
+  if (!USE_MOCK_DATA && isError) {
+    return (
+      <div className="flex items-center justify-center h-screen">
+        <div className="text-center">
+          <div className="text-red-500 text-5xl mb-4">⚠️</div>
+          <h2 className="text-2xl font-bold mb-2">Error Loading Lead</h2>
+          <p className="text-muted-foreground mb-4">There was a problem loading the lead data.</p>
+          <Button onClick={() => router.push('/dashboard/leads')}>
+            Return to Leads
+          </Button>
+        </div>
+      </div>
+    );
+  }
   
-  // Get source badge color
-  const getSourceColor = (source: LeadSource) => {
-    switch (source) {
-      case LeadSource.WEBSITE:
-        return 'bg-indigo-100 text-indigo-800';
-      case LeadSource.REFERRAL:
-        return 'bg-green-100 text-green-800';
-      case LeadSource.LINKEDIN:
-        return 'bg-blue-100 text-blue-800';
-      case LeadSource.COLD_CALL:
-        return 'bg-gray-100 text-gray-800';
-      case LeadSource.EMAIL_CAMPAIGN:
-        return 'bg-yellow-100 text-yellow-800';
-      case LeadSource.EVENT:
-        return 'bg-purple-100 text-purple-800';
-      case LeadSource.OTHER:
-        return 'bg-gray-100 text-gray-800';
-      default:
-        return 'bg-gray-100 text-gray-800';
-    }
-  };
+  // If lead not found, show appropriate UI
+  if (!lead) {
+    return (
+      <div className="flex items-center justify-center h-screen">
+        <div className="text-center">
+          <div className="text-amber-500 text-5xl mb-4">🔍</div>
+          <h2 className="text-2xl font-bold mb-2">Lead Not Found</h2>
+          <p className="text-muted-foreground mb-4">The lead you're looking for doesn't exist or you don't have access to it.</p>
+          <Button onClick={() => router.push('/dashboard/leads')}>
+            Return to Leads
+          </Button>
+        </div>
+      </div>
+    );
+  }
   
-  // Format date
-  const formatDate = (dateString: string) => {
-    try {
-      return formatDistanceToNow(new Date(dateString), { addSuffix: true });
-    } catch (error) {
-      return dateString;
-    }
-  };
-  
+  // Render the lead detail page with modern layout
   return (
-    <div className="space-y-6" id="lead-detail">
-      <div className="flex justify-between items-start">
-        <div>
-          <h1 className="text-3xl font-bold">{lead.full_name}</h1>
-          {lead.title && lead.company && (
-            <p className="text-muted-foreground">
-              {lead.title} at {lead.company}
-            </p>
-          )}
-          <div className="flex gap-2 mt-2">
-            <Badge className={getStatusColor(lead.status)}>
-              {lead.status.charAt(0).toUpperCase() + lead.status.slice(1)}
-            </Badge>
-            <Badge className={getSourceColor(lead.source)}>
-              {lead.source.split('_').map((word: string) => word.charAt(0).toUpperCase() + word.slice(1)).join(' ')}
-            </Badge>
-          </div>
+    <div className="flex-1 space-y-6 p-6 md:p-8 pt-6">
+      {/* Status Change Dialog */}
+      {statusToChange && (
+        <StatusChangeDialog
+          open={showStatusDialog}
+          onOpenChange={setShowStatusDialog}
+          leadId={parseInt(leadId)}
+          leadName={lead.full_name}
+          currentStatus={lead.status}
+          newStatus={statusToChange}
+          onConfirm={(status, reason) => handleStatusChange(status, reason)}
+          isMock={USE_MOCK_DATA}
+        />
+      )}
+      
+      {/* Header with back button and lead name */}
+      <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
+        <div className="flex items-center">
+          <Button 
+            variant="ghost" 
+            size="sm" 
+            className="mr-2"
+            onClick={() => router.push('/dashboard/leads')}
+          >
+            <ArrowLeft className="h-4 w-4 mr-2" />
+            Back
+          </Button>
+          <h1 className="text-2xl font-bold">{lead.full_name}</h1>
+          <Badge className={`ml-3 ${getStatusColor(lead.status)}`}>
+            {formatStatus(lead.status)}
+          </Badge>
         </div>
         
-        <div className="flex gap-2">
-          <Button variant="outline" size="sm" onClick={onEdit}>
-            <Edit className="mr-2 h-4 w-4" /> Edit
+        <div className="flex items-center space-x-2">
+          <Button variant="outline" onClick={() => setShowEditDialog(true)}>
+            <Edit className="h-4 w-4 mr-2" />
+            Edit
           </Button>
-          <Button variant="destructive" size="sm" onClick={onDelete}>
-            <Trash className="mr-2 h-4 w-4" /> Delete
+          <Button 
+            variant="destructive" 
+            onClick={() => {
+              if (confirm('Are you sure you want to delete this lead?')) {
+                toast.success('Lead deleted');
+                router.push('/dashboard/leads');
+              }
+            }}
+          >
+            <Trash className="h-4 w-4 mr-2" />
+            Delete
           </Button>
         </div>
       </div>
       
-      <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
-        <Card>
-          <CardHeader className="pb-2">
-            <CardTitle className="text-sm font-medium">Lead Score</CardTitle>
-          </CardHeader>
-          <CardContent>
-            <div className="flex items-center">
-              <div className="w-full bg-gray-200 rounded-full h-2.5 mr-2">
-                <div 
-                  className="bg-blue-600 h-2.5 rounded-full" 
-                  style={{ width: `${Math.min(100, Math.max(0, lead.lead_score * 10))}%` }}
-                ></div>
+      {/* Lead summary card */}
+      <Card className="shadow-sm">
+        <CardContent className="p-6">
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+            {/* Lead info */}
+            <div className="space-y-4">
+              <div className="flex items-center">
+                <User className="h-5 w-5 text-muted-foreground mr-2" />
+                <div>
+                  <p className="text-sm text-muted-foreground">Contact</p>
+                  <p className="font-medium">{lead.full_name}</p>
+                </div>
               </div>
-              <span className="text-2xl font-bold">{lead.lead_score.toFixed(1)}</span>
+              
+              <div className="flex items-center">
+                <Mail className="h-5 w-5 text-muted-foreground mr-2" />
+                <div>
+                  <p className="text-sm text-muted-foreground">Email</p>
+                  <p className="font-medium">{lead.email || 'N/A'}</p>
+                </div>
+              </div>
+              
+              <div className="flex items-center">
+                <Phone className="h-5 w-5 text-muted-foreground mr-2" />
+                <div>
+                  <p className="text-sm text-muted-foreground">Phone</p>
+                  <p className="font-medium">{lead.phone || 'N/A'}</p>
+                </div>
+              </div>
             </div>
-          </CardContent>
-        </Card>
-        
-        <Card>
-          <CardHeader className="pb-2">
-            <CardTitle className="text-sm font-medium">Created</CardTitle>
-          </CardHeader>
-          <CardContent>
-            <div className="flex items-center">
-              <Clock className="mr-2 h-4 w-4 text-muted-foreground" />
-              <span>{formatDate(lead.created_at)}</span>
+            
+            {/* Company info */}
+            <div className="space-y-4">
+              <div className="flex items-center">
+                <Building className="h-5 w-5 text-muted-foreground mr-2" />
+                <div>
+                  <p className="text-sm text-muted-foreground">Company</p>
+                  <p className="font-medium">{lead.company || 'N/A'}</p>
+                </div>
+              </div>
+              
+              <div className="flex items-center">
+                <User className="h-5 w-5 text-muted-foreground mr-2" />
+                <div>
+                  <p className="text-sm text-muted-foreground">Title</p>
+                  <p className="font-medium">{lead.title || 'N/A'}</p>
+                </div>
+              </div>
+              
+              <div className="flex items-center">
+                <Tag className="h-5 w-5 text-muted-foreground mr-2" />
+                <div>
+                  <p className="text-sm text-muted-foreground">Source</p>
+                  <p className="font-medium">{lead.source}</p>
+                </div>
+              </div>
             </div>
-          </CardContent>
-        </Card>
-        
-        <Card>
-          <CardHeader className="pb-2">
-            <CardTitle className="text-sm font-medium">Last Updated</CardTitle>
-          </CardHeader>
-          <CardContent>
-            <div className="flex items-center">
-              <Activity className="mr-2 h-4 w-4 text-muted-foreground" />
-              <span>{formatDate(lead.updated_at)}</span>
+            
+            {/* Lead metrics */}
+            <div className="space-y-4">
+              <div className="flex items-center">
+                <BarChart className="h-5 w-5 text-muted-foreground mr-2" />
+                <div>
+                  <p className="text-sm text-muted-foreground">Lead Score</p>
+                  <p className="font-medium">{lead.lead_score || 'N/A'}</p>
+                </div>
+              </div>
+              
+              {/* Add Conversion Probability */}
+              <div className="flex items-center">
+                <Activity className="h-5 w-5 text-muted-foreground mr-2" />
+                <div>
+                  <p className="text-sm text-muted-foreground">Conversion Probability</p>
+                  <div className="flex items-center">
+                    {lead.conversion_probability !== undefined ? (
+                      <>
+                        <div className="w-24 bg-gray-200 dark:bg-gray-700 rounded-full h-2 mr-2">
+                          <div 
+                            className={`h-2 rounded-full ${
+                              lead.conversion_probability >= 0.7 ? 'bg-green-500' : 
+                              lead.conversion_probability >= 0.4 ? 'bg-amber-500' : 
+                              'bg-red-500'
+                            }`}
+                            style={{ width: `${Math.min(100, Math.max(0, lead.conversion_probability * 100))}%` }}
+                          ></div>
+                        </div>
+                        <p className="font-medium">
+                          <span className="mr-1">{Math.round(lead.conversion_probability * 100)}%</span>
+                          <span className={getConversionProbabilityLabel(lead.conversion_probability).color}>
+                            ({getConversionProbabilityLabel(lead.conversion_probability).label})
+                          </span>
+                        </p>
+                      </>
+                    ) : (
+                      <p className="font-medium">N/A</p>
+                    )}
+                  </div>
+                </div>
+              </div>
+              
+              <div className="flex items-center">
+                <User className="h-5 w-5 text-muted-foreground mr-2" />
+                <div>
+                  <p className="text-sm text-muted-foreground">Owner</p>
+                  <p className="font-medium">{lead.owner?.name || 'Unassigned'}</p>
+                </div>
+              </div>
+              
+              <div className="flex items-center">
+                <Clock className="h-5 w-5 text-muted-foreground mr-2" />
+                <div>
+                  <p className="text-sm text-muted-foreground">Created</p>
+                  <p className="font-medium">{formatDate(lead.created_at)}</p>
+                </div>
+              </div>
             </div>
-          </CardContent>
-        </Card>
-        
-        <Card>
-          <CardHeader className="pb-2">
-            <CardTitle className="text-sm font-medium">Owner</CardTitle>
-          </CardHeader>
-          <CardContent>
-            <div className="flex items-center">
-              {lead.owner ? (
-                <span>{lead.owner.name}</span>
-              ) : (
-                <span className="text-muted-foreground">Unassigned</span>
-              )}
-            </div>
-          </CardContent>
-        </Card>
-      </div>
+          </div>
+        </CardContent>
+      </Card>
       
-      {/* Lead Pipeline - Now positioned below the cards */}
-      <LeadPipeline 
-        currentStatus={lead.status} 
-        onStatusChange={onStatusChange} 
-      />
-      
+      {/* Quick action buttons */}
       <div className="flex flex-wrap gap-2">
-        <Button onClick={onSendEmail}>
-          <Mail className="mr-2 h-4 w-4" /> Send Email
+        <Button onClick={() => setShowEmailDialog(true)}>
+          <Mail className="mr-2 h-4 w-4" />
+          Send Email
         </Button>
-        <Button onClick={onCall}>
-          <Phone className="mr-2 h-4 w-4" /> Call
+        <Button onClick={() => setShowCallDialog(true)}>
+          <Phone className="mr-2 h-4 w-4" />
+          Call
         </Button>
-        <Button onClick={onScheduleMeeting}>
-          <Calendar className="mr-2 h-4 w-4" /> Schedule Meeting
+        <Button onClick={() => setShowMeetingDialog(true)}>
+          <Calendar className="mr-2 h-4 w-4" />
+          Schedule Meeting
         </Button>
-        <Button onClick={onAddToCampaign}>
-          <Tag className="mr-2 h-4 w-4" /> Add to Campaign
+        <Button onClick={() => setShowNoteDialog(true)}>
+          <MessageSquare className="mr-2 h-4 w-4" />
+          Add Note
         </Button>
-        <Button variant="outline" onClick={onAddNote}>
-          <MessageSquare className="mr-2 h-4 w-4" /> Add Note
-        </Button>
-        <Button variant="outline" onClick={onAddTask}>
-          <FileText className="mr-2 h-4 w-4" /> Add Task
+        <Button onClick={() => setShowTaskDialog(true)}>
+          <CheckCircle className="mr-2 h-4 w-4" />
+          Add Task
         </Button>
       </div>
       
-      <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
-        <TabsList className="grid grid-cols-5 w-full">
-          <TabsTrigger value="overview">Overview</TabsTrigger>
+      {/* Dialog Components */}
+      {showEmailDialog && (
+        <EmailDialog
+          open={showEmailDialog}
+          onOpenChange={setShowEmailDialog}
+          leadEmail={lead.email || ''}
+          leadName={lead.full_name || ''}
+        />
+      )}
+      
+      {showCallDialog && (
+        <PhoneDialog
+          open={showCallDialog}
+          onOpenChange={setShowCallDialog}
+          leadPhone={lead.phone || ''}
+          leadName={lead.full_name || ''}
+        />
+      )}
+      
+      {showNoteDialog && (
+        <NoteDialog
+          open={showNoteDialog}
+          onOpenChange={setShowNoteDialog}
+          leadId={parseInt(leadId)}
+          leadName={lead.full_name || ''}
+          isMock={USE_MOCK_DATA}
+          onSuccess={() => router.refresh()}
+        />
+      )}
+      
+      {/* Task Dialog */}
+      {showTaskDialog && (
+        <TaskDialog
+          open={showTaskDialog}
+          onOpenChange={setShowTaskDialog}
+          leadId={parseInt(leadId)}
+          leadName={lead.full_name || ''}
+          isMock={USE_MOCK_DATA}
+          onSuccess={(taskData) => {
+            if (isEditingTask && currentTask && taskData) {
+              // Handle task update
+              handleTaskUpdate({
+                ...currentTask,
+                ...taskData
+              });
+            } else if (taskData) {
+              // Handle task creation
+              handleTaskCreate(taskData);
+            }
+            router.refresh();
+          }}
+          task={isEditingTask ? currentTask : undefined}
+          isEditing={isEditingTask}
+        />
+      )}
+      
+      {/* Meeting Dialog */}
+      {showMeetingDialog && (
+        <MeetingDialogNew
+          open={showMeetingDialog}
+          onOpenChange={setShowMeetingDialog}
+          lead={lead}
+          onSuccess={() => router.refresh()}
+        />
+      )}
+      
+      {/* Edit Dialog */}
+      {showEditDialog && (
+        <LeadEditDialog
+          leadId={leadId}
+          open={showEditDialog}
+          onOpenChange={setShowEditDialog}
+          onSuccess={() => router.refresh()}
+        />
+      )}
+      
+      {/* Status change section */}
+      <Card className="shadow-sm">
+        <CardHeader>
+          <CardTitle>Lead Status</CardTitle>
+          <CardDescription>Update the lead's position in your sales pipeline</CardDescription>
+        </CardHeader>
+        <CardContent>
+          <div className="overflow-x-auto pb-4">
+            <div className="flex gap-4 min-w-max">
+              {Object.values(LeadStatus).map((status) => (
+                <div key={status} className="w-40">
+                  <div className={`p-3 rounded-md ${lead.status === status ? getStatusColor(status) : 'bg-gray-100 dark:bg-gray-800 bg-opacity-50'}`}>
+                    <div className="flex justify-between items-center mb-2">
+                      <h3 className="font-medium text-sm">{formatStatus(status)}</h3>
+                    </div>
+                    {lead.status === status ? (
+                      <div className="p-2 bg-white dark:bg-gray-700 rounded-md border dark:border-gray-600 shadow-sm">
+                        <div className="flex items-center gap-2 p-2">
+                          <div className="h-8 w-8 rounded-full bg-primary text-white flex items-center justify-center text-xs font-medium">
+                            {lead.first_name?.[0]}{lead.last_name?.[0]}
+                          </div>
+                          <div>
+                            <p className="text-sm font-medium">{lead.full_name}</p>
+                            {lead.company && <p className="text-xs text-muted-foreground">{lead.company}</p>}
+                          </div>
+                        </div>
+                      </div>
+                    ) : (
+                      <div 
+                        className="p-4 border dark:border-gray-600 border-dashed rounded-md flex items-center justify-center cursor-pointer hover:bg-gray-50 dark:hover:bg-gray-700"
+                        onClick={() => {
+                          if (lead.status !== status) {
+                            setStatusToChange(status);
+                            setShowStatusDialog(true);
+                          }
+                        }}
+                      >
+                        <p className="text-xs text-muted-foreground">Move here</p>
+                      </div>
+                    )}
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+        </CardContent>
+      </Card>
+      
+      {/* Tabs for different sections */}
+      <Tabs defaultValue="timeline" className="w-full">
+        <TabsList className="grid grid-cols-5 mb-4">
           <TabsTrigger value="timeline">Timeline</TabsTrigger>
           <TabsTrigger value="tasks">Tasks</TabsTrigger>
+          <TabsTrigger value="notes">Notes</TabsTrigger>
           <TabsTrigger value="campaigns">Campaigns</TabsTrigger>
           <TabsTrigger value="insights">Insights</TabsTrigger>
         </TabsList>
         
-        <TabsContent value="overview" className="space-y-4">
-          <Card>
-            <CardHeader>
-              <CardTitle>Contact Information</CardTitle>
-            </CardHeader>
-            <CardContent className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              <div>
-                <h3 className="text-sm font-medium text-muted-foreground">Email</h3>
-                <p>{lead.email || 'N/A'}</p>
-              </div>
-              <div>
-                <h3 className="text-sm font-medium text-muted-foreground">Phone</h3>
-                <p>{lead.phone || 'N/A'}</p>
-              </div>
-              <div>
-                <h3 className="text-sm font-medium text-muted-foreground">Company</h3>
-                <p>{lead.company || 'N/A'}</p>
-              </div>
-              <div>
-                <h3 className="text-sm font-medium text-muted-foreground">Job Title</h3>
-                <p>{lead.title || 'N/A'}</p>
-              </div>
-              <div className="col-span-2">
-                <h3 className="text-sm font-medium text-muted-foreground">Address</h3>
-                <p>{lead.custom_fields?.address || 'N/A'}</p>
-              </div>
-            </CardContent>
-          </Card>
-          
-          <Card>
-            <CardHeader>
-              <CardTitle>Notes</CardTitle>
-            </CardHeader>
-            <CardContent>
-              {lead.notes && lead.notes.length > 0 ? (
-                <div className="space-y-4">
-                  {lead.notes.map((note: any) => (
-                    <div key={note.id} className="p-4 border rounded-lg">
-                      <p>{note.content}</p>
-                      <p className="text-sm text-muted-foreground mt-2">
-                        {formatDate(note.created_at)}
-                      </p>
-                    </div>
-                  ))}
-                </div>
-              ) : (
-                <p className="text-muted-foreground">No notes yet.</p>
-              )}
-            </CardContent>
-          </Card>
-        </TabsContent>
-        
+        {/* Timeline Tab */}
         <TabsContent value="timeline" className="space-y-4">
           <Card>
             <CardHeader>
               <CardTitle>Activity Timeline</CardTitle>
             </CardHeader>
             <CardContent>
-              {mockTimeline.length > 0 ? (
+              {timeline && timeline.length > 0 ? (
                 <div className="space-y-4">
-                  {mockTimeline.map((item) => (
+                  {timeline.map((item) => (
                     <div key={item.id} className="flex gap-4 p-4 border-b last:border-0">
-                      <div className="flex-shrink-0 w-8 h-8 rounded-full bg-blue-100 flex items-center justify-center">
-                        {item.type === 'note' && <MessageSquare className="h-4 w-4 text-blue-600" />}
-                        {item.type === 'status_change' && <Activity className="h-4 w-4 text-blue-600" />}
-                        {item.type === 'email' && <Mail className="h-4 w-4 text-blue-600" />}
+                      <div className="flex-shrink-0 mt-1">
+                        {item.type === 'note' && <MessageSquare className="h-5 w-5 text-blue-500" />}
+                        {item.type === 'email' && <Mail className="h-5 w-5 text-green-500" />}
+                        {item.type === 'call' && <Phone className="h-5 w-5 text-purple-500" />}
+                        {item.type === 'status_change' && <Tag className="h-5 w-5 text-amber-500" />}
                       </div>
-                      <div>
+                      <div className="flex-1">
                         <p>{item.content}</p>
                         <p className="text-sm text-muted-foreground">
-                          {formatDate(item.created_at)} by {item.user.name}
+                          {new Date(item.created_at).toLocaleString()} by {item.user.name}
                         </p>
                       </div>
                     </div>
@@ -906,775 +899,263 @@ const CustomLeadDetail = ({
           </Card>
         </TabsContent>
         
+        {/* Tasks Tab */}
         <TabsContent value="tasks" className="space-y-4">
-          <div className="flex justify-between items-center">
-            <h2 className="text-xl font-semibold">Tasks</h2>
-            <Button onClick={onAddTask}>
-              <FileText className="mr-2 h-4 w-4" /> Add Task
-            </Button>
-          </div>
-          
-          {lead.tasks && lead.tasks.length > 0 ? (
-            <div className="space-y-3">
-              {lead.tasks.map((task: Task) => (
-                <TaskItem 
-                  key={task.id} 
-                  task={task} 
-                  onStatusChange={(taskId, status) => {
-                    // This will be handled by the parent component
-                    // We're just passing the event up
-                    const taskIndex = lead.tasks.findIndex((t: Task) => t.id === taskId);
-                    if (taskIndex !== -1) {
-                      lead.tasks[taskIndex].status = status;
-                      // Force re-render
-                      setActiveTab('tasks');
-                    }
-                  }}
-                  onEdit={(task) => {
-                    // Use the dedicated edit task function
-                    onEditTask(task);
-                    // Log for debugging
-                    console.log('Editing task:', task);
-                  }}
-                  onDelete={(taskId) => {
-                    // This will be handled by the parent component
-                    const taskIndex = lead.tasks.findIndex((t: Task) => t.id === taskId);
-                    if (taskIndex !== -1) {
-                      lead.tasks.splice(taskIndex, 1);
-                      // Force re-render
-                      setActiveTab('tasks');
-                    }
-                  }}
-                />
-              ))}
-            </div>
-          ) : (
-            <Card>
-              <CardContent className="py-10">
-                <div className="text-center">
-                  <FileText className="mx-auto h-12 w-12 text-gray-400" />
-                  <h3 className="mt-2 text-lg font-medium">No tasks yet</h3>
-                  <p className="mt-1 text-sm text-gray-500">
-                    Get started by creating a new task for this lead.
-                  </p>
-                  <div className="mt-6">
-                    <Button onClick={onAddTask}>
-                      Add Task
-                    </Button>
-                  </div>
-                </div>
-              </CardContent>
-            </Card>
-          )}
-        </TabsContent>
-        
-        <TabsContent value="campaigns" className="space-y-4">
           <Card>
-            <CardHeader>
-              <CardTitle>Campaigns</CardTitle>
+            <CardHeader className="flex flex-row items-center justify-between">
+              <CardTitle>Tasks</CardTitle>
+              <Button size="sm" onClick={() => {
+                setCurrentTask(null);
+                setIsEditingTask(false);
+                setShowTaskDialog(true);
+              }}>
+                <Plus className="h-4 w-4 mr-2" />
+                Add Task
+              </Button>
             </CardHeader>
             <CardContent>
-              {lead.campaigns && lead.campaigns.length > 0 ? (
+              {lead.tasks && lead.tasks.length > 0 ? (
                 <div className="space-y-4">
-                  {lead.campaigns.map((campaign: any) => (
-                    <div key={campaign.id} className="p-4 border rounded-lg">
-                      <h3 className="font-medium">{campaign.name}</h3>
+                  {lead.tasks.map((task: any) => (
+                    <div key={task.id} className="flex items-center justify-between p-4 border rounded-md">
+                      <div className="flex items-center gap-3">
+                        <Button 
+                          variant="ghost" 
+                          size="sm" 
+                          className="p-0 h-auto"
+                          onClick={() => handleToggleTaskComplete(task.id, !task.completed)}
+                        >
+                          <CheckCircle 
+                            className={`h-5 w-5 ${task.completed ? 'text-green-500' : 'text-gray-400'}`} 
+                          />
+                        </Button>
+                        <div>
+                          <p className={task.completed ? 'line-through text-muted-foreground' : ''}>
+                            {task.title}
+                          </p>
+                          <div className="flex items-center gap-2 text-xs text-muted-foreground mt-1">
+                            <span className="flex items-center">
+                              <Clock className="h-3 w-3 mr-1" />
+                              Due: {formatDate(task.due_date)}
+                            </span>
+                            {task.priority && (
+                              <span className={`flex items-center ${
+                                task.priority === 'high' ? 'text-red-500' : 
+                                task.priority === 'medium' ? 'text-amber-500' : 
+                                'text-green-500'
+                              }`}>
+                                <Flag className="h-3 w-3 mr-1" />
+                                {task.priority.charAt(0).toUpperCase() + task.priority.slice(1)}
+                              </span>
+                            )}
+                            {task.assignee && (
+                              <span className="flex items-center">
+                                <UserIcon className="h-3 w-3 mr-1" />
+                                {typeof task.assignee === 'string' ? task.assignee : task.assignee.name}
+                              </span>
+                            )}
+                          </div>
+                        </div>
+                      </div>
+                      <TaskActionsMenu 
+                        task={task}
+                        onMarkComplete={handleToggleTaskComplete}
+                        onEdit={handleEditTask}
+                        onDelete={handleDeleteTask}
+                      />
                     </div>
                   ))}
                 </div>
               ) : (
-                <p className="text-muted-foreground">Not assigned to any campaigns.</p>
+                <p className="text-muted-foreground">No tasks yet.</p>
               )}
             </CardContent>
           </Card>
         </TabsContent>
         
+        {/* Notes Tab */}
+        <TabsContent value="notes" className="space-y-4">
+          <Card>
+            <CardHeader className="flex flex-row items-center justify-between">
+              <CardTitle>Notes</CardTitle>
+              <Button size="sm" onClick={() => setShowNoteDialog(true)}>
+                <Plus className="h-4 w-4 mr-2" />
+                Add Note
+              </Button>
+            </CardHeader>
+            <CardContent>
+              {lead.notes && lead.notes.length > 0 ? (
+                <div className="space-y-4">
+                  {lead.notes.map((note: any) => (
+                    <div key={note.id} className="p-4 border rounded-md">
+                      <p>{note.content}</p>
+                      <p className="text-sm text-muted-foreground mt-2">
+                        {new Date(note.created_at).toLocaleString()}
+                      </p>
+                    </div>
+                  ))}
+                </div>
+              ) : (
+                <p className="text-muted-foreground">No notes yet.</p>
+              )}
+            </CardContent>
+          </Card>
+        </TabsContent>
+        
+        {/* Campaigns Tab */}
+        <TabsContent value="campaigns" className="space-y-4">
+          <Card>
+            <CardHeader className="flex flex-row items-center justify-between">
+              <CardTitle>Campaigns</CardTitle>
+              <Button size="sm" onClick={() => toast.info('Add to campaign functionality will be implemented')}>
+                <Plus className="h-4 w-4 mr-2" />
+                Add to Campaign
+              </Button>
+            </CardHeader>
+            <CardContent>
+              {lead.campaigns && lead.campaigns.length > 0 ? (
+                <div className="space-y-4">
+                  {lead.campaigns.map((campaign: any) => (
+                    <div key={campaign.id} className="flex items-center justify-between p-4 border rounded-md">
+                      <div>
+                        <p>{campaign.name}</p>
+                      </div>
+                      <Button variant="ghost" size="sm" onClick={() => toast.info('Campaign actions will be implemented')}>
+                        <FileText className="h-4 w-4" />
+                      </Button>
+                    </div>
+                  ))}
+                </div>
+              ) : (
+                <p className="text-muted-foreground">Not part of any campaigns yet.</p>
+              )}
+            </CardContent>
+          </Card>
+        </TabsContent>
+        
+        {/* Insights Tab */}
         <TabsContent value="insights" className="space-y-4">
           <Card>
             <CardHeader>
               <CardTitle>Lead Insights</CardTitle>
+              <CardDescription>AI-powered insights about this lead</CardDescription>
             </CardHeader>
-            <CardContent className="grid grid-cols-1 md:grid-cols-3 gap-4">
-              <div>
-                <h3 className="text-sm font-medium text-muted-foreground">Engagement Score</h3>
-                <p className="text-2xl font-bold">{mockInsights.engagement_score}%</p>
-              </div>
-              <div>
-                <h3 className="text-sm font-medium text-muted-foreground">Avg. Response Time</h3>
-                <p className="text-2xl font-bold">{mockInsights.response_time_avg}</p>
-              </div>
-              <div>
-                <h3 className="text-sm font-medium text-muted-foreground">Conversion Probability</h3>
-                <p className="text-2xl font-bold">{mockInsights.conversion_probability}%</p>
-              </div>
-              <div className="col-span-3">
-                <h3 className="text-sm font-medium text-muted-foreground mb-2">Recommended Actions</h3>
-                <ul className="list-disc pl-5 space-y-1">
-                  {mockInsights.recommended_actions.map((action, index) => (
-                    <li key={index}>{action}</li>
-                  ))}
-                </ul>
-              </div>
+            <CardContent>
+              {USE_MOCK_DATA ? (
+                <div className="space-y-6">
+                  {/* Score Factors */}
+                  <div>
+                    <h3 className="text-lg font-medium mb-2">Score Factors</h3>
+                    <ul className="space-y-2">
+                      <li className="flex items-start">
+                        <span className="text-green-500 mr-2">+</span>
+                        <span>Engaged with 3 emails in the past week</span>
+                      </li>
+                      <li className="flex items-start">
+                        <span className="text-green-500 mr-2">+</span>
+                        <span>Visited pricing page multiple times</span>
+                      </li>
+                      <li className="flex items-start">
+                        <span className="text-red-500 mr-2">-</span>
+                        <span>No scheduled meetings yet</span>
+                      </li>
+                    </ul>
+                  </div>
+                  
+                  {/* Recommendations */}
+                  <div>
+                    <h3 className="text-lg font-medium mb-2">Recommendations</h3>
+                    <ul className="space-y-2">
+                      <li className="flex items-start">
+                        <span className="text-blue-500 mr-2">•</span>
+                        <span>Schedule a product demo call</span>
+                      </li>
+                      <li className="flex items-start">
+                        <span className="text-blue-500 mr-2">•</span>
+                        <span>Send case study for their industry</span>
+                      </li>
+                      <li className="flex items-start">
+                        <span className="text-blue-500 mr-2">•</span>
+                        <span>Follow up within 3 days</span>
+                      </li>
+                    </ul>
+                  </div>
+                  
+                  {/* Conversion Probability */}
+                  <div>
+                    <h3 className="text-lg font-medium mb-2">Conversion Probability</h3>
+                    <div className="w-full bg-gray-200 rounded-full h-4">
+                      <div 
+                        className="bg-primary h-4 rounded-full" 
+                        style={{ width: '65%' }}
+                      ></div>
+                    </div>
+                    <p className="mt-1 text-sm text-muted-foreground">
+                      This lead has a <span className="font-bold">65%</span> probability of converting
+                    </p>
+                  </div>
+                </div>
+              ) : (
+                <div>
+                  {apiInsights ? (
+                    <div className="space-y-6">
+                      {/* Score Factors */}
+                      {apiInsights.score_factors && (
+                        <div>
+                          <h3 className="text-lg font-medium mb-2">Score Factors</h3>
+                          <ul className="space-y-2">
+                            {apiInsights.score_factors.map((factor: any, index: number) => (
+                              <li key={index} className="flex items-start">
+                                <span className={factor.impact > 0 ? "text-green-500 mr-2" : "text-red-500 mr-2"}>
+                                  {factor.impact > 0 ? '+' : '-'}
+                                </span>
+                                <span>{factor.description}</span>
+                              </li>
+                            ))}
+                          </ul>
+                        </div>
+                      )}
+                      
+                      {/* Recommendations */}
+                      {apiInsights.recommendations && (
+                        <div>
+                          <h3 className="text-lg font-medium mb-2">Recommendations</h3>
+                          <ul className="space-y-2">
+                            {apiInsights.recommendations.map((recommendation: any, index: number) => (
+                              <li key={index} className="flex items-start">
+                                <span className="text-blue-500 mr-2">•</span>
+                                <span>{recommendation}</span>
+                              </li>
+                            ))}
+                          </ul>
+                        </div>
+                      )}
+                      
+                      {/* Conversion Probability */}
+                      {apiInsights.conversion_probability !== undefined && (
+                        <div>
+                          <h3 className="text-lg font-medium mb-2">Conversion Probability</h3>
+                          <div className="w-full bg-gray-200 rounded-full h-4">
+                            <div 
+                              className="bg-primary h-4 rounded-full" 
+                              style={{ width: `${Math.min(100, Math.max(0, apiInsights.conversion_probability * 100))}%` }}
+                            ></div>
+                          </div>
+                          <p className="mt-1 text-sm text-muted-foreground">
+                            This lead has a <span className="font-bold">{(apiInsights.conversion_probability * 100).toFixed(1)}%</span> probability of converting
+                          </p>
+                        </div>
+                      )}
+                    </div>
+                  ) : (
+                    <p className="text-muted-foreground">No insights available</p>
+                  )}
+                </div>
+              )}
             </CardContent>
           </Card>
         </TabsContent>
       </Tabs>
-
-      {/* Meeting dialog */}
-      <MeetingDialog 
-        id={`lead-meeting-dialog-${leadId}`} 
-        lead={lead}
-        onSuccess={() => {
-          toast.success("Meeting scheduled", {
-            description: "The meeting has been successfully scheduled.",
-          });
-        }}
-      />
-    </div>
-  );
-};
-
-export default function LeadDetailPage() {
-  const router = useRouter();
-  const params = useParams();
-  const leadId = params.id as string;
-  
-  // State for active tab
-  const [activeTab, setActiveTab] = useState('overview');
-  
-  // State for edit dialog
-  const [showEditDialog, setShowEditDialog] = useState(false);
-  const [editedLead, setEditedLead] = useState<any>(null);
-  
-  // State for task dialog
-  const [showTaskDialog, setShowTaskDialog] = useState(false);
-  const [editingTask, setEditingTask] = useState<Task | null>(null);
-  const [newTask, setNewTask] = useState<Partial<Task>>({
-    title: '',
-    description: '',
-    due_date: '',
-    priority: 'medium',
-    status: 'pending',
-    assigned_to: undefined
-  });
-  
-  // Mock campaigns for dropdown
-  const mockCampaigns = [
-    { id: '1', name: 'Summer Promotion' },
-    { id: '2', name: 'New Product Launch' },
-    { id: '3', name: 'Enterprise Outreach' }
-  ];
-
-  // Check for openTask query parameter
-  useEffect(() => {
-    // Get the current URL
-    const url = new URL(window.location.href);
-    const openTask = url.searchParams.get('openTask');
-    
-    // If openTask parameter is present, open the task dialog and set active tab to tasks
-    if (openTask === 'true') {
-      setShowTaskDialog(true);
-      setActiveTab('tasks');
-      
-      // Remove the query parameter to prevent reopening the dialog on refresh
-      router.replace(`/dashboard/leads/${leadId}`, { scroll: false });
-    }
-  }, [leadId, router]);
-
-  // Initialize edited lead when dialog opens
-  useEffect(() => {
-    if (showEditDialog) {
-      const lead = mockLeadDetails[leadId];
-      if (lead) {
-        setEditedLead({
-          first_name: lead.first_name,
-          last_name: lead.last_name,
-          email: lead.email,
-          phone: lead.phone,
-          company: lead.company,
-          title: lead.title,
-          status: lead.status,
-          source: lead.source,
-          lead_score: lead.lead_score,
-          address: lead.custom_fields?.address || '',
-          campaign_id: lead.campaigns && lead.campaigns.length > 0 ? lead.campaigns[0].id : '',
-          notes: lead.notes && lead.notes.length > 0 ? lead.notes[0].content : ''
-        });
-      }
-    }
-  }, [showEditDialog, leadId]);
-  
-  // Initialize task when editing
-  useEffect(() => {
-    if (editingTask) {
-      console.log('Initializing form with task:', editingTask);
-      setNewTask({
-        title: editingTask.title || '',
-        description: editingTask.description || '',
-        due_date: editingTask.due_date || '',
-        priority: editingTask.priority || 'medium',
-        status: editingTask.status || 'pending',
-        assigned_to: editingTask.assigned_to || undefined
-      });
-    }
-  }, [editingTask]);
-  
-  // Reset task form when dialog closes
-  useEffect(() => {
-    if (!showTaskDialog) {
-      setEditingTask(null);
-      setNewTask({
-        title: '',
-        description: '',
-        due_date: '',
-        priority: 'medium',
-        status: 'pending',
-        assigned_to: undefined
-      });
-    }
-  }, [showTaskDialog]);
-
-  // Handle actions
-  const handleEdit = () => {
-    setShowEditDialog(true);
-  };
-  
-  const handleSaveEdit = () => {
-    // In a real app, call API to update lead
-    const lead = mockLeadDetails[leadId];
-    if (lead && editedLead) {
-      // Update the mock data
-      lead.first_name = editedLead.first_name;
-      lead.last_name = editedLead.last_name;
-      lead.full_name = `${editedLead.first_name} ${editedLead.last_name}`;
-      lead.email = editedLead.email;
-      lead.phone = editedLead.phone;
-      lead.company = editedLead.company;
-      lead.title = editedLead.title;
-      lead.status = editedLead.status;
-      lead.source = editedLead.source;
-      lead.lead_score = parseFloat(editedLead.lead_score);
-      lead.custom_fields = { ...lead.custom_fields, address: editedLead.address };
-      
-      // Update campaign
-      const selectedCampaign = mockCampaigns.find(c => c.id === editedLead.campaign_id);
-      if (selectedCampaign) {
-        lead.campaigns = [{ id: selectedCampaign.id, name: selectedCampaign.name }];
-      }
-      
-      // Update notes
-      if (lead.notes && lead.notes.length > 0) {
-        lead.notes[0].content = editedLead.notes;
-      } else {
-        lead.notes = [{ 
-          id: 1, 
-          content: editedLead.notes, 
-          created_at: new Date().toISOString() 
-        }];
-      }
-      
-      lead.updated_at = new Date().toISOString();
-      
-      // Close dialog
-      setShowEditDialog(false);
-      
-      // Force re-render
-      router.refresh();
-    }
-  };
-  
-  // Handle status change
-  const handleStatusChange = (status: LeadStatus) => {
-    // In a real app, call API to update lead status
-    const lead = mockLeadDetails[leadId];
-    if (lead) {
-      // Update the mock data
-      lead.status = status;
-      lead.updated_at = new Date().toISOString();
-      
-      // Add a note about the status change
-      const statusLabel = status.charAt(0).toUpperCase() + status.slice(1);
-      const noteContent = `Status changed to ${statusLabel}`;
-      
-      if (lead.notes && lead.notes.length > 0) {
-        lead.notes.unshift({ 
-          id: lead.notes.length + 1, 
-          content: noteContent, 
-          created_at: new Date().toISOString() 
-        });
-      } else {
-        lead.notes = [{ 
-          id: 1, 
-          content: noteContent, 
-          created_at: new Date().toISOString() 
-        }];
-      }
-      
-      // Force re-render
-      router.refresh();
-    }
-  };
-  
-  // Handle adding a task
-  const handleAddTask = () => {
-    // Reset editing task when adding a new task
-    setEditingTask(null);
-    setShowTaskDialog(true);
-  };
-  
-  // Handle editing a task
-  const handleEditTask = (task: Task) => {
-    // Set the task to be edited
-    setEditingTask(task);
-    // Open the dialog
-    setShowTaskDialog(true);
-  };
-  
-  // Handle saving a task
-  const handleSaveTask = () => {
-    const lead = mockLeadDetails[leadId];
-    if (lead && newTask.title) {
-      if (editingTask) {
-        // Update existing task
-        console.log('Updating existing task:', editingTask.id, 'with data:', newTask);
-        const taskIndex = lead.tasks.findIndex((t: Task) => t.id === editingTask.id);
-        if (taskIndex !== -1) {
-          lead.tasks[taskIndex] = {
-            ...lead.tasks[taskIndex],
-            title: newTask.title,
-            description: newTask.description,
-            due_date: newTask.due_date,
-            priority: newTask.priority as 'low' | 'medium' | 'high',
-            status: newTask.status as 'pending' | 'in_progress' | 'completed',
-            assigned_to: newTask.assigned_to
-          };
-        }
-      } else {
-        // Add new task
-        console.log('Adding new task with data:', newTask);
-        const newTaskWithId: Task = {
-          id: `task-${Date.now()}`,
-          title: newTask.title,
-          description: newTask.description,
-          due_date: newTask.due_date,
-          priority: newTask.priority as 'low' | 'medium' | 'high',
-          status: newTask.status as 'pending' | 'in_progress' | 'completed',
-          created_at: new Date().toISOString(),
-          assigned_to: newTask.assigned_to
-        };
-        
-        lead.tasks.push(newTaskWithId);
-      }
-      
-      // Update lead's last updated timestamp
-      lead.updated_at = new Date().toISOString();
-      
-      // Close dialog
-      setShowTaskDialog(false);
-      
-      // Set active tab to tasks
-      setActiveTab('tasks');
-      
-      // Force re-render
-      router.refresh();
-    }
-  };
-
-  const handleDelete = () => {
-    if (confirm('Are you sure you want to delete this lead?')) {
-      // In a real app, call API to delete lead
-      alert(`Deleted lead ${leadId}`);
-      router.push('/dashboard/leads');
-    }
-  };
-
-  // State for email dialog
-  const [showEmailDialog, setShowEmailDialog] = useState(false);
-  
-  const handleSendEmail = () => {
-    const lead = mockLeadDetails[leadId];
-    if (lead?.email) {
-      setShowEmailDialog(true);
-    }
-  };
-
-  // State for phone dialog
-  const [showPhoneDialog, setShowPhoneDialog] = useState(false);
-  
-  const handleCall = () => {
-    const lead = mockLeadDetails[leadId];
-    if (lead?.phone) {
-      setShowPhoneDialog(true);
-    }
-  };
-
-  const handleScheduleMeeting = () => {
-    // Open the meeting dialog
-    console.log('Opening meeting dialog for lead:', leadId);
-    openMeetingDialog(`lead-meeting-dialog-${leadId}`);
-  };
-
-  const handleAddToCampaign = () => {
-    // In a real app, open campaign selection dialog
-    alert(`Adding lead ${leadId} to campaign`);
-  };
-
-  const [showNoteDialog, setShowNoteDialog] = useState(false);
-  
-  const handleAddNote = () => {
-    setShowNoteDialog(true);
-  };
-
-  return (
-    <div className="flex-1 space-y-4 p-4 md:p-8 pt-6">
-      <div className="flex items-center mb-4">
-        <Button 
-          variant="ghost" 
-          size="sm" 
-          className="mr-2"
-          onClick={() => router.push('/dashboard/leads')}
-        >
-          <ArrowLeft className="h-4 w-4 mr-2" />
-          Back to Leads
-        </Button>
-      </div>
-      
-      <CustomLeadDetail 
-        leadId={leadId}
-        onEdit={handleEdit}
-        onDelete={handleDelete}
-        onSendEmail={handleSendEmail}
-        onCall={handleCall}
-        onScheduleMeeting={handleScheduleMeeting}
-        onAddToCampaign={handleAddToCampaign}
-        onAddNote={handleAddNote}
-        onAddTask={handleAddTask}
-        onEditTask={handleEditTask}
-        onStatusChange={handleStatusChange}
-        activeTab={activeTab}
-        setActiveTab={setActiveTab}
-        setEditingTask={setEditingTask}
-      />
-      
-      {/* Edit Lead Dialog */}
-      <Dialog open={showEditDialog} onOpenChange={setShowEditDialog}>
-        <DialogContent className="sm:max-w-[600px]">
-          <DialogHeader>
-            <DialogTitle>Edit Lead</DialogTitle>
-            <DialogDescription>
-              Update the lead information. Click save when you're done.
-            </DialogDescription>
-          </DialogHeader>
-          
-          {editedLead && (
-            <div className="grid gap-4 py-4">
-              <div className="grid grid-cols-2 gap-4">
-                <div>
-                  <Label htmlFor="first_name">First Name</Label>
-                  <Input
-                    id="first_name"
-                    value={editedLead.first_name}
-                    onChange={(e) => setEditedLead({...editedLead, first_name: e.target.value})}
-                  />
-                </div>
-                <div>
-                  <Label htmlFor="last_name">Last Name</Label>
-                  <Input
-                    id="last_name"
-                    value={editedLead.last_name}
-                    onChange={(e) => setEditedLead({...editedLead, last_name: e.target.value})}
-                  />
-                </div>
-                <div>
-                  <Label htmlFor="email">Email</Label>
-                  <Input
-                    id="email"
-                    type="email"
-                    value={editedLead.email}
-                    onChange={(e) => setEditedLead({...editedLead, email: e.target.value})}
-                  />
-                </div>
-                <div>
-                  <Label htmlFor="phone">Phone</Label>
-                  <Input
-                    id="phone"
-                    value={editedLead.phone}
-                    onChange={(e) => setEditedLead({...editedLead, phone: e.target.value})}
-                  />
-                </div>
-                <div>
-                  <Label htmlFor="company">Company</Label>
-                  <Input
-                    id="company"
-                    value={editedLead.company}
-                    onChange={(e) => setEditedLead({...editedLead, company: e.target.value})}
-                  />
-                </div>
-                <div>
-                  <Label htmlFor="title">Job Title</Label>
-                  <Input
-                    id="title"
-                    value={editedLead.title}
-                    onChange={(e) => setEditedLead({...editedLead, title: e.target.value})}
-                  />
-                </div>
-                <div>
-                  <Label htmlFor="status">Status</Label>
-                  <Select 
-                    value={editedLead.status} 
-                    onValueChange={(value) => setEditedLead({...editedLead, status: value})}
-                  >
-                    <SelectTrigger id="status">
-                      <SelectValue placeholder="Select status" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value={LeadStatus.NEW}>New</SelectItem>
-                      <SelectItem value={LeadStatus.CONTACTED}>Contacted</SelectItem>
-                      <SelectItem value={LeadStatus.QUALIFIED}>Qualified</SelectItem>
-                      <SelectItem value={LeadStatus.PROPOSAL}>Proposal</SelectItem>
-                      <SelectItem value={LeadStatus.NEGOTIATION}>Negotiation</SelectItem>
-                      <SelectItem value={LeadStatus.WON}>Won</SelectItem>
-                      <SelectItem value={LeadStatus.LOST}>Lost</SelectItem>
-                    </SelectContent>
-                  </Select>
-                </div>
-                <div>
-                  <Label htmlFor="source">Source</Label>
-                  <Select 
-                    value={editedLead.source} 
-                    onValueChange={(value) => setEditedLead({...editedLead, source: value})}
-                  >
-                    <SelectTrigger id="source">
-                      <SelectValue placeholder="Select source" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value={LeadSource.WEBSITE}>Website</SelectItem>
-                      <SelectItem value={LeadSource.REFERRAL}>Referral</SelectItem>
-                      <SelectItem value={LeadSource.LINKEDIN}>LinkedIn</SelectItem>
-                      <SelectItem value={LeadSource.COLD_CALL}>Cold Call</SelectItem>
-                      <SelectItem value={LeadSource.EMAIL_CAMPAIGN}>Email Campaign</SelectItem>
-                      <SelectItem value={LeadSource.EVENT}>Event</SelectItem>
-                      <SelectItem value={LeadSource.OTHER}>Other</SelectItem>
-                    </SelectContent>
-                  </Select>
-                </div>
-                <div>
-                  <Label htmlFor="lead_score">Lead Score (1-10)</Label>
-                  <Input
-                    id="lead_score"
-                    type="number"
-                    min="1"
-                    max="10"
-                    step="0.1"
-                    value={editedLead.lead_score}
-                    onChange={(e) => setEditedLead({...editedLead, lead_score: e.target.value})}
-                  />
-                </div>
-                <div>
-                  <Label htmlFor="campaign">Campaign</Label>
-                  <Select 
-                    value={editedLead.campaign_id} 
-                    onValueChange={(value) => setEditedLead({...editedLead, campaign_id: value})}
-                  >
-                    <SelectTrigger id="campaign">
-                      <SelectValue placeholder="Select campaign" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="unassigned">Unassigned</SelectItem>
-                      {mockCampaigns.map(campaign => (
-                        <SelectItem key={campaign.id} value={campaign.id}>
-                          {campaign.name}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                </div>
-                <div className="col-span-2">
-                  <Label htmlFor="address">Address</Label>
-                  <Input
-                    id="address"
-                    value={editedLead.address}
-                    onChange={(e) => setEditedLead({...editedLead, address: e.target.value})}
-                  />
-                </div>
-                <div className="col-span-2">
-                  <Label htmlFor="notes">Notes</Label>
-                  <Textarea
-                    id="notes"
-                    value={editedLead.notes}
-                    onChange={(e) => setEditedLead({...editedLead, notes: e.target.value})}
-                    rows={3}
-                  />
-                </div>
-              </div>
-            </div>
-          )}
-          
-          <DialogFooter>
-            <Button variant="outline" onClick={() => setShowEditDialog(false)}>Cancel</Button>
-            <Button onClick={handleSaveEdit}>Save Changes</Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
-
-      {/* Add/Edit Task Dialog */}
-      <Dialog open={showTaskDialog} onOpenChange={setShowTaskDialog}>
-        <DialogContent className="sm:max-w-[500px]">
-          <DialogHeader>
-            <DialogTitle>{editingTask ? 'Edit Task' : 'Add Task'}</DialogTitle>
-            <DialogDescription>
-              {editingTask 
-                ? "Update the task details below. All changes will be saved when you click 'Update Task'."
-                : "Create a new task for this lead. Click 'Add Task' when you're done."}
-            </DialogDescription>
-          </DialogHeader>
-          
-          <div className="grid gap-4 py-4">
-            <div>
-              <Label htmlFor="title">Task Title</Label>
-              <Input
-                id="title"
-                value={newTask.title}
-                onChange={(e) => setNewTask({...newTask, title: e.target.value})}
-                placeholder="Follow up with client"
-              />
-            </div>
-            
-            <div>
-              <Label htmlFor="description">Description (Optional)</Label>
-              <Textarea
-                id="description"
-                value={newTask.description}
-                onChange={(e) => setNewTask({...newTask, description: e.target.value})}
-                placeholder="Additional details about the task"
-                rows={3}
-              />
-            </div>
-            
-            <div className="grid grid-cols-2 gap-4">
-              <div>
-                <Label htmlFor="due_date">Due Date (Optional)</Label>
-                <Input
-                  id="due_date"
-                  type="date"
-                  value={newTask.due_date ? new Date(newTask.due_date).toISOString().split('T')[0] : ''}
-                  onChange={(e) => {
-                    const date = e.target.value ? new Date(e.target.value) : null;
-                    setNewTask({
-                      ...newTask, 
-                      due_date: date ? date.toISOString() : ''
-                    });
-                  }}
-                />
-              </div>
-              
-              <div>
-                <Label htmlFor="priority">Priority</Label>
-                <Select 
-                  value={newTask.priority} 
-                  onValueChange={(value) => setNewTask({...newTask, priority: value as 'low' | 'medium' | 'high'})}
-                >
-                  <SelectTrigger id="priority">
-                    <SelectValue placeholder="Select priority" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="low">Low</SelectItem>
-                    <SelectItem value="medium">Medium</SelectItem>
-                    <SelectItem value="high">High</SelectItem>
-                  </SelectContent>
-                </Select>
-              </div>
-            </div>
-            
-            <div className="grid grid-cols-2 gap-4">
-              <div>
-                <Label htmlFor="status">Status</Label>
-                <Select 
-                  value={newTask.status} 
-                  onValueChange={(value) => setNewTask({...newTask, status: value as 'pending' | 'in_progress' | 'completed'})}
-                >
-                  <SelectTrigger id="status">
-                    <SelectValue placeholder="Select status" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="pending">Pending</SelectItem>
-                    <SelectItem value="in_progress">In Progress</SelectItem>
-                    <SelectItem value="completed">Completed</SelectItem>
-                  </SelectContent>
-                </Select>
-              </div>
-              
-              <div>
-                <Label htmlFor="assigned_to">Assigned To (Optional)</Label>
-                <Select 
-                  value={newTask.assigned_to?.id || 'unassigned'} 
-                  onValueChange={(value) => {
-                    const teamMember = mockTeamMembers.find(m => m.id === value);
-                    setNewTask({
-                      ...newTask, 
-                      assigned_to: value !== 'unassigned' ? { id: value, name: teamMember?.name || '' } : undefined
-                    });
-                  }}
-                >
-                  <SelectTrigger id="assigned_to">
-                    <SelectValue placeholder="Select team member" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="unassigned">Unassigned</SelectItem>
-                    {mockTeamMembers.map(member => (
-                      <SelectItem key={member.id} value={member.id}>
-                        {member.name}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </div>
-            </div>
-          </div>
-          
-          <DialogFooter>
-            <Button variant="outline" onClick={() => setShowTaskDialog(false)}>Cancel</Button>
-            <Button onClick={handleSaveTask} disabled={!newTask.title}>
-              {editingTask ? 'Update Task' : 'Add Task'}
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
-
-      {/* Add the EmailDialog component */}
-      {leadId && mockLeadDetails[leadId] && (
-        <EmailDialog 
-          open={showEmailDialog}
-          onOpenChange={setShowEmailDialog}
-          leadEmail={mockLeadDetails[leadId].email}
-          leadName={`${mockLeadDetails[leadId].first_name} ${mockLeadDetails[leadId].last_name}`}
-        />
-      )}
-
-      {/* Add the PhoneDialog component */}
-      {mockLeadDetails[leadId] && (
-        <PhoneDialog
-          open={showPhoneDialog}
-          onOpenChange={(open) => setShowPhoneDialog(open)}
-          leadPhone={mockLeadDetails[leadId].phone}
-          leadName={mockLeadDetails[leadId].full_name}
-        />
-      )}
-
-      {/* Add Note Dialog */}
-      {mockLeadDetails[leadId] && (
-        <NoteDialog
-          open={showNoteDialog}
-          onOpenChange={setShowNoteDialog}
-          leadId={parseInt(leadId)}
-          leadName={mockLeadDetails[leadId].full_name}
-          isMock={true}
-          onSuccess={() => {
-            // In a real app, this would refresh the timeline data
-            toast.success('Note added to timeline');
-          }}
-        />
-      )}
     </div>
   );
 } 

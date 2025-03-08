@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useEffect } from 'react';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import * as z from 'zod';
@@ -35,6 +35,9 @@ const formSchema = z.object({
   notes: z.string().optional().or(z.literal('')),
   owner_id: z.string().optional(),
   custom_fields: z.record(z.string(), z.any()).optional(),
+  linkedin_url: z.string().url('Invalid URL format').optional().or(z.literal('')),
+  facebook_url: z.string().url('Invalid URL format').optional().or(z.literal('')),
+  twitter_url: z.string().url('Invalid URL format').optional().or(z.literal('')),
 });
 
 interface LeadFormProps {
@@ -52,28 +55,49 @@ export function LeadForm({
   onSuccess,
   isSubmitting = false,
 }: LeadFormProps) {
-  // Initialize the form with default values or existing lead data
-  const form = useForm<z.infer<typeof formSchema>>({
+  // Initialize the form with default values or lead data
+  const form = useForm<LeadFormValues>({
     resolver: zodResolver(formSchema),
     defaultValues: {
       first_name: lead?.first_name || '',
       last_name: lead?.last_name || '',
       email: lead?.email || '',
       phone: lead?.phone || '',
-      company_name: lead?.company_name || '',
-      job_title: lead?.job_title || '',
+      company_name: lead?.company_name || (lead as any)?.company || '', // Handle both field names with type assertion
+      job_title: lead?.job_title || (lead as any)?.title || '', // Handle both field names with type assertion
       status: lead?.status || 'New',
       source: lead?.source || 'Website',
       notes: lead?.notes || '',
-      owner_id: lead?.owner_id || '',
+      owner_id: lead?.owner_id?.toString() || '', // Convert number to string if needed
       custom_fields: lead?.custom_fields || {},
+      linkedin_url: lead?.linkedin_url || '',
+      facebook_url: lead?.facebook_url || '',
+      twitter_url: lead?.twitter_url || '',
     },
   });
 
+  // For debugging
+  useEffect(() => {
+    console.log('Lead data in form:', lead);
+  }, [lead]);
+
   // Handle form submission
-  const handleSubmit = (data: z.infer<typeof formSchema>) => {
+  const handleSubmit = (data: LeadFormValues) => {
     if (onSubmit) {
-      onSubmit(data);
+      // Map the form values to the expected field names if needed
+      const mappedData = {
+        ...data,
+        // If the lead detail page uses 'company' instead of 'company_name'
+        company: data.company_name,
+        // If the lead detail page uses 'title' instead of 'job_title'
+        title: data.job_title,
+        // Ensure social media URLs are included
+        linkedin_url: data.linkedin_url,
+        facebook_url: data.facebook_url,
+        twitter_url: data.twitter_url,
+      };
+      
+      onSubmit(mappedData);
     }
   };
 
@@ -235,6 +259,53 @@ export function LeadForm({
             </FormItem>
           )}
         />
+        
+        {/* Social Media Profiles Section */}
+        <div className="border-t pt-4 mt-4">
+          <h3 className="text-lg font-medium mb-4">Social Media Profiles</h3>
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <FormField
+              control={form.control}
+              name="linkedin_url"
+              render={({ field }) => (
+                <FormItem>
+                  <FormLabel>LinkedIn Profile</FormLabel>
+                  <FormControl>
+                    <Input placeholder="https://linkedin.com/in/username" {...field} />
+                  </FormControl>
+                  <FormMessage />
+                </FormItem>
+              )}
+            />
+            <FormField
+              control={form.control}
+              name="facebook_url"
+              render={({ field }) => (
+                <FormItem>
+                  <FormLabel>Facebook Profile</FormLabel>
+                  <FormControl>
+                    <Input placeholder="https://facebook.com/username" {...field} />
+                  </FormControl>
+                  <FormMessage />
+                </FormItem>
+              )}
+            />
+            <FormField
+              control={form.control}
+              name="twitter_url"
+              render={({ field }) => (
+                <FormItem>
+                  <FormLabel>X/Twitter Profile</FormLabel>
+                  <FormControl>
+                    <Input placeholder="https://x.com/username" {...field} />
+                  </FormControl>
+                  <FormMessage />
+                </FormItem>
+              )}
+            />
+          </div>
+        </div>
+        
         <div className="flex justify-end gap-2">
           <Button type="button" variant="outline" onClick={onCancel}>
             Cancel

@@ -48,6 +48,87 @@ const mockNotifications: Notification[] = [
   }
 ];
 
+// Mock lead data
+const mockLeads = [
+  {
+    id: 1,
+    first_name: 'John',
+    last_name: 'Smith',
+    full_name: 'John Smith',
+    email: 'john.smith@example.com',
+    phone: '(555) 123-4567',
+    company: 'Smith Enterprises',
+    title: 'CEO',
+    source: LeadSource.WEBSITE,
+    status: LeadStatus.NEW,
+    owner_id: 1,
+    team_id: 1,
+    custom_fields: {
+      address: '123 Main St, San Francisco, CA 94105'
+    },
+    lead_score: 8.5,
+    conversion_probability: 0.65,
+    created_at: '2023-05-15T10:30:00Z',
+    updated_at: '2023-05-15T10:30:00Z',
+    tasks: [
+      { id: 1, title: 'Follow up call', due_date: '2023-05-20T14:00:00Z', completed: false },
+      { id: 2, title: 'Send proposal', due_date: '2023-05-25T10:00:00Z', completed: false }
+    ],
+    emails: [
+      { id: 1, subject: 'Introduction', sent_at: '2023-05-15T11:00:00Z' }
+    ],
+    calls: [
+      { id: 1, duration: 15, notes: 'Initial contact', called_at: '2023-05-16T09:30:00Z' }
+    ],
+    meetings: [],
+    notes: [{ id: 1, content: 'Interested in premium plan', created_at: '2023-05-15T10:35:00Z' }],
+    activities: [],
+    owner: { id: 1, name: 'Jane Doe' },
+    timeline: [],
+    campaigns: [{ id: 1, name: 'Summer Promotion' }]
+  }
+];
+
+// Mock timeline data
+const mockTimeline = [
+  {
+    id: 1,
+    type: 'note',
+    content: 'Added a note',
+    created_at: '2023-05-15T10:35:00Z',
+    user: { id: 1, name: 'Jane Doe' }
+  },
+  {
+    id: 2,
+    type: 'email',
+    content: 'Sent introduction email',
+    created_at: '2023-05-15T11:00:00Z',
+    user: { id: 1, name: 'Jane Doe' }
+  },
+  {
+    id: 3,
+    type: 'call',
+    content: 'Made initial contact call (15 min)',
+    created_at: '2023-05-16T09:30:00Z',
+    user: { id: 1, name: 'Jane Doe' }
+  }
+];
+
+// Mock insights data
+const mockInsights = {
+  score_factors: [
+    { impact: 1, description: 'Engaged with 3 emails in the past week' },
+    { impact: 1, description: 'Visited pricing page multiple times' },
+    { impact: -1, description: 'No scheduled meetings yet' }
+  ],
+  recommendations: [
+    'Schedule a product demo call',
+    'Send case study for their industry',
+    'Follow up within 3 days'
+  ],
+  conversion_probability: 0.65
+};
+
 // Mock data for meetings
 const mockMeetings: Meeting[] = [
   {
@@ -72,6 +153,7 @@ const mockMeetings: Meeting[] = [
       source: LeadSource.WEBSITE,
       custom_fields: {},
       lead_score: 80,
+      conversion_probability: 0.55,
       created_at: new Date().toISOString(),
       updated_at: new Date().toISOString(),
       full_name: 'John Doe'
@@ -99,6 +181,7 @@ const mockMeetings: Meeting[] = [
       source: LeadSource.REFERRAL,
       custom_fields: {},
       lead_score: 90,
+      conversion_probability: 0.75,
       created_at: new Date().toISOString(),
       updated_at: new Date().toISOString(),
       full_name: 'Jane Smith'
@@ -126,6 +209,7 @@ const mockMeetings: Meeting[] = [
       source: LeadSource.LINKEDIN,
       custom_fields: {},
       lead_score: 95,
+      conversion_probability: 0.85,
       created_at: new Date().toISOString(),
       updated_at: new Date().toISOString(),
       full_name: 'Robert Johnson'
@@ -153,6 +237,7 @@ const mockMeetings: Meeting[] = [
       source: LeadSource.WEBSITE,
       custom_fields: {},
       lead_score: 80,
+      conversion_probability: 0.55,
       created_at: new Date().toISOString(),
       updated_at: new Date().toISOString(),
       full_name: 'John Doe'
@@ -191,6 +276,11 @@ const mockEndpoints: MockEndpoints = {
   // Meetings endpoints
   'api/v1/meetings': () => mockMeetings,
   'api/v1/meetings/upcoming': () => mockMeetings,
+  
+  // Lead endpoints
+  'api/v1/leads/1': () => mockLeads[0],
+  'api/v1/leads/1/timeline': () => mockTimeline,
+  'api/v1/leads/1/insights': () => mockInsights,
   
   // Add more mock endpoints as needed
 };

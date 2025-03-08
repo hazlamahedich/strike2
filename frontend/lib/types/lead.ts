@@ -42,6 +42,7 @@ export interface Lead {
   team_id?: number;
   custom_fields: Record<string, any>;
   lead_score: number;
+  conversion_probability?: number;
   created_at: string;
   updated_at: string;
   full_name: string;
@@ -93,11 +94,13 @@ export interface LeadUpdate {
   team_id?: number;
   custom_fields?: Record<string, any>;
   lead_score?: number;
+  conversion_probability?: number;
   add_to_campaigns?: number[];
   remove_from_campaigns?: number[];
   linkedin_url?: string;
   facebook_url?: string;
   twitter_url?: string;
+  status_change_notes?: string;
 }
 
 export interface LeadFilter {
