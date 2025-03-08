@@ -28,21 +28,36 @@
    - [Creating Tasks](#creating-tasks)
    - [Assigning Tasks](#assigning-tasks)
    - [Task Tracking](#task-tracking)
-7. [AI-Powered Features](#ai-powered-features)
+7. [Campaign Management](#campaign-management)
+   - [Creating Campaigns](#creating-campaigns)
+   - [Campaign Types](#campaign-types)
+   - [Campaign Status Management](#campaign-status-management)
+   - [Adding Leads to Campaigns](#adding-leads-to-campaigns)
+   - [Campaign Analytics](#campaign-analytics)
+   - [Campaign Audit Logs](#campaign-audit-logs)
+8. [AI-Powered Features](#ai-powered-features)
    - [Chatbot Assistant](#chatbot-assistant)
    - [Chatbot-Manual Integration](#chatbot-manual-integration)
    - [Lead Scoring](#lead-scoring)
+   - [Automated Workflows for Low Probability Clients](#automated-workflows-for-low-probability-clients)
    - [Sentiment Analysis](#sentiment-analysis)
    - [Smart Recommendations](#smart-recommendations)
-8. [Analytics & Reporting](#analytics--reporting)
+9. [Analytics & Reporting](#analytics--reporting)
    - [Dashboard Analytics](#dashboard-analytics)
    - [Custom Reports](#custom-reports)
    - [Performance Metrics](#performance-metrics)
-9. [User Settings](#user-settings)
-   - [Profile Management](#profile-management)
-   - [Notification Settings](#notification-settings)
-   - [Team Collaboration](#team-collaboration)
-10. [Troubleshooting](#troubleshooting)
+   - [User Analytics](#user-analytics)
+   - [Email Performance Tracking](#email-performance-tracking)
+10. [User Settings](#user-settings)
+    - [Profile Management](#profile-management)
+    - [Notification Settings](#notification-settings)
+    - [Team Collaboration](#team-collaboration)
+11. [System Administration](#system-administration)
+    - [Role-Based Access Control](#role-based-access-control)
+    - [Audit Logs](#audit-logs)
+    - [Integration Management](#integration-management)
+    - [Ticketing System](#ticketing-system)
+12. [Troubleshooting](#troubleshooting)
     - [Common Issues](#common-issues)
     - [Using the Chatbot for Troubleshooting](#using-the-chatbot-for-troubleshooting)
     - [Support Contact](#support-contact)
@@ -383,6 +398,191 @@ All communications are automatically logged in:
 4. Mark tasks as In Progress or Complete
 5. Add comments to tasks to provide updates
 
+## Campaign Management
+
+### Creating Campaigns
+
+1. Navigate to "Campaigns" in the main menu
+2. Click "Create Campaign" button
+3. Fill in the campaign details:
+   - Campaign Name
+   - Campaign Type
+   - Start and End Dates
+   - Description
+   - Goals and KPIs
+   - Target Audience
+4. Configure campaign settings:
+   - Frequency of communications
+   - Content templates
+   - Follow-up rules
+   - Exit criteria
+5. Click "Create" to launch the campaign setup wizard
+
+### Campaign Types
+
+STRIKE supports multiple campaign types to address different business needs:
+
+1. **Drip Campaigns**
+   - Automated sequence of messages sent at predetermined intervals
+   - Ideal for nurturing leads over time
+   - Configure message content, timing, and conditions
+
+2. **Outreach Campaigns**
+   - Focused on initial contact with new leads
+   - Multi-channel approach (email, SMS, call)
+   - Performance tracking for each channel
+
+3. **Event Campaigns**
+   - Promote and manage attendance for webinars, conferences, or workshops
+   - Registration tracking
+   - Automated reminders
+   - Post-event follow-up
+
+4. **Re-engagement Campaigns**
+   - Target inactive leads
+   - Specialized content to rekindle interest
+   - Escalation paths for responsive leads
+
+5. **Conversion Campaigns**
+   - Focus on leads near the decision stage
+   - Targeted offers and incentives
+   - Deadline-driven messaging
+
+### Campaign Status Management
+
+Campaigns in STRIKE can have the following statuses:
+
+1. **Draft**: Campaign is being created and configured
+   - All settings can be modified
+   - No communications are sent
+
+2. **Active**: Campaign is running and executing its workflow
+   - Leads receive communications according to the schedule
+   - Performance metrics are tracked in real-time
+   - Minor adjustments can be made without stopping the campaign
+
+3. **Paused**: Campaign is temporarily halted
+   - No new communications are sent
+   - Existing leads remain in the campaign
+   - Can be reactivated at any time
+
+4. **Completed**: Campaign has reached its end date or goals
+   - No further communications are sent
+   - Full analytics are available
+   - Can be cloned for future use
+
+5. **Cancelled**: Campaign has been permanently stopped
+   - No further communications are sent
+   - Leads can be removed or reassigned
+   - Reason for cancellation is documented
+
+To change a campaign's status:
+1. Go to the Campaigns page
+2. Find the campaign in the list
+3. Click the "Status" dropdown
+4. Select the new status
+5. Confirm the change
+
+When attempting to modify leads or activities for campaigns with restricted statuses (completed, cancelled), the system will display an alert explaining the limitation and offering appropriate actions.
+
+### Adding Leads to Campaigns
+
+There are multiple ways to add leads to campaigns:
+
+1. **From Campaign Setup**:
+   - During campaign creation, use the "Add Leads" step
+   - Filter leads by criteria (status, score, source, etc.)
+   - Select leads individually or in bulk
+
+2. **From Lead List**:
+   - Select leads in the lead list view
+   - Click "Add to Campaign" in the actions menu
+   - Choose the target campaign
+
+3. **From Lead Detail**:
+   - Open a lead's detail page
+   - Click "Add to Campaign" in the actions menu
+   - Select the campaign from the dropdown
+
+4. **Automated Rules**:
+   - Configure rules to automatically add leads to campaigns based on:
+     - Score changes
+     - Status updates
+     - Website activity
+     - Form submissions
+     - Custom triggers
+
+5. **CSV Import**:
+   - Import leads directly into a campaign
+   - Map CSV fields to lead properties
+   - Set campaign-specific properties during import
+
+### Campaign Analytics
+
+Track campaign performance with dedicated analytics:
+
+1. **Overview Dashboard**:
+   - Active leads count
+   - Completion percentage
+   - Engagement rate
+   - Conversion rate
+   - ROI calculation
+
+2. **Engagement Metrics**:
+   - Email open and click rates
+   - SMS response rates
+   - Call connection rates
+   - Content engagement
+
+3. **Conversion Tracking**:
+   - Lead status progression
+   - Opportunity creation
+   - Deal closure
+   - Revenue attribution
+
+4. **A/B Testing Results**:
+   - Comparative performance of different:
+     - Subject lines
+     - Message content
+     - Send times
+     - Call scripts
+
+5. **Lead Response Analysis**:
+   - Response time metrics
+   - Sentiment analysis
+   - Frequently asked questions
+   - Objection patterns
+
+### Campaign Audit Logs
+
+Every campaign maintains a detailed audit log for compliance and optimization:
+
+1. **Activity Tracking**:
+   - All communications sent
+   - Status changes
+   - Configuration updates
+   - Lead additions and removals
+
+2. **User Actions**:
+   - Record of which team members made changes
+   - Timestamps for all actions
+   - Notes and justifications
+
+3. **System Events**:
+   - Automated rule executions
+   - Error logs
+   - Performance alerts
+
+4. **Compliance Documentation**:
+   - Opt-out requests
+   - Consent records
+   - Regulatory compliance checks
+
+5. **Export Options**:
+   - Download audit logs in CSV or PDF format
+   - Filter by date range, action type, or user
+   - Schedule regular audit reports
+
 ## AI-Powered Features
 
 ### Chatbot Assistant
@@ -529,13 +729,131 @@ Here are some specific ways to leverage the chatbot-manual integration:
 
 ### Lead Scoring
 
-STRIKE automatically scores leads based on multiple factors:
+STRIKE uses a sophisticated AI-powered lead scoring system to help you prioritize your sales efforts:
 
-1. View lead scores on the lead list and detail pages
-2. Scores range from 1-100, with higher scores indicating higher conversion potential
-3. Hover over the score to see contributing factors
-4. Sort leads by score to prioritize high-potential prospects
-5. Filter leads by score range
+1. **Scoring Range**: Leads are scored on a scale of 1-100:
+   - 80-100: Hot leads (high probability of conversion)
+   - 50-79: Warm leads (moderate probability)
+   - 20-49: Cool leads (lower probability)
+   - 1-19: Cold leads (very low probability)
+
+2. **Scoring Factors**: The AI considers multiple data points when calculating scores:
+   - **Engagement Metrics** (40% weight):
+     - Email open and response rates
+     - Website visits (frequency and duration)
+     - Content downloads and interaction
+     - Form submissions
+     - Chat interactions
+   
+   - **Demographic Fit** (25% weight):
+     - Industry alignment with your target markets
+     - Company size and revenue
+     - Job title and decision-making authority
+     - Geographic location
+   
+   - **Behavioral Signals** (20% weight):
+     - Specific pages visited (pricing, product details)
+     - Time spent on high-intent pages
+     - Repeated visits to key conversion pages
+     - Engagement with bottom-funnel content
+   
+   - **Communication Sentiment** (10% weight):
+     - Positive language in communications
+     - Response time to your outreach
+     - Questions indicating buying intent
+   
+   - **External Data** (5% weight):
+     - Social media activity
+     - Company news and growth indicators
+     - Market conditions
+
+3. **Score Visibility**:
+   - Lead scores are prominently displayed on lead cards and profiles
+   - Color-coding provides quick visual reference (red: cold, yellow: cool, green: warm, blue: hot)
+   - Hover over scores to see a breakdown of contributing factors
+   - Historical score tracking shows progression over time
+
+4. **Using Lead Scores**:
+   - Sort lead lists by score to prioritize outreach
+   - Filter dashboard views to focus on specific score ranges
+   - Set up alerts for score changes above a certain threshold
+   - Create segments based on score ranges for targeted campaigns
+   - Track conversion rates by initial and current scores
+
+5. **Score Recalculation**:
+   - Scores are automatically updated daily
+   - Significant interactions trigger immediate recalculation
+   - Manual recalculation can be triggered from the lead profile
+
+6. **Score Customization**:
+   - Administrators can adjust factor weights in Settings > Lead Scoring
+   - Industry-specific scoring models can be selected
+   - Custom scoring factors can be added based on your unique business needs
+   - A/B test different scoring models to optimize for your sales process
+
+### Automated Workflows for Low Probability Clients
+
+STRIKE includes powerful automation capabilities specifically designed to nurture low probability leads efficiently without consuming valuable sales team resources:
+
+1. **Low Probability Classification**:
+   - Leads with scores below 30 are automatically classified as low probability
+   - Leads showing declining engagement patterns over 30 days
+   - Leads that have explicitly indicated long future timeframes
+   - Leads that match your configured exclusion criteria
+
+2. **Automated Nurture Campaigns**:
+   - **Activation**: Low probability leads are automatically enrolled in specialized nurture campaigns
+   - **Content Delivery**: Scheduled delivery of educational content, case studies, and industry insights
+   - **Frequency Control**: Optimized contact frequency to maintain presence without overwhelming
+   - **Multi-Channel Approach**: Coordinated outreach across email, SMS, and social touchpoints
+   - **Personalization**: AI-generated personalized content based on lead characteristics and behavior
+
+3. **Workflow Configuration**:
+   - Access workflow settings in **Settings > Automation > Low Probability Workflows**
+   - Create multiple workflows for different types of low probability leads
+   - Set entry and exit conditions based on score thresholds and behaviors
+   - Configure content sequences with conditional logic
+   - Set maximum workflow duration (typically 90-180 days)
+   - Define success metrics and conversion paths
+
+4. **Monitoring and Optimization**:
+   - **Performance Dashboard**: Track key metrics for low probability workflows
+   - **Engagement Analytics**: Monitor open rates, click-through rates, and response patterns
+   - **Conversion Tracking**: Measure how many low probability leads convert to higher scores
+   - **A/B Testing**: Compare different nurture approaches for continuous improvement
+   - **ROI Calculation**: Measure resource investment against conversion outcomes
+
+5. **Re-Engagement Triggers**:
+   - **Score Improvements**: Leads that reach a score of 40+ are automatically flagged for sales review
+   - **Buying Signals**: Specific high-intent actions trigger alerts regardless of overall score
+   - **Timing Indicators**: Responses indicating changed timeframes accelerate follow-up
+   - **Manual Overrides**: Sales team can manually move leads out of automated workflows at any time
+
+6. **Exit Strategies**:
+   - **Successful Conversion**: Leads showing renewed interest move to active sales workflows
+   - **Time-Based Exit**: Leads with no engagement after configured timeframe (default: 120 days)
+   - **Explicit Opt-Out**: Leads requesting no further contact
+   - **Disqualification**: Leads confirmed as poor fits after additional data collection
+
+7. **Implementation Best Practices**:
+   - Start with a simple 5-7 touch sequence focused on education and value
+   - Include periodic "check-in" messages that invite direct response
+   - Incorporate seasonal or trigger-based content relevant to the lead's industry
+   - Use progressive profiling to gather additional information over time
+   - Maintain consistent branding while varying content formats
+   - Include clear paths for leads to indicate renewed interest
+
+8. **Example Workflow: "Hibernating Lead Nurture"**:
+   - **Day 1**: Welcome email explaining the value-focused content they'll receive
+   - **Day 7**: Industry-specific insight or trend report
+   - **Day 21**: Case study relevant to their business challenges
+   - **Day 35**: Invitation to upcoming webinar or resource library
+   - **Day 60**: "Quick check-in" with easy response options
+   - **Day 90**: Personalized value proposition based on accumulated data
+   - **Day 120**: Final "stay in touch" message with future-focused options
+   - **Conditional**: Any engagement above threshold triggers sales team notification
+
+This automated approach ensures that low probability leads receive appropriate attention without diverting resources from higher-probability opportunities, while maintaining the possibility of future conversion when timing or circumstances change.
 
 ### Sentiment Analysis
 
@@ -588,6 +906,84 @@ Track key metrics including:
 5. Revenue forecasts
 6. Team performance
 
+### User Analytics
+
+Monitor and optimize individual and team performance:
+
+1. **User Performance Dashboard**:
+   - Access from Analytics > User Performance
+   - View metrics for individual team members or teams
+   - Compare performance across different time periods
+
+2. **Key Metrics Tracked**:
+   - Activity volume (calls, emails, meetings)
+   - Response times
+   - Lead conversion rates
+   - Task completion rates
+   - Revenue generation
+
+3. **Performance Trends**:
+   - Daily, weekly, and monthly activity patterns
+   - Improvement or decline over time
+   - Comparison to team averages and goals
+
+4. **Activity Breakdown**:
+   - Time spent on different activities
+   - Most effective communication channels
+   - Best performing lead sources
+   - Highest value activities
+
+5. **Goal Tracking**:
+   - Progress toward individual and team goals
+   - Achievement badges and recognition
+   - Performance against KPIs
+
+6. **Coaching Insights**:
+   - AI-generated recommendations for improvement
+   - Skill gap identification
+   - Training suggestions
+   - Success pattern recognition
+
+### Email Performance Tracking
+
+Gain insights into email campaign effectiveness:
+
+1. **Email Analytics Dashboard**:
+   - Access from Analytics > Email Performance
+   - Overview of all email campaigns and individual emails
+   - Real-time tracking of key metrics
+
+2. **Metrics Tracked**:
+   - Open rates
+   - Click-through rates
+   - Reply rates
+   - Conversion rates
+   - Bounce and unsubscribe rates
+
+3. **Content Performance**:
+   - Most effective subject lines
+   - Highest performing email templates
+   - Optimal email length and structure
+   - Best performing calls-to-action
+
+4. **Timing Analysis**:
+   - Best days and times to send emails
+   - Response time patterns
+   - Optimal follow-up timing
+   - Frequency optimization
+
+5. **Recipient Behavior**:
+   - Device and email client usage
+   - Reading time analysis
+   - Forward and share tracking
+   - Multiple opens tracking
+
+6. **A/B Test Results**:
+   - Comparative performance of test variants
+   - Statistical significance indicators
+   - Recommended optimizations
+   - Historical test results
+
 ## User Settings
 
 ### Profile Management
@@ -618,6 +1014,183 @@ Track key metrics including:
 4. Create teams and departments
 5. Set up approval workflows
 6. Configure data sharing rules
+
+## System Administration
+
+### Role-Based Access Control
+
+STRIKE implements a comprehensive role-based access control (RBAC) system to ensure appropriate access to features and data:
+
+1. **Predefined Roles**:
+   - **Administrator**: Full system access and configuration rights
+   - **Manager**: Team management and reporting access
+   - **Sales Rep**: Standard CRM functionality for assigned leads
+   - **Marketing**: Campaign management and analytics access
+   - **Support**: Limited access focused on customer service
+   - **Viewer**: Read-only access to specific data
+
+2. **Role Management**:
+   - Access from Settings > User Management > Roles
+   - Create custom roles with specific permissions
+   - Modify existing roles
+   - Assign users to multiple roles if needed
+
+3. **Permission Categories**:
+   - **Lead Management**: Create, view, edit, delete leads
+   - **Communication**: Email, SMS, call permissions
+   - **Campaign Management**: Create, modify, analyze campaigns
+   - **Analytics**: Access to different reports and dashboards
+   - **System Configuration**: Settings and integration management
+   - **User Management**: Add, modify, deactivate users
+
+4. **Data Access Controls**:
+   - Team-based data segregation
+   - Territory management
+   - Record-level permissions
+   - Field-level security
+
+5. **Permission Assignment**:
+   - Assign permissions to roles, not individual users
+   - Use permission templates for common scenarios
+   - Implement approval workflows for sensitive actions
+   - Set up temporary access with expiration
+
+6. **Audit and Compliance**:
+   - Track permission changes
+   - Regular access reviews
+   - Permission usage reports
+   - Compliance documentation
+
+### Audit Logs
+
+STRIKE maintains comprehensive audit logs for security, compliance, and troubleshooting:
+
+1. **System-Wide Audit Trail**:
+   - Access from Settings > System > Audit Logs
+   - Searchable and filterable log entries
+   - Export capabilities for compliance reporting
+
+2. **Actions Tracked**:
+   - User logins and logouts
+   - Record creation, modification, and deletion
+   - Permission changes
+   - Configuration updates
+   - API access and usage
+   - Bulk operations
+
+3. **Log Details**:
+   - Timestamp (with timezone)
+   - User identifier
+   - IP address
+   - Action performed
+   - Affected records
+   - Before and after values
+   - Session information
+
+4. **Retention and Archiving**:
+   - Configure log retention periods
+   - Automated archiving of older logs
+   - Compliance with data retention regulations
+   - Secure storage of archived logs
+
+5. **Alert Configuration**:
+   - Set up notifications for suspicious activities
+   - Configure alerts for compliance violations
+   - Create custom alert rules
+   - Integrate with security monitoring systems
+
+6. **Log Analysis**:
+   - Pattern detection for security threats
+   - Usage analytics
+   - Performance impact analysis
+   - Compliance reporting
+
+### Integration Management
+
+Manage all your third-party integrations from a central location:
+
+1. **Integration Dashboard**:
+   - Access from Settings > Integrations
+   - Overview of all connected services
+   - Status monitoring
+   - Usage statistics
+
+2. **Available Integrations**:
+   - Email providers (Gmail, Outlook, etc.)
+   - Calendar services (Google Calendar, Outlook)
+   - Communication tools (Slack, Teams)
+   - Marketing platforms (Mailchimp, HubSpot)
+   - Document management (Google Drive, Dropbox)
+   - Social media platforms
+   - Custom API integrations
+
+3. **Integration Setup**:
+   - Step-by-step configuration wizards
+   - API key management
+   - OAuth authentication
+   - Permission scoping
+   - Testing tools
+
+4. **Data Mapping**:
+   - Configure field mappings between systems
+   - Set up data transformation rules
+   - Manage bidirectional sync settings
+   - Handle conflict resolution
+
+5. **Sync Settings**:
+   - Configure sync frequency
+   - Set up filters for data synchronization
+   - Schedule syncs during off-hours
+   - Monitor sync history and errors
+
+6. **Webhooks and Automation**:
+   - Create custom webhooks for real-time integration
+   - Set up automated workflows between systems
+   - Configure event triggers
+   - Test and monitor webhook performance
+
+### Ticketing System
+
+STRIKE includes a built-in ticketing system for internal support and issue tracking:
+
+1. **Ticket Management**:
+   - Access from Support > Tickets
+   - Create, view, update, and resolve tickets
+   - Assign tickets to team members
+   - Set priority and due dates
+
+2. **Ticket Creation**:
+   - Manual creation through the interface
+   - Email-to-ticket conversion
+   - Chatbot-generated tickets
+   - Customer portal submissions
+
+3. **Ticket Categories**:
+   - Technical issues
+   - Feature requests
+   - Data problems
+   - Account questions
+   - Training requests
+   - Custom categories
+
+4. **Workflow Management**:
+   - Customizable ticket statuses
+   - Automated routing rules
+   - SLA tracking
+   - Escalation paths
+   - Approval workflows
+
+5. **Integration with CRM Data**:
+   - Link tickets to leads, contacts, or accounts
+   - Access relevant CRM data within tickets
+   - Track ticket history in customer records
+   - Generate reports on common issues by customer segment
+
+6. **Knowledge Base Integration**:
+   - Suggest solutions from knowledge base
+   - Create knowledge base articles from resolved tickets
+   - Track which articles successfully resolve issues
+   - Identify knowledge gaps based on ticket patterns
 
 ## Troubleshooting
 

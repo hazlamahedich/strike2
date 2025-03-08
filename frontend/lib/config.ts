@@ -3,7 +3,7 @@
  */
 
 // Set to true to use mock data, false to use live Supabase data
-export const USE_MOCK_DATA = false;
+export const USE_MOCK_DATA = true;
 
 // API Configuration
 export const API_CONFIG = {

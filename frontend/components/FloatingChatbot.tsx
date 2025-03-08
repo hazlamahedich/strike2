@@ -22,11 +22,21 @@ const FloatingChatbot: React.FC = () => {
   const [isOpen, setIsOpen] = useState(false);
   const [isMinimized, setIsMinimized] = useState(false);
   const [isDragging, setIsDragging] = useState(false);
-  const [dragPosition, setDragPosition] = useState({ x: window.innerWidth - 400, y: window.innerHeight - 550 });
+  const [dragPosition, setDragPosition] = useState(() => {
+    const chatbotWidth = 350;
+    const chatbotHeight = 500;
+    const margin = 20;
+    
+    return {
+      x: Math.max(margin, Math.min(window.innerWidth - chatbotWidth - margin, window.innerWidth - 400)),
+      y: Math.max(margin, Math.min(window.innerHeight - chatbotHeight - margin, window.innerHeight - 550))
+    };
+  });
   const [dragOffset, setDragOffset] = useState({ x: 0, y: 0 });
   const [isAnimating, setIsAnimating] = useState(false);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const chatIconRef = useRef<HTMLDivElement>(null);
+  const chatbotRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     // Generate a session ID if one doesn't exist
@@ -131,17 +141,24 @@ const FloatingChatbot: React.FC = () => {
   };
 
   const toggleChat = () => {
-    // When opening the chat, position it in a visible area in the lower right corner
-    if (!isOpen) {
-      // Calculate position in the lower right corner
-      const newPosition = {
-        x: Math.max(window.innerWidth - 400, 20), // 400px from right edge or 20px from left if window is small
-        y: Math.max(window.innerHeight - 550, 20) // Position it near the bottom but ensure it's visible
-      };
-      setDragPosition(newPosition);
-      setIsMinimized(false);
+    setIsAnimating(true);
+    
+    if (isOpen) {
+      // When closing, animate out and then set isOpen to false
+      setTimeout(() => {
+        setIsOpen(false);
+        setIsAnimating(false);
+      }, 300); // Match the animation duration
+    } else {
+      // When opening, set isOpen to true and ensure it's positioned correctly
+      setIsOpen(true);
+      
+      // Ensure the chatbot is positioned in a visible area when opened
+      setTimeout(() => {
+        ensureVisiblePosition();
+        setIsAnimating(false);
+      }, 50);
     }
-    setIsOpen(!isOpen);
   };
 
   const toggleMinimize = () => {
@@ -178,9 +195,10 @@ const FloatingChatbot: React.FC = () => {
       const newX = e.clientX - dragOffset.x;
       const newY = e.clientY - dragOffset.y;
       
-      // Ensure the chatbot stays within the viewport
-      const chatbotWidth = 350;
-      const chatbotHeight = 500;
+      // Get actual chatbot dimensions if available, otherwise use defaults
+      const chatbotElement = chatbotRef.current;
+      const chatbotWidth = chatbotElement ? chatbotElement.offsetWidth : 350;
+      const chatbotHeight = chatbotElement ? chatbotElement.offsetHeight : 500;
       const margin = 20;
       
       // Constrain X position
@@ -220,8 +238,9 @@ const FloatingChatbot: React.FC = () => {
 
   // Function to ensure the chatbot is positioned in a visible area
   const ensureVisiblePosition = () => {
-    const chatbotWidth = 350;
-    const chatbotHeight = 500;
+    const chatbotElement = chatbotRef.current;
+    const chatbotWidth = chatbotElement ? chatbotElement.offsetWidth : 350;
+    const chatbotHeight = chatbotElement ? chatbotElement.offsetHeight : 500;
     const margin = 20;
     
     // Calculate a position that ensures visibility
@@ -260,6 +279,11 @@ const FloatingChatbot: React.FC = () => {
     }
   }, [isOpen]);
 
+  // Call ensureVisiblePosition on component mount to ensure initial position is valid
+  useEffect(() => {
+    ensureVisiblePosition();
+  }, []);
+
   return (
     <Box sx={{ position: 'fixed', bottom: 20, right: 20, zIndex: 1000 }}>
       {!isOpen ? (
@@ -283,8 +307,9 @@ const FloatingChatbot: React.FC = () => {
         </IconButton>
       ) : (
         <div 
+          ref={chatbotRef}
           style={{ 
-            position: 'absolute',
+            position: 'fixed',
             left: `${dragPosition.x}px`,
             top: `${dragPosition.y}px`,
             zIndex: 1000,

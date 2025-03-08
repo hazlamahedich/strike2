@@ -1,55 +1,57 @@
-# AI-Powered CRM System
+# STRIKE - AI-Powered CRM System
 
-An intelligent, modular CRM system built with modern AI capabilities, focusing on lead generation and management.
+STRIKE is an intelligent, modular CRM system built with modern AI capabilities, focusing on lead management, communication, and sales pipeline optimization.
 
 ## Features
 
-- **User Authentication & Management**: Role-based access control, team collaboration, and user profiles.
+- **User Authentication & Management**: Secure login, role-based access control, team collaboration, and user profiles.
 - **Lead Management**: Import/export with AI parsing, customizable fields, segmentation, and pipeline stages.
-- **Communication Suite**: Email, SMS, and call integration with tracking and analysis.
+- **Communication Suite**: Email, SMS, and call integration with tracking and sentiment analysis.
+- **Campaign Management**: Create, manage, and track marketing campaigns with different statuses (draft, active, paused, completed).
 - **Calendar & Meeting Management**: Calendar integration, scheduling, and meeting management.
 - **Task Management**: Task creation, assignment, and tracking with reminders.
-- **Interaction History**: Comprehensive activity timeline and searchable history.
+- **Interaction History**: Comprehensive activity timeline and searchable communication history.
 - **AI-Powered Insights**: Sentiment analysis, lead scoring, conversion prediction, and content suggestions.
 - **Analytics & Reporting**: Real-time dashboards, custom reports, and sales forecasting.
+- **AI Chatbot Assistant**: Integrated chatbot for user assistance and natural language database queries.
 
 ## Technical Stack
 
 ### Backend
 - Python with FastAPI
 - Pydantic for data validation and settings management
-- LangChain and LangGraph for AI agent orchestration
 - Supabase for database and authentication
 - OpenAI API for AI capabilities
 - SendGrid for email functionality
 - Twilio for SMS and call functionality
 
 ### Frontend
-- React with Next.js
+- Next.js 15 with React
 - Tailwind CSS with shadcn/ui components
-- React Query for state management
+- Supabase client for authentication and data access
+- Modern React patterns with hooks and context
 
 ### DevOps & Infrastructure
 - Docker for containerization
-- CI/CD pipeline with GitHub Actions
-- Vercel for frontend deployment
-- Monitoring and logging with Sentry
+- Environment configuration management
+- Monitoring and error handling
 
 ## Getting Started
 
 ### Prerequisites
 
-- Python 3.11+
+- Python 3.9+
 - Node.js 18+
 - Docker and Docker Compose (optional)
-- Supabase account (or local Supabase setup)
+- Supabase account
+- API keys for OpenAI, SendGrid, and Twilio (optional)
 
 ### Backend Setup
 
 1. Clone the repository:
    ```bash
-   git clone https://github.com/yourusername/ai-crm.git
-   cd ai-crm
+   git clone https://github.com/yourusername/strike.git
+   cd strike
    ```
 
 2. Set up a virtual environment:
@@ -63,7 +65,7 @@ An intelligent, modular CRM system built with modern AI capabilities, focusing o
    pip install -r requirements.txt
    ```
 
-4. Create a `.env` file in the backend directory:
+4. Create a `.env` file in the backend directory based on `.env.example`:
    ```
    # API settings
    SECRET_KEY=your_secret_key
@@ -92,15 +94,6 @@ An intelligent, modular CRM system built with modern AI capabilities, focusing o
    ```
    
    This script will create all the necessary tables, indexes, and seed the database with initial data.
-   
-   You can also run specific parts of the setup:
-   ```bash
-   # Only create the schema (tables, indexes, etc.)
-   python setup_supabase.py --schema-only
-   
-   # Only seed the database with initial data
-   python setup_supabase.py --seed-only
-   ```
 
 6. Run the backend server:
    ```bash
@@ -108,7 +101,96 @@ An intelligent, modular CRM system built with modern AI capabilities, focusing o
    uvicorn main:app --reload
    ```
 
-### Database Structure
+### Frontend Setup
+
+1. Navigate to the frontend directory:
+   ```bash
+   cd frontend
+   ```
+
+2. Install dependencies:
+   ```bash
+   npm install
+   ```
+
+3. Create a `.env.local` file with your Supabase credentials:
+   ```
+   NEXT_PUBLIC_SUPABASE_URL=your_supabase_url
+   NEXT_PUBLIC_SUPABASE_ANON_KEY=your_supabase_anon_key
+   ```
+
+4. Run the development server:
+   ```bash
+   npm run dev
+   ```
+
+5. Open [http://localhost:3000](http://localhost:3000) in your browser to see the application.
+
+### Docker Setup
+
+1. Build and run with Docker Compose:
+   ```bash
+   docker-compose up --build
+   ```
+
+## Project Structure
+
+```
+.
+├── backend/                # Backend FastAPI application
+│   ├── app/                # Application code
+│   │   ├── agents/         # AI agent implementations
+│   │   ├── core/           # Core functionality
+│   │   ├── data/           # Data handling utilities
+│   │   ├── models/         # Pydantic models
+│   │   ├── routers/        # API routes
+│   │   └── services/       # Business logic
+│   ├── main.py             # Application entry point
+│   ├── supabase_schema.sql # Database schema definition
+│   ├── supabase_seed.sql   # Initial seed data
+│   └── setup_supabase.py   # Database setup script
+├── frontend/               # Frontend Next.js application
+│   ├── app/                # Next.js app directory
+│   │   ├── api/            # API routes
+│   │   ├── auth/           # Authentication pages
+│   │   ├── dashboard/      # Dashboard pages
+│   │   ├── communications/ # Communication pages
+│   │   └── leads/          # Lead management pages
+│   ├── components/         # Reusable UI components
+│   ├── context/            # React context providers
+│   ├── hooks/              # Custom React hooks
+│   ├── lib/                # Utility functions and API clients
+│   ├── public/             # Static assets
+│   └── styles/             # Global styles
+├── docker-compose.yml      # Docker Compose configuration
+├── requirements.txt        # Python dependencies
+└── STRIKE_USER_MANUAL.md   # Comprehensive user manual
+```
+
+## AI Capabilities
+
+- **Lead Parsing & Enrichment**: Extract and categorize lead information from unstructured documents.
+- **Sentiment Analysis**: Analyze communication for sentiment, intent, and urgency.
+- **Lead Scoring**: Multi-factor model to predict conversion probability.
+- **Smart Recommendations**: Suggest next best actions and optimal contact times.
+- **Conversation Assistance**: Real-time suggestions and summarization.
+- **Automated Follow-ups**: Smart scheduling and content generation.
+- **Chatbot Assistant**: Integrated with the user manual for contextual help and natural language database queries.
+
+## Campaign Management
+
+STRIKE supports comprehensive campaign management with different statuses:
+
+- **Draft**: Initial state for campaigns being created
+- **Scheduled**: Campaign is scheduled to start in the future
+- **Active**: Campaign is currently running with full functionality
+- **Paused**: Campaign is temporarily stopped but can be resumed
+- **Completed**: Campaign has finished and cannot be modified
+- **Cancelled**: Campaign has been cancelled and cannot be modified
+
+Each status has specific behaviors and restrictions regarding lead and activity management.
+
+## Database Structure
 
 The CRM system uses a Supabase PostgreSQL database with the following main tables:
 
@@ -128,197 +210,41 @@ The CRM system uses a Supabase PostgreSQL database with the following main table
 - **recordings**: Call and meeting recordings
 - **profiles**: User profiles and preferences
 
-The database includes:
-- Foreign key constraints for data integrity
-- Indexes for performance optimization
-- Triggers for automatic timestamp updates and activity logging
-- Row-level security policies for data access control
+## Troubleshooting
 
-### Frontend Setup
+### Supabase Auth and Database Setup Issues
 
-Coming soon...
+If you encounter issues with Supabase authentication or database setup:
 
-### Docker Setup
-
-1. Build and run with Docker Compose:
+1. Run the SQL migration script:
    ```bash
-   docker-compose up --build
+   cd frontend/lib/supabase/migrations
+   ```
+   
+   Copy the contents of `fix_auth_tables.sql` and run it in the Supabase SQL Editor.
+
+2. Check the database connection:
+   ```bash
+   cd backend
+   python test_db_connection.py
    ```
 
-## Project Structure
+3. Verify the database schema:
+   ```bash
+   python check_db_schema.py
+   ```
 
-```
-.
-├── backend/                # Backend FastAPI application
-│   ├── app/                # Application code
-│   │   ├── core/           # Core functionality
-│   │   ├── models/         # Pydantic models
-│   │   ├── routers/        # API routes
-│   │   ├── services/       # Business logic
-│   │   └── utils/          # Utilities
-│   ├── main.py             # Application entry point
-│   ├── supabase_schema.sql # Database schema definition
-│   ├── supabase_seed.sql   # Initial seed data
-│   ├── setup_supabase.py   # Database setup script
-│   └── Dockerfile          # Backend Docker config
-├── frontend/               # Frontend Next.js application (coming soon)
-├── docker-compose.yml      # Docker Compose config
-└── README.md               # This file
-```
+### API Key Issues
 
-## AI Capabilities
-
-- **Lead Parsing & Enrichment**: Extract and categorize lead information from unstructured documents.
-- **Sentiment Analysis**: Analyze communication for sentiment, intent, and urgency.
-- **Lead Scoring**: Multi-factor ML model to predict conversion probability.
-- **Smart Recommendations**: Suggest next best actions and optimal contact times.
-- **Conversation Assistance**: Real-time suggestions and summarization.
-- **Automated Follow-ups**: Smart scheduling and content generation.
+- **OpenAI API Errors**: Check your OpenAI account has sufficient credits and billing is set up
+- **Supabase Connection Issues**: Ensure your IP is not restricted in Supabase settings
+- **SendGrid Email Not Sending**: Verify your sender email is properly authenticated
+- **Twilio SMS/Call Failures**: Check your Twilio account balance and number capabilities
 
 ## License
 
 This project is licensed under the MIT License - see the LICENSE file for details.
 
-## Common Issues
+## Documentation
 
-### Supabase Auth and Database Setup Issues
-
-You may encounter the following issues with Supabase authentication:
-
-1. **Missing auth schema**: The auth schema may not be properly set up.
-2. **Missing profiles table**: The profiles table may not exist or have the wrong structure.
-3. **Missing triggers**: The trigger to create a profile when a new user registers may be missing.
-4. **Incorrect permissions**: Row-level security policies may not be properly configured.
-5. **Type mismatches**: The user_id column in the profiles table must be a UUID type.
-6. **Database error saving new user**: This error occurs during registration when the trigger function fails.
-
-### How to Fix
-
-#### Option 1: Run the SQL Migration Script (Recommended)
-
-1. Log into your [Supabase Dashboard](https://app.supabase.com)
-2. Navigate to the SQL Editor
-3. Copy the contents of `frontend/lib/supabase/migrations/fix_auth_tables.sql`
-4. Paste into the SQL Editor and run the script
-5. This will:
-   - Create the auth schema if it doesn't exist
-   - Create the profiles table with the correct structure
-   - Enable Row Level Security on the profiles table
-   - Create policies for users to view and update their own profiles
-   - Create trigger functions to handle user creation, updates, and deletions
-   - Grant necessary permissions
-   - Create a test table for anonymous access testing
-
-#### Option 2: Manual Setup
-
-If you prefer to set up the database manually, follow these steps:
-
-1. Create the profiles table:
-```sql
-CREATE TABLE IF NOT EXISTS public.profiles (
-    id SERIAL PRIMARY KEY,
-    user_id UUID REFERENCES auth.users(id) ON DELETE CASCADE,
-    avatar_url VARCHAR,
-    preferences JSONB DEFAULT '{"theme": "light", "language": "en"}',
-    notification_settings JSONB DEFAULT '{"push": true, "email": true}',
-    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-    updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
-);
-```
-
-2. Enable Row Level Security and add policies:
-```sql
-ALTER TABLE public.profiles ENABLE ROW LEVEL SECURITY;
-
-CREATE POLICY "Users can view their own profile" 
-    ON public.profiles 
-    FOR SELECT 
-    USING (auth.uid() = user_id);
-
-CREATE POLICY "Users can update their own profile" 
-    ON public.profiles 
-    FOR UPDATE 
-    USING (auth.uid() = user_id);
-```
-
-3. Create a trigger for new users:
-```sql
-CREATE OR REPLACE FUNCTION auth.handle_new_user()
-RETURNS TRIGGER AS $$
-BEGIN
-    INSERT INTO public.profiles (user_id, avatar_url)
-    VALUES (new.id, 'https://randomuser.me/api/portraits/lego/1.jpg');
-    RETURN new;
-END;
-$$ LANGUAGE plpgsql SECURITY DEFINER;
-
-CREATE TRIGGER on_auth_user_created
-    AFTER INSERT ON auth.users
-    FOR EACH ROW EXECUTE FUNCTION auth.handle_new_user();
-```
-
-4. Create a test table for anonymous access:
-```sql
-CREATE TABLE IF NOT EXISTS public.test (
-    id SERIAL PRIMARY KEY,
-    content TEXT
-);
-
-ALTER TABLE public.test ENABLE ROW LEVEL SECURITY;
-
-CREATE POLICY "Allow anonymous read access" ON public.test FOR SELECT USING (true);
-
-INSERT INTO public.test (content) VALUES ('This is a test record') ON CONFLICT DO NOTHING;
-```
-
-### Verifying the Fix
-
-1. Visit the `/auth/test` page in your application to run the built-in tests
-2. Ensure all database connection tests pass
-3. Try to register a new user - it should work without errors
-4. Check the Supabase dashboard to verify that a new profile was created
-
-### Running the Test Script
-
-We've included a test script that can help diagnose issues with your Supabase setup:
-
-```bash
-# From the frontend directory
-node lib/supabase/test-script.mjs
-```
-
-The test script checks:
-1. Database connection
-2. Auth schema
-3. Profiles table structure
-4. Anonymous permissions
-5. Profile creation
-
-If any tests fail, follow the recommendations to fix the issues.
-
-### Troubleshooting
-
-If you're still experiencing issues:
-
-1. **Check Supabase Project Settings**:
-   - Ensure your project is on the correct plan
-   - Verify that the database is not paused
-
-2. **Check Database Permissions**:
-   - Ensure the `anon` role has appropriate permissions
-   - Check that RLS policies are correctly configured
-
-3. **Network Issues**:
-   - Verify that your application can reach the Supabase API
-   - Check for CORS issues in the browser console
-
-4. **Rate Limiting**:
-   - Supabase has rate limits that may affect authentication
-   - Check for rate limit errors in the console
-
-### Resources
-
-- [Supabase Auth Documentation](https://supabase.com/docs/guides/auth)
-- [Row Level Security Guide](https://supabase.com/docs/guides/auth/row-level-security)
-- [Supabase Discord](https://discord.supabase.com)
-- [GitHub Issues](https://github.com/supabase/supabase/issues) 
+For detailed usage instructions, refer to the [STRIKE User Manual](./STRIKE_USER_MANUAL.md). 
