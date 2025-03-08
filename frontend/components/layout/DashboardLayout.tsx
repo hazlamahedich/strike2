@@ -32,6 +32,7 @@ import {
 } from '../ui/dropdown-menu';
 import { Toaster } from 'sonner';
 import apiClient from '@/lib/api/client';
+import { AnalyticsProvider } from '@/context/AnalyticsContext';
 
 type NavItem = {
   title: string;
@@ -152,162 +153,164 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
   };
 
   return (
-    <div className="min-h-screen bg-background">
-      {/* Mobile navigation toggle */}
-      <div className="fixed top-0 left-0 right-0 h-16 px-4 border-b bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60 flex items-center lg:hidden z-50">
-        <button
-          onClick={() => setSidebarOpen(!sidebarOpen)}
-          className="inline-flex items-center justify-center rounded-md text-sm font-medium ring-offset-background transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:pointer-events-none disabled:opacity-50 border border-input bg-background hover:bg-accent hover:text-accent-foreground h-10 w-10"
-        >
-          {sidebarOpen ? <X className="h-5 w-5" /> : <Menu className="h-5 w-5" />}
-        </button>
-        <div className="flex-1 flex justify-end gap-2">
-          <Button variant="ghost" size="icon" onClick={toggleTheme}>
-            {theme === 'light' ? <Moon className="h-[1.2rem] w-[1.2rem]" /> : <Sun className="h-[1.2rem] w-[1.2rem]" />}
-          </Button>
-
-          <DropdownMenu>
-            <DropdownMenuTrigger asChild>
-              <Button variant="ghost" size="icon" className="relative">
-                <BellRing className="h-[1.2rem] w-[1.2rem]" />
-                {notifications.length > 0 && (
-                  <span className="absolute top-1 right-1 w-2 h-2 bg-destructive rounded-full" />
-                )}
-              </Button>
-            </DropdownMenuTrigger>
-            <DropdownMenuContent align="end" className="w-80">
-              <DropdownMenuLabel>Notifications</DropdownMenuLabel>
-              <DropdownMenuSeparator />
-              {notifications.length === 0 ? (
-                <div className="text-sm text-muted-foreground py-2 px-4">No new notifications</div>
-              ) : (
-                notifications.slice(0, 5).map((notification) => (
-                  <DropdownMenuItem key={notification.id} className="cursor-pointer">
-                    <div className="flex flex-col gap-1">
-                      <p className="text-sm font-medium">{notification.title}</p>
-                      <p className="text-xs text-muted-foreground">{notification.content}</p>
-                    </div>
-                  </DropdownMenuItem>
-                ))
-              )}
-              <DropdownMenuSeparator />
-              <DropdownMenuItem asChild>
-                <Link href="/dashboard/notifications" className="cursor-pointer w-full text-center">
-                  View all
-                </Link>
-              </DropdownMenuItem>
-            </DropdownMenuContent>
-          </DropdownMenu>
-        </div>
-      </div>
-      
-      {/* Sidebar for desktop */}
-      <div 
-        className={`fixed top-0 left-0 bottom-0 z-40 w-64 border-r bg-card transition-transform duration-300 ease-in-out ${
-          sidebarOpen ? 'translate-x-0' : '-translate-x-full lg:translate-x-0'
-        }`}
-      >
-        <div className="h-16 border-b flex items-center px-6 sticky top-0 bg-card/95 backdrop-blur supports-[backdrop-filter]:bg-card/60 z-10">
-          <Link href="/dashboard" className="flex items-center gap-2">
-            <div className="w-8 h-8 rounded-full bg-primary flex items-center justify-center">
-              <span className="text-primary-foreground font-semibold">AI</span>
-            </div>
-            <span className="font-semibold text-xl">AI CRM</span>
-          </Link>
-        </div>
-        <div className="p-4">
-          <nav className="space-y-1">
-            {navItems.map((item) => (
-              <Link 
-                key={item.href} 
-                href={item.href}
-                className={`flex items-center gap-3 px-3 py-2 text-sm rounded-md transition-colors ${
-                  pathname === item.href || pathname?.startsWith(`${item.href}/`) 
-                    ? 'bg-primary text-primary-foreground' 
-                    : 'text-muted-foreground hover:bg-secondary hover:text-foreground'
-                }`}
-              >
-                {item.icon}
-                {item.title}
-              </Link>
-            ))}
-          </nav>
-        </div>
-        <div className="absolute bottom-0 left-0 right-0 border-t p-4">
-          <div className="flex items-center gap-3">
-            <Avatar>
-              <AvatarImage src="" />
-              <AvatarFallback>{userInitials}</AvatarFallback>
-            </Avatar>
-            <div className="flex-1 min-w-0">
-              <p className="text-sm font-medium truncate">{userName}</p>
-              <p className="text-xs text-muted-foreground truncate">Logged in</p>
-            </div>
-            <Button variant="ghost" size="icon" onClick={handleLogout} title="Logout">
-              <LogOut className="h-4 w-4" />
+    <AnalyticsProvider>
+      <div className="min-h-screen bg-background">
+        {/* Mobile navigation toggle */}
+        <div className="fixed top-0 left-0 right-0 h-16 px-4 border-b bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60 flex items-center lg:hidden z-50">
+          <button
+            onClick={() => setSidebarOpen(!sidebarOpen)}
+            className="inline-flex items-center justify-center rounded-md text-sm font-medium ring-offset-background transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:pointer-events-none disabled:opacity-50 border border-input bg-background hover:bg-accent hover:text-accent-foreground h-10 w-10"
+          >
+            {sidebarOpen ? <X className="h-5 w-5" /> : <Menu className="h-5 w-5" />}
+          </button>
+          <div className="flex-1 flex justify-end gap-2">
+            <Button variant="ghost" size="icon" onClick={toggleTheme}>
+              {theme === 'light' ? <Moon className="h-[1.2rem] w-[1.2rem]" /> : <Sun className="h-[1.2rem] w-[1.2rem]" />}
             </Button>
+
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <Button variant="ghost" size="icon" className="relative">
+                  <BellRing className="h-[1.2rem] w-[1.2rem]" />
+                  {notifications.length > 0 && (
+                    <span className="absolute top-1 right-1 w-2 h-2 bg-destructive rounded-full" />
+                  )}
+                </Button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="end" className="w-80">
+                <DropdownMenuLabel>Notifications</DropdownMenuLabel>
+                <DropdownMenuSeparator />
+                {notifications.length === 0 ? (
+                  <div className="text-sm text-muted-foreground py-2 px-4">No new notifications</div>
+                ) : (
+                  notifications.slice(0, 5).map((notification) => (
+                    <DropdownMenuItem key={notification.id} className="cursor-pointer">
+                      <div className="flex flex-col gap-1">
+                        <p className="text-sm font-medium">{notification.title}</p>
+                        <p className="text-xs text-muted-foreground">{notification.content}</p>
+                      </div>
+                    </DropdownMenuItem>
+                  ))
+                )}
+                <DropdownMenuSeparator />
+                <DropdownMenuItem asChild>
+                  <Link href="/dashboard/notifications" className="cursor-pointer w-full text-center">
+                    View all
+                  </Link>
+                </DropdownMenuItem>
+              </DropdownMenuContent>
+            </DropdownMenu>
           </div>
         </div>
-      </div>
-      
-      {/* Backdrop for mobile sidebar */}
-      {sidebarOpen && (
-        <div 
-          className="fixed inset-0 z-30 bg-background/80 backdrop-blur lg:hidden"
-          onClick={() => setSidebarOpen(false)}
-        />
-      )}
-      
-      {/* Main content */}
-      <div className="lg:pl-64 pt-16 lg:pt-0 min-h-screen">
-        <header className="hidden lg:flex h-16 border-b items-center gap-4 px-6 sticky top-0 bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60 z-30">
-          <div className="flex-1" />
-          <Button variant="ghost" size="icon" onClick={toggleTheme} className="mr-2">
-            {theme === 'light' ? <Moon className="h-[1.2rem] w-[1.2rem]" /> : <Sun className="h-[1.2rem] w-[1.2rem]" />}
-          </Button>
-          
-          <DropdownMenu>
-            <DropdownMenuTrigger asChild>
-              <Button variant="ghost" size="icon" className="relative">
-                <BellRing className="h-[1.2rem] w-[1.2rem]" />
-                {notifications.length > 0 && (
-                  <span className="absolute top-1 right-1 w-2 h-2 bg-destructive rounded-full" />
-                )}
-              </Button>
-            </DropdownMenuTrigger>
-            <DropdownMenuContent align="end" className="w-80">
-              <DropdownMenuLabel>Notifications</DropdownMenuLabel>
-              <DropdownMenuSeparator />
-              {notifications.length === 0 ? (
-                <div className="text-sm text-muted-foreground py-2 px-4">No new notifications</div>
-              ) : (
-                notifications.slice(0, 5).map((notification) => (
-                  <DropdownMenuItem key={notification.id} className="cursor-pointer">
-                    <div className="flex flex-col gap-1">
-                      <p className="text-sm font-medium">{notification.title}</p>
-                      <p className="text-xs text-muted-foreground">{notification.content}</p>
-                    </div>
-                  </DropdownMenuItem>
-                ))
-              )}
-              <DropdownMenuSeparator />
-              <DropdownMenuItem asChild>
-                <Link href="/dashboard/notifications" className="cursor-pointer w-full text-center">
-                  View all
-                </Link>
-              </DropdownMenuItem>
-            </DropdownMenuContent>
-          </DropdownMenu>
-        </header>
         
-        {/* Main content with children */}
-        <main className="max-w-7xl mx-auto">
-          {children}
-        </main>
+        {/* Sidebar for desktop */}
+        <div 
+          className={`fixed top-0 left-0 bottom-0 z-40 w-64 border-r bg-card transition-transform duration-300 ease-in-out ${
+            sidebarOpen ? 'translate-x-0' : '-translate-x-full lg:translate-x-0'
+          }`}
+        >
+          <div className="h-16 border-b flex items-center px-6 sticky top-0 bg-card/95 backdrop-blur supports-[backdrop-filter]:bg-card/60 z-10">
+            <Link href="/dashboard" className="flex items-center gap-2">
+              <div className="w-8 h-8 rounded-full bg-primary flex items-center justify-center">
+                <span className="text-primary-foreground font-semibold">AI</span>
+              </div>
+              <span className="font-semibold text-xl">AI CRM</span>
+            </Link>
+          </div>
+          <div className="p-4">
+            <nav className="space-y-1">
+              {navItems.map((item) => (
+                <Link 
+                  key={item.href} 
+                  href={item.href}
+                  className={`flex items-center gap-3 px-3 py-2 text-sm rounded-md transition-colors ${
+                    pathname === item.href || pathname?.startsWith(`${item.href}/`) 
+                      ? 'bg-primary text-primary-foreground' 
+                      : 'text-muted-foreground hover:bg-secondary hover:text-foreground'
+                  }`}
+                >
+                  {item.icon}
+                  {item.title}
+                </Link>
+              ))}
+            </nav>
+          </div>
+          <div className="absolute bottom-0 left-0 right-0 border-t p-4">
+            <div className="flex items-center gap-3">
+              <Avatar>
+                <AvatarImage src="" />
+                <AvatarFallback>{userInitials}</AvatarFallback>
+              </Avatar>
+              <div className="flex-1 min-w-0">
+                <p className="text-sm font-medium truncate">{userName}</p>
+                <p className="text-xs text-muted-foreground truncate">Logged in</p>
+              </div>
+              <Button variant="ghost" size="icon" onClick={handleLogout} title="Logout">
+                <LogOut className="h-4 w-4" />
+              </Button>
+            </div>
+          </div>
+        </div>
+        
+        {/* Backdrop for mobile sidebar */}
+        {sidebarOpen && (
+          <div 
+            className="fixed inset-0 z-30 bg-background/80 backdrop-blur lg:hidden"
+            onClick={() => setSidebarOpen(false)}
+          />
+        )}
+        
+        {/* Main content */}
+        <div className="lg:pl-64 pt-16 lg:pt-0 min-h-screen">
+          <header className="hidden lg:flex h-16 border-b items-center gap-4 px-6 sticky top-0 bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60 z-30">
+            <div className="flex-1" />
+            <Button variant="ghost" size="icon" onClick={toggleTheme} className="mr-2">
+              {theme === 'light' ? <Moon className="h-[1.2rem] w-[1.2rem]" /> : <Sun className="h-[1.2rem] w-[1.2rem]" />}
+            </Button>
+            
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <Button variant="ghost" size="icon" className="relative">
+                  <BellRing className="h-[1.2rem] w-[1.2rem]" />
+                  {notifications.length > 0 && (
+                    <span className="absolute top-1 right-1 w-2 h-2 bg-destructive rounded-full" />
+                  )}
+                </Button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="end" className="w-80">
+                <DropdownMenuLabel>Notifications</DropdownMenuLabel>
+                <DropdownMenuSeparator />
+                {notifications.length === 0 ? (
+                  <div className="text-sm text-muted-foreground py-2 px-4">No new notifications</div>
+                ) : (
+                  notifications.slice(0, 5).map((notification) => (
+                    <DropdownMenuItem key={notification.id} className="cursor-pointer">
+                      <div className="flex flex-col gap-1">
+                        <p className="text-sm font-medium">{notification.title}</p>
+                        <p className="text-xs text-muted-foreground">{notification.content}</p>
+                      </div>
+                    </DropdownMenuItem>
+                  ))
+                )}
+                <DropdownMenuSeparator />
+                <DropdownMenuItem asChild>
+                  <Link href="/dashboard/notifications" className="cursor-pointer w-full text-center">
+                    View all
+                  </Link>
+                </DropdownMenuItem>
+              </DropdownMenuContent>
+            </DropdownMenu>
+          </header>
+          
+          {/* Main content with children */}
+          <main className="max-w-7xl mx-auto">
+            {children}
+          </main>
+        </div>
+        
+        {/* Toast notifications */}
+        <Toaster position="top-right" />
       </div>
-      
-      {/* Toast notifications */}
-      <Toaster position="top-right" />
-    </div>
+    </AnalyticsProvider>
   );
 } 

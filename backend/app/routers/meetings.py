@@ -7,7 +7,7 @@ import logging
 
 from fastapi import APIRouter, Depends, HTTPException, status, Query
 from fastapi.responses import JSONResponse
-from app.db.supabase import supabase_client
+from app.core.database import get_supabase_client
 
 from app.models.meeting import (
     Meeting,
@@ -118,7 +118,7 @@ async def create_meeting(
                 }
                 
                 # Insert the activity into the activities table
-                result = supabase_client.table("activities").insert(activity_data).execute()
+                result = get_supabase_client().table("activities").insert(activity_data).execute()
                 
                 if hasattr(result, 'error') and result.error:
                     logger.error(f"Error recording meeting activity: {result.error}")
@@ -256,7 +256,7 @@ async def update_meeting(
                 }
                 
                 # Insert the activity into the activities table
-                result = supabase_client.table("activities").insert(activity_data).execute()
+                result = get_supabase_client().table("activities").insert(activity_data).execute()
                 
                 if hasattr(result, 'error') and result.error:
                     logger.error(f"Error recording meeting update activity: {result.error}")
@@ -340,7 +340,7 @@ async def delete_meeting(
                 }
                 
                 # Insert the activity into the activities table
-                result = supabase_client.table("activities").insert(activity_data).execute()
+                result = get_supabase_client().table("activities").insert(activity_data).execute()
                 
                 if hasattr(result, 'error') and result.error:
                     logger.error(f"Error recording meeting deletion activity: {result.error}")

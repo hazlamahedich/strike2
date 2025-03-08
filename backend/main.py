@@ -4,16 +4,26 @@ from contextlib import asynccontextmanager
 
 # Import our routers
 from app.routers import auth, leads, tasks, communications, meetings, analytics, campaigns, notifications, agents
+from app.routers.low_probability_workflow import router as low_probability_workflow_router
 from app.core.config import settings
 from app.core.security import get_current_active_user
+from app.core.scheduler import setup_scheduler, shutdown_scheduler
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     # Startup logic: connect to database, initialize AI models, etc.
     print("Starting up CRM API...")
+    
+    # Set up the scheduler for automated tasks
+    setup_scheduler()
+    
     yield
+    
     # Shutdown logic: close connections, etc.
     print("Shutting down CRM API...")
+    
+    # Shut down the scheduler
+    shutdown_scheduler()
 
 # Create the FastAPI app with lifespan
 app = FastAPI(
@@ -80,6 +90,12 @@ app.include_router(
     agents.router, 
     prefix="/api/agents", 
     tags=["AI Agents"], 
+    dependencies=[Depends(get_current_active_user)]
+)
+app.include_router(
+    low_probability_workflow_router, 
+    prefix="/api/workflows/low-probability", 
+    tags=["Low Probability Workflow"], 
     dependencies=[Depends(get_current_active_user)]
 )
 
