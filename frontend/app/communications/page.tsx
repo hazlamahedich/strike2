@@ -9,19 +9,44 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '../../components/ui/ta
 import { useForm } from 'react-hook-form';
 import { z } from 'zod';
 import { zodResolver } from '@hookform/resolvers/zod';
-import { Loader2, Send, FileText, Sparkles, Phone, MessageSquare, Mail, Users } from 'lucide-react';
+import { Loader2, Send, FileText, Sparkles, Phone, MessageSquare, Mail, Users, UserPlus } from 'lucide-react';
 import { useToast } from '../../components/ui/use-toast';
 import { Toaster } from '../../components/ui/toaster';
-import { sendEmail, generateEmailWithAI, getEmailTemplates } from '../../lib/services/emailService';
+import { 
+  sendEmail, 
+  generateEmailWithAI, 
+  getEmailTemplates, 
+  EmailTemplate as EmailTemplateType,
+  Contact
+} from '../../lib/services/communicationService';
 import Link from 'next/link';
 import RichTextEditor from '../../components/communications/RichTextEditor';
 import { useSearchParams } from 'next/navigation';
-import { TemplateSelectionDialog, EmailTemplate } from '../../components/communications/TemplateSelectionDialog';
-import AddressBook, { Contact } from '../../components/communications/AddressBook';
+import { TemplateSelectionDialog } from '../../components/communications/TemplateSelectionDialog';
+import AddressBook from '../../components/communications/AddressBook';
 import CallLog from '../../components/communications/CallLog';
 import Dialpad from '../../components/communications/Dialpad';
 import SMSComposer from '../../components/communications/SMSComposer';
 import SMSLog from '../../components/communications/SMSLog';
+import { USE_MOCK_DATA } from '@/lib/config';
+import { 
+  Select, 
+  SelectContent, 
+  SelectItem, 
+  SelectTrigger, 
+  SelectValue 
+} from '@/components/ui/select';
+import { 
+  Dialog, 
+  DialogContent, 
+  DialogHeader, 
+  DialogTitle, 
+  DialogTrigger,
+  DialogFooter,
+  DialogClose
+} from '@/components/ui/dialog';
+import { Badge } from '@/components/ui/badge';
+import supabase from '@/lib/supabase/client';
 
 // Define the form schema
 const emailFormSchema = z.object({
@@ -32,6 +57,15 @@ const emailFormSchema = z.object({
 
 type EmailFormValues = z.infer<typeof emailFormSchema>;
 
+// Define the Lead type
+interface Lead {
+  id: number;
+  name: string;
+  email: string;
+  phone: string;
+  company?: string;
+}
+
 export default function CommunicationsPage() {
   const { toast } = useToast();
   const searchParams = useSearchParams();
@@ -41,6 +75,10 @@ export default function CommunicationsPage() {
   const [templateDialogOpen, setTemplateDialogOpen] = useState(false);
   const [selectedContact, setSelectedContact] = useState<Contact | null>(null);
   const [isDialpadOpen, setIsDialpadOpen] = useState(false);
+  const [selectedLead, setSelectedLead] = useState<Lead | null>(null);
+  const [leads, setLeads] = useState<Lead[]>([]);
+  const [isLoadingLeads, setIsLoadingLeads] = useState(false);
+  const [isLeadDialogOpen, setIsLeadDialogOpen] = useState(false);
   
   // Initialize the form
   const form = useForm<EmailFormValues>({
@@ -51,6 +89,44 @@ export default function CommunicationsPage() {
       content: '',
     },
   });
+  
+  // Fetch leads when component mounts
+  useEffect(() => {
+    const fetchLeads = async () => {
+      setIsLoadingLeads(true);
+      try {
+        if (USE_MOCK_DATA) {
+          // Mock leads data
+          const mockLeads: Lead[] = [
+            { id: 1, name: 'John Doe', email: 'john.doe@example.com', phone: '+1234567890', company: 'Acme Inc' },
+            { id: 2, name: 'Jane Smith', email: 'jane.smith@example.com', phone: '+0987654321', company: 'XYZ Corp' },
+            { id: 3, name: 'Bob Johnson', email: 'bob.johnson@example.com', phone: '+1122334455', company: 'ABC Ltd' },
+          ];
+          setLeads(mockLeads);
+        } else {
+          // Fetch leads from Supabase
+          const { data, error } = await supabase
+            .from('leads')
+            .select('id, name, email, phone, company')
+            .order('name', { ascending: true });
+          
+          if (error) throw error;
+          setLeads(data || []);
+        }
+      } catch (error) {
+        console.error('Failed to fetch leads:', error);
+        toast({
+          title: 'Error',
+          description: 'Failed to load leads. Please try again.',
+          variant: 'destructive'
+        });
+      } finally {
+        setIsLoadingLeads(false);
+      }
+    };
+    
+    fetchLeads();
+  }, [toast]);
   
   // Check for reply data in localStorage when component mounts
   useEffect(() => {
@@ -91,19 +167,26 @@ export default function CommunicationsPage() {
         to: data.to,
         subject: data.subject,
         content: data.content,
+        lead_id: selectedLead?.id, // Pass lead_id if a lead is selected
       });
       
-      toast({
-        title: 'Email Sent',
-        description: 'Your email has been sent successfully.',
-      });
-      
-      form.reset();
+      if (result.success) {
+        toast({
+          title: 'Email Sent',
+          description: selectedLead 
+            ? `Email sent to ${data.to} and recorded for lead ${selectedLead.name}`
+            : 'Your email has been sent successfully.',
+        });
+        
+        form.reset();
+      } else {
+        throw new Error(result.message || 'Failed to send email');
+      }
     } catch (error) {
       console.error('Failed to send email:', error);
       toast({
         title: 'Error',
-        description: 'Failed to send email. Please try again.',
+        description: error instanceof Error ? error.message : 'Failed to send email. Please try again.',
         variant: 'destructive'
       });
     } finally {
@@ -147,7 +230,7 @@ export default function CommunicationsPage() {
   };
   
   // Handle template selection
-  const handleSelectTemplate = (template: EmailTemplate) => {
+  const handleSelectTemplate = (template: EmailTemplateType) => {
     form.setValue('subject', template.subject);
     form.setValue('content', template.content);
     setTemplateDialogOpen(false);
@@ -164,6 +247,32 @@ export default function CommunicationsPage() {
     setIsDialpadOpen(true);
   };
 
+  // Handle selecting a lead
+  const handleSelectLead = (lead: Lead) => {
+    setSelectedLead(lead);
+    setIsLeadDialogOpen(false);
+    
+    // If we're in the compose tab, update the email form with the lead's email
+    if (activeTab === 'compose') {
+      form.setValue('to', lead.email);
+    }
+    
+    // If we're in the SMS tab, update the selected contact
+    if (activeTab === 'sms' && selectedContact) {
+      setSelectedContact({
+        ...selectedContact,
+        phone_number: lead.phone,
+        email: lead.email,
+        name: lead.name,
+      });
+    }
+    
+    toast({
+      title: 'Lead Selected',
+      description: `Communications will be associated with ${lead.name}`,
+    });
+  };
+
   const handleSMSContact = (phoneNumber: string) => {
     // Set the active tab to SMS
     setActiveTab('sms');
@@ -175,10 +284,10 @@ export default function CommunicationsPage() {
       // Create a temporary contact with just the phone number
       setSelectedContact({
         id: 0,
-        name: 'Unknown',
+        name: selectedLead?.name || 'Unknown',
         phone_number: phoneNumber,
-        email: '',
-        company: '',
+        email: selectedLead?.email || '',
+        company: selectedLead?.company || '',
         contact_type: 'other',
         created_at: new Date().toISOString(),
         updated_at: new Date().toISOString()
@@ -189,7 +298,7 @@ export default function CommunicationsPage() {
   return (
     <div className="container mx-auto py-6 space-y-6">
       <div className="flex justify-between items-center">
-        <h1 className="text-3xl font-bold">Communications</h1>
+        <h1 className="text-3xl font-bold">Communications {USE_MOCK_DATA ? '(Mock Mode)' : ''}</h1>
         <div className="flex space-x-2">
           <Link href="/communications/inbox">
             <Button variant="outline">
@@ -202,6 +311,83 @@ export default function CommunicationsPage() {
             </Button>
           </Link>
         </div>
+      </div>
+      
+      {/* Lead selection */}
+      <div className="flex items-center space-x-2">
+        <div className="flex-1">
+          {selectedLead ? (
+            <div className="flex items-center space-x-2">
+              <span className="text-sm font-medium">Selected Lead:</span>
+              <Badge className="bg-primary">{selectedLead.name}</Badge>
+              <Button 
+                variant="ghost" 
+                size="sm" 
+                onClick={() => setSelectedLead(null)}
+              >
+                Clear
+              </Button>
+            </div>
+          ) : (
+            <span className="text-sm text-muted-foreground">No lead selected. Communications will not be tracked in lead timeline.</span>
+          )}
+        </div>
+        <Dialog open={isLeadDialogOpen} onOpenChange={setIsLeadDialogOpen}>
+          <DialogTrigger asChild>
+            <Button variant="outline">
+              <UserPlus className="mr-2 h-4 w-4" />
+              {selectedLead ? 'Change Lead' : 'Select Lead'}
+            </Button>
+          </DialogTrigger>
+          <DialogContent>
+            <DialogHeader>
+              <DialogTitle>Select a Lead</DialogTitle>
+            </DialogHeader>
+            <div className="py-4">
+              <Input
+                placeholder="Search leads..."
+                className="mb-4"
+                onChange={(e) => {
+                  // Implement lead search functionality here
+                }}
+              />
+              <div className="max-h-[300px] overflow-y-auto space-y-2">
+                {isLoadingLeads ? (
+                  <div className="flex justify-center py-4">
+                    <Loader2 className="h-6 w-6 animate-spin text-primary" />
+                  </div>
+                ) : leads.length === 0 ? (
+                  <div className="text-center py-4 text-muted-foreground">
+                    No leads found
+                  </div>
+                ) : (
+                  leads.map((lead) => (
+                    <div
+                      key={lead.id}
+                      className="p-3 border rounded-md cursor-pointer hover:bg-muted transition-colors"
+                      onClick={() => handleSelectLead(lead)}
+                    >
+                      <div className="font-medium">{lead.name}</div>
+                      <div className="text-sm text-muted-foreground">
+                        {lead.email} • {lead.phone}
+                      </div>
+                      {lead.company && (
+                        <div className="text-sm text-muted-foreground">
+                          {lead.company}
+                        </div>
+                      )}
+                    </div>
+                  ))
+                )}
+              </div>
+            </div>
+            <DialogFooter>
+              <Button variant="outline" onClick={() => setIsLeadDialogOpen(false)}>
+                Cancel
+              </Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
       </div>
       
       <Tabs value={activeTab} onValueChange={handleTabChange} className="w-full">
@@ -330,10 +516,13 @@ export default function CommunicationsPage() {
         <TabsContent value="sms" className="mt-6">
           <SMSComposer 
             contact={selectedContact || undefined} 
+            lead_id={selectedLead?.id}
             onSMSSent={(to, body) => {
               toast({
                 title: 'SMS Sent',
-                description: `Message sent to ${to}`,
+                description: selectedLead 
+                  ? `Message sent to ${to} and recorded for lead ${selectedLead.name}`
+                  : `Message sent to ${to}`,
               });
             }}
           />
@@ -344,6 +533,15 @@ export default function CommunicationsPage() {
             <Dialpad 
               contact={selectedContact || undefined} 
               initialPhoneNumber={selectedContact?.phone_number}
+              lead_id={selectedLead?.id}
+              onCallComplete={(callSid, duration) => {
+                toast({
+                  title: 'Call Completed',
+                  description: selectedLead 
+                    ? `Call completed and recorded for lead ${selectedLead.name}`
+                    : `Call completed (${duration} seconds)`,
+                });
+              }}
             />
             <Card>
               <CardHeader>

@@ -6,6 +6,7 @@ import json
 import logging
 from datetime import datetime
 from typing import Any, Dict, List, Optional, Tuple, Union
+import os
 
 from fastapi import HTTPException, status
 from pydantic import EmailStr
@@ -880,4 +881,146 @@ class CommunicationService:
             raise HTTPException(
                 status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
                 detail=f"Failed to generate call token: {str(e)}"
-            ) 
+            )
+
+    async def update_call_status(
+        self, 
+        call_sid: str, 
+        status: str, 
+        duration: Optional[int] = None, 
+        recording_url: Optional[str] = None
+    ) -> Dict[str, Any]:
+        """
+        Update the status of a call in the database
+        
+        Args:
+            call_sid: The Twilio Call SID
+            status: The new status of the call
+            duration: The duration of the call in seconds (only for completed calls)
+            recording_url: URL to the call recording (if recording was enabled)
+            
+        Returns:
+            Dict with updated call details
+            
+        Raises:
+            HTTPException: If updating call status fails
+        """
+        try:
+            # First, find the call log by call_sid
+            call_log = await self.get_call_log_by_sid(call_sid)
+            
+            if not call_log:
+                logger.warning(f"Call log not found for SID: {call_sid}")
+                return {"status": "not_found", "call_sid": call_sid}
+            
+            # Update the call log
+            update_data = {
+                "status": status,
+                "updated_at": datetime.now().isoformat()
+            }
+            
+            if duration is not None:
+                update_data["duration"] = duration
+                
+            if recording_url:
+                update_data["recording_url"] = recording_url
+                
+            # If the call is completed, try to get a transcript
+            if status == "completed" and recording_url:
+                try:
+                    # This would be an async call to a transcription service
+                    # For now, we'll just log that we would transcribe it
+                    logger.info(f"Would transcribe recording at {recording_url}")
+                    # In a real implementation, you would call a transcription service
+                    # and update the call log with the transcription
+                except Exception as e:
+                    logger.error(f"Failed to transcribe call: {str(e)}")
+            
+            # Update the call log in the database
+            from supabase import create_client, Client
+            
+            # Get Supabase client
+            supabase_url = os.getenv("SUPABASE_URL")
+            supabase_key = os.getenv("SUPABASE_KEY")
+            
+            if not supabase_url or not supabase_key:
+                # Try local Supabase
+                supabase_url = os.getenv("SUPABASE_LOCAL_URL", "http://localhost:8080")
+                supabase_key = os.getenv("SUPABASE_LOCAL_KEY", "postgres")
+            
+            supabase = create_client(supabase_url, supabase_key)
+            
+            # Update the call log
+            result = supabase.table("lead_calls").update(update_data).eq("call_sid", call_sid).execute()
+            
+            # If the call is associated with a lead, update the lead timeline
+            if call_log.get("lead_id"):
+                lead_id = call_log["lead_id"]
+                
+                # Create timeline entry
+                timeline_entry = {
+                    "lead_id": lead_id,
+                    "type": "call_update",
+                    "content": f"Call {status}" + (f" ({duration} seconds)" if duration else ""),
+                    "data": {
+                        "call_sid": call_sid,
+                        "status": status,
+                        "duration": duration,
+                        "recording_url": recording_url
+                    },
+                    "created_at": datetime.now().isoformat(),
+                    "user_id": call_log.get("called_by")  # Use the original caller's user ID
+                }
+                
+                supabase.table("lead_timeline").insert(timeline_entry).execute()
+            
+            return {
+                "status": "updated",
+                "call_sid": call_sid,
+                "new_status": status,
+                "duration": duration,
+                "recording_url": recording_url
+            }
+            
+        except Exception as e:
+            logger.error(f"Failed to update call status: {str(e)}")
+            raise HTTPException(
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                detail=f"Failed to update call status: {str(e)}"
+            )
+    
+    async def get_call_log_by_sid(self, call_sid: str) -> Optional[Dict[str, Any]]:
+        """
+        Get a call log by Twilio Call SID
+        
+        Args:
+            call_sid: The Twilio Call SID
+            
+        Returns:
+            Call log dict or None if not found
+        """
+        try:
+            from supabase import create_client, Client
+            
+            # Get Supabase client
+            supabase_url = os.getenv("SUPABASE_URL")
+            supabase_key = os.getenv("SUPABASE_KEY")
+            
+            if not supabase_url or not supabase_key:
+                # Try local Supabase
+                supabase_url = os.getenv("SUPABASE_LOCAL_URL", "http://localhost:8080")
+                supabase_key = os.getenv("SUPABASE_LOCAL_KEY", "postgres")
+            
+            supabase = create_client(supabase_url, supabase_key)
+            
+            # Query the call log
+            result = supabase.table("lead_calls").select("*").eq("call_sid", call_sid).execute()
+            
+            if result.data and len(result.data) > 0:
+                return result.data[0]
+            
+            return None
+            
+        except Exception as e:
+            logger.error(f"Failed to get call log by SID: {str(e)}")
+            return None 

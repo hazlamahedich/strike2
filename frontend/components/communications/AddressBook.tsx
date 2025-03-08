@@ -38,21 +38,8 @@ import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
 import { Phone, Mail, UserPlus, Pencil, Trash2, Search } from 'lucide-react';
 import { useToast } from '@/components/ui/use-toast';
-
-// Define the contact type
-export interface Contact {
-  id: number;
-  name: string;
-  phone_number: string;
-  email?: string;
-  company?: string;
-  job_title?: string;
-  contact_type: 'lead' | 'client' | 'vendor' | 'partner' | 'other';
-  lead_id?: number;
-  notes?: string;
-  created_at: string;
-  updated_at: string;
-}
+import { getContacts, createContact as apiCreateContact, Contact } from '@/lib/services/communicationService';
+import { USE_MOCK_DATA } from '@/lib/config';
 
 // Define the form schema for creating/editing contacts
 const contactFormSchema = z.object({
@@ -60,56 +47,12 @@ const contactFormSchema = z.object({
   phone_number: z.string().min(1, { message: 'Phone number is required' }),
   email: z.string().email({ message: 'Invalid email address' }).optional().or(z.literal('')),
   company: z.string().optional().or(z.literal('')),
-  job_title: z.string().optional().or(z.literal('')),
-  contact_type: z.enum(['lead', 'client', 'vendor', 'partner', 'other']),
-  lead_id: z.number().optional(),
-  notes: z.string().optional().or(z.literal(''))
+  contact_type: z.string().min(1, { message: 'Contact type is required' }),
 });
 
 type ContactFormValues = z.infer<typeof contactFormSchema>;
 
-// Mock API functions (replace with actual API calls)
-const fetchContacts = async (): Promise<Contact[]> => {
-  // In a real app, this would be an API call
-  return [
-    {
-      id: 1,
-      name: 'John Doe',
-      phone_number: '+1234567890',
-      email: 'john.doe@example.com',
-      company: 'Acme Inc',
-      job_title: 'CEO',
-      contact_type: 'lead',
-      lead_id: 1,
-      notes: 'Potential high-value client',
-      created_at: new Date().toISOString(),
-      updated_at: new Date().toISOString()
-    },
-    {
-      id: 2,
-      name: 'Jane Smith',
-      phone_number: '+0987654321',
-      email: 'jane.smith@example.com',
-      company: 'XYZ Corp',
-      job_title: 'CTO',
-      contact_type: 'client',
-      lead_id: 2,
-      created_at: new Date().toISOString(),
-      updated_at: new Date().toISOString()
-    }
-  ];
-};
-
-const createContact = async (contact: Omit<Contact, 'id' | 'created_at' | 'updated_at'>): Promise<Contact> => {
-  // In a real app, this would be an API call
-  return {
-    ...contact,
-    id: Math.floor(Math.random() * 1000),
-    created_at: new Date().toISOString(),
-    updated_at: new Date().toISOString()
-  };
-};
-
+// Mock API functions for operations not yet implemented in the service
 const updateContact = async (id: number, contact: Partial<Contact>): Promise<Contact> => {
   // In a real app, this would be an API call
   return {
@@ -142,9 +85,7 @@ export default function AddressBook({ onSelectContact }: { onSelectContact?: (co
       phone_number: '',
       email: '',
       company: '',
-      job_title: '',
       contact_type: 'lead',
-      notes: ''
     }
   });
 
@@ -156,9 +97,7 @@ export default function AddressBook({ onSelectContact }: { onSelectContact?: (co
       phone_number: '',
       email: '',
       company: '',
-      job_title: '',
       contact_type: 'lead',
-      notes: ''
     }
   });
 
@@ -167,7 +106,7 @@ export default function AddressBook({ onSelectContact }: { onSelectContact?: (co
     const loadContacts = async () => {
       try {
         setIsLoading(true);
-        const data = await fetchContacts();
+        const data = await getContacts();
         setContacts(data);
       } catch (error) {
         console.error('Failed to fetch contacts:', error);
@@ -195,7 +134,14 @@ export default function AddressBook({ onSelectContact }: { onSelectContact?: (co
   // Handle adding a new contact
   const handleAddContact = async (data: ContactFormValues) => {
     try {
-      const newContact = await createContact(data as Omit<Contact, 'id' | 'created_at' | 'updated_at'>);
+      const newContact = await apiCreateContact({
+        name: data.name,
+        phone_number: data.phone_number,
+        email: data.email || '',
+        company: data.company || '',
+        contact_type: data.contact_type,
+      });
+      
       setContacts(prev => [...prev, newContact]);
       setIsAddDialogOpen(false);
       addForm.reset();
@@ -259,7 +205,7 @@ export default function AddressBook({ onSelectContact }: { onSelectContact?: (co
     }
   };
 
-  // Open edit dialog and populate form with selected contact data
+  // Open edit dialog and populate form with contact data
   const openEditDialog = (contact: Contact) => {
     setSelectedContact(contact);
     editForm.reset({
@@ -267,15 +213,12 @@ export default function AddressBook({ onSelectContact }: { onSelectContact?: (co
       phone_number: contact.phone_number,
       email: contact.email || '',
       company: contact.company || '',
-      job_title: contact.job_title || '',
       contact_type: contact.contact_type,
-      lead_id: contact.lead_id,
-      notes: contact.notes || ''
     });
     setIsEditDialogOpen(true);
   };
 
-  // Handle contact selection (for calling, etc.)
+  // Handle selecting a contact
   const handleContactSelect = (contact: Contact) => {
     if (onSelectContact) {
       onSelectContact(contact);
@@ -285,152 +228,40 @@ export default function AddressBook({ onSelectContact }: { onSelectContact?: (co
   return (
     <div className="space-y-4">
       <div className="flex justify-between items-center">
-        <h2 className="text-2xl font-bold">Address Book</h2>
-        <Dialog open={isAddDialogOpen} onOpenChange={setIsAddDialogOpen}>
-          <DialogTrigger asChild>
-            <Button>
-              <UserPlus className="mr-2 h-4 w-4" />
-              Add Contact
-            </Button>
-          </DialogTrigger>
-          <DialogContent>
-            <DialogHeader>
-              <DialogTitle>Add New Contact</DialogTitle>
-            </DialogHeader>
-            <Form {...addForm}>
-              <form onSubmit={addForm.handleSubmit(handleAddContact)} className="space-y-4">
-                <FormField
-                  control={addForm.control}
-                  name="name"
-                  render={({ field }) => (
-                    <FormItem>
-                      <FormLabel>Name</FormLabel>
-                      <FormControl>
-                        <Input placeholder="John Doe" {...field} />
-                      </FormControl>
-                      <FormMessage />
-                    </FormItem>
-                  )}
-                />
-                <FormField
-                  control={addForm.control}
-                  name="phone_number"
-                  render={({ field }) => (
-                    <FormItem>
-                      <FormLabel>Phone Number</FormLabel>
-                      <FormControl>
-                        <Input placeholder="+1234567890" {...field} />
-                      </FormControl>
-                      <FormMessage />
-                    </FormItem>
-                  )}
-                />
-                <FormField
-                  control={addForm.control}
-                  name="email"
-                  render={({ field }) => (
-                    <FormItem>
-                      <FormLabel>Email</FormLabel>
-                      <FormControl>
-                        <Input placeholder="john.doe@example.com" {...field} />
-                      </FormControl>
-                      <FormMessage />
-                    </FormItem>
-                  )}
-                />
-                <div className="grid grid-cols-2 gap-4">
-                  <FormField
-                    control={addForm.control}
-                    name="company"
-                    render={({ field }) => (
-                      <FormItem>
-                        <FormLabel>Company</FormLabel>
-                        <FormControl>
-                          <Input placeholder="Acme Inc" {...field} />
-                        </FormControl>
-                        <FormMessage />
-                      </FormItem>
-                    )}
-                  />
-                  <FormField
-                    control={addForm.control}
-                    name="job_title"
-                    render={({ field }) => (
-                      <FormItem>
-                        <FormLabel>Job Title</FormLabel>
-                        <FormControl>
-                          <Input placeholder="CEO" {...field} />
-                        </FormControl>
-                        <FormMessage />
-                      </FormItem>
-                    )}
-                  />
-                </div>
-                <FormField
-                  control={addForm.control}
-                  name="contact_type"
-                  render={({ field }) => (
-                    <FormItem>
-                      <FormLabel>Contact Type</FormLabel>
-                      <Select 
-                        onValueChange={field.onChange} 
-                        defaultValue={field.value}
-                      >
-                        <FormControl>
-                          <SelectTrigger>
-                            <SelectValue placeholder="Select contact type" />
-                          </SelectTrigger>
-                        </FormControl>
-                        <SelectContent>
-                          <SelectItem value="lead">Lead</SelectItem>
-                          <SelectItem value="client">Client</SelectItem>
-                          <SelectItem value="vendor">Vendor</SelectItem>
-                          <SelectItem value="partner">Partner</SelectItem>
-                          <SelectItem value="other">Other</SelectItem>
-                        </SelectContent>
-                      </Select>
-                      <FormMessage />
-                    </FormItem>
-                  )}
-                />
-                <FormField
-                  control={addForm.control}
-                  name="notes"
-                  render={({ field }) => (
-                    <FormItem>
-                      <FormLabel>Notes</FormLabel>
-                      <FormControl>
-                        <Input placeholder="Additional notes" {...field} />
-                      </FormControl>
-                      <FormMessage />
-                    </FormItem>
-                  )}
-                />
-                <DialogFooter>
-                  <DialogClose asChild>
-                    <Button variant="outline">Cancel</Button>
-                  </DialogClose>
-                  <Button type="submit">Save Contact</Button>
-                </DialogFooter>
-              </form>
-            </Form>
-          </DialogContent>
-        </Dialog>
+        <h2 className="text-2xl font-bold">Address Book {USE_MOCK_DATA ? '(Mock Mode)' : ''}</h2>
+        <Button onClick={() => setIsAddDialogOpen(true)}>
+          <UserPlus className="h-4 w-4 mr-2" />
+          Add Contact
+        </Button>
       </div>
-
-      <div className="flex items-center space-x-2">
-        <Search className="h-4 w-4 text-gray-400" />
+      
+      <div className="relative">
+        <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
         <Input
+          type="search"
           placeholder="Search contacts..."
+          className="pl-8"
           value={searchTerm}
           onChange={(e) => setSearchTerm(e.target.value)}
-          className="max-w-sm"
         />
       </div>
-
+      
       {isLoading ? (
-        <div className="flex justify-center py-8">
-          <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-gray-900"></div>
+        <div className="flex justify-center items-center h-64">
+          <p>Loading contacts...</p>
+        </div>
+      ) : filteredContacts.length === 0 ? (
+        <div className="flex flex-col justify-center items-center h-64 text-center">
+          <UserPlus className="h-12 w-12 text-muted-foreground mb-4" />
+          <p className="text-muted-foreground">No contacts found</p>
+          {searchTerm && (
+            <Button 
+              variant="link" 
+              onClick={() => setSearchTerm('')}
+            >
+              Clear search
+            </Button>
+          )}
         </div>
       ) : (
         <div className="border rounded-md">
@@ -442,78 +273,174 @@ export default function AddressBook({ onSelectContact }: { onSelectContact?: (co
                 <TableHead>Email</TableHead>
                 <TableHead>Company</TableHead>
                 <TableHead>Type</TableHead>
-                <TableHead>Actions</TableHead>
+                <TableHead className="text-right">Actions</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
-              {filteredContacts.length === 0 ? (
-                <TableRow>
-                  <TableCell colSpan={6} className="text-center py-8">
-                    No contacts found. Add a new contact to get started.
+              {filteredContacts.map((contact) => (
+                <TableRow key={contact.id} className="cursor-pointer hover:bg-muted/50" onClick={() => handleContactSelect(contact)}>
+                  <TableCell className="font-medium">{contact.name}</TableCell>
+                  <TableCell>{contact.phone_number}</TableCell>
+                  <TableCell>{contact.email || '-'}</TableCell>
+                  <TableCell>{contact.company || '-'}</TableCell>
+                  <TableCell>
+                    <span className="capitalize">{contact.contact_type}</span>
                   </TableCell>
-                </TableRow>
-              ) : (
-                filteredContacts.map((contact) => (
-                  <TableRow key={contact.id}>
-                    <TableCell className="font-medium">{contact.name}</TableCell>
-                    <TableCell>
-                      <Button 
-                        variant="ghost" 
-                        size="sm" 
-                        className="hover:bg-primary/10"
+                  <TableCell className="text-right">
+                    <div className="flex justify-end space-x-2" onClick={(e) => e.stopPropagation()}>
+                      <Button
+                        variant="ghost"
+                        size="sm"
                         onClick={() => handleContactSelect(contact)}
                       >
-                        <Phone className="h-4 w-4 mr-2" />
-                        {contact.phone_number}
+                        <Phone className="h-4 w-4" />
+                        <span className="sr-only">Call</span>
                       </Button>
-                    </TableCell>
-                    <TableCell>
                       {contact.email && (
-                        <a 
-                          href={`mailto:${contact.email}`} 
-                          className="flex items-center text-blue-600 hover:underline"
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          onClick={() => {
+                            window.location.href = `mailto:${contact.email}`;
+                          }}
                         >
-                          <Mail className="h-4 w-4 mr-2" />
-                          {contact.email}
-                        </a>
+                          <Mail className="h-4 w-4" />
+                          <span className="sr-only">Email</span>
+                        </Button>
                       )}
-                    </TableCell>
-                    <TableCell>{contact.company}</TableCell>
-                    <TableCell>
-                      <span className="capitalize">{contact.contact_type}</span>
-                    </TableCell>
-                    <TableCell>
-                      <div className="flex space-x-2">
-                        <Button 
-                          variant="ghost" 
-                          size="sm" 
-                          onClick={() => openEditDialog(contact)}
-                        >
-                          <Pencil className="h-4 w-4" />
-                        </Button>
-                        <Button 
-                          variant="ghost" 
-                          size="sm" 
-                          onClick={() => handleDeleteContact(contact.id)}
-                        >
-                          <Trash2 className="h-4 w-4" />
-                        </Button>
-                      </div>
-                    </TableCell>
-                  </TableRow>
-                ))
-              )}
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        onClick={() => openEditDialog(contact)}
+                      >
+                        <Pencil className="h-4 w-4" />
+                        <span className="sr-only">Edit</span>
+                      </Button>
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        onClick={() => handleDeleteContact(contact.id)}
+                      >
+                        <Trash2 className="h-4 w-4" />
+                        <span className="sr-only">Delete</span>
+                      </Button>
+                    </div>
+                  </TableCell>
+                </TableRow>
+              ))}
             </TableBody>
           </Table>
         </div>
       )}
-
+      
+      {/* Add Contact Dialog */}
+      <Dialog open={isAddDialogOpen} onOpenChange={setIsAddDialogOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Add Contact</DialogTitle>
+          </DialogHeader>
+          
+          <Form {...addForm}>
+            <form onSubmit={addForm.handleSubmit(handleAddContact)} className="space-y-4">
+              <FormField
+                control={addForm.control}
+                name="name"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>Name</FormLabel>
+                    <FormControl>
+                      <Input placeholder="John Doe" {...field} />
+                    </FormControl>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+              
+              <FormField
+                control={addForm.control}
+                name="phone_number"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>Phone Number</FormLabel>
+                    <FormControl>
+                      <Input placeholder="+1234567890" {...field} />
+                    </FormControl>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+              
+              <FormField
+                control={addForm.control}
+                name="email"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>Email</FormLabel>
+                    <FormControl>
+                      <Input placeholder="john.doe@example.com" {...field} />
+                    </FormControl>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+              
+              <FormField
+                control={addForm.control}
+                name="company"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>Company</FormLabel>
+                    <FormControl>
+                      <Input placeholder="Acme Inc" {...field} />
+                    </FormControl>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+              
+              <FormField
+                control={addForm.control}
+                name="contact_type"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>Contact Type</FormLabel>
+                    <Select onValueChange={field.onChange} defaultValue={field.value}>
+                      <FormControl>
+                        <SelectTrigger>
+                          <SelectValue placeholder="Select a contact type" />
+                        </SelectTrigger>
+                      </FormControl>
+                      <SelectContent>
+                        <SelectItem value="lead">Lead</SelectItem>
+                        <SelectItem value="client">Client</SelectItem>
+                        <SelectItem value="vendor">Vendor</SelectItem>
+                        <SelectItem value="partner">Partner</SelectItem>
+                        <SelectItem value="other">Other</SelectItem>
+                      </SelectContent>
+                    </Select>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+              
+              <DialogFooter>
+                <Button type="button" variant="outline" onClick={() => setIsAddDialogOpen(false)}>
+                  Cancel
+                </Button>
+                <Button type="submit">Add Contact</Button>
+              </DialogFooter>
+            </form>
+          </Form>
+        </DialogContent>
+      </Dialog>
+      
       {/* Edit Contact Dialog */}
       <Dialog open={isEditDialogOpen} onOpenChange={setIsEditDialogOpen}>
         <DialogContent>
           <DialogHeader>
             <DialogTitle>Edit Contact</DialogTitle>
           </DialogHeader>
+          
           <Form {...editForm}>
             <form onSubmit={editForm.handleSubmit(handleEditContact)} className="space-y-4">
               <FormField
@@ -529,6 +456,7 @@ export default function AddressBook({ onSelectContact }: { onSelectContact?: (co
                   </FormItem>
                 )}
               />
+              
               <FormField
                 control={editForm.control}
                 name="phone_number"
@@ -542,6 +470,7 @@ export default function AddressBook({ onSelectContact }: { onSelectContact?: (co
                   </FormItem>
                 )}
               />
+              
               <FormField
                 control={editForm.control}
                 name="email"
@@ -555,47 +484,31 @@ export default function AddressBook({ onSelectContact }: { onSelectContact?: (co
                   </FormItem>
                 )}
               />
-              <div className="grid grid-cols-2 gap-4">
-                <FormField
-                  control={editForm.control}
-                  name="company"
-                  render={({ field }) => (
-                    <FormItem>
-                      <FormLabel>Company</FormLabel>
-                      <FormControl>
-                        <Input {...field} />
-                      </FormControl>
-                      <FormMessage />
-                    </FormItem>
-                  )}
-                />
-                <FormField
-                  control={editForm.control}
-                  name="job_title"
-                  render={({ field }) => (
-                    <FormItem>
-                      <FormLabel>Job Title</FormLabel>
-                      <FormControl>
-                        <Input {...field} />
-                      </FormControl>
-                      <FormMessage />
-                    </FormItem>
-                  )}
-                />
-              </div>
+              
+              <FormField
+                control={editForm.control}
+                name="company"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>Company</FormLabel>
+                    <FormControl>
+                      <Input {...field} />
+                    </FormControl>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+              
               <FormField
                 control={editForm.control}
                 name="contact_type"
                 render={({ field }) => (
                   <FormItem>
                     <FormLabel>Contact Type</FormLabel>
-                    <Select 
-                      onValueChange={field.onChange} 
-                      defaultValue={field.value}
-                    >
+                    <Select onValueChange={field.onChange} defaultValue={field.value}>
                       <FormControl>
                         <SelectTrigger>
-                          <SelectValue placeholder="Select contact type" />
+                          <SelectValue />
                         </SelectTrigger>
                       </FormControl>
                       <SelectContent>
@@ -610,24 +523,12 @@ export default function AddressBook({ onSelectContact }: { onSelectContact?: (co
                   </FormItem>
                 )}
               />
-              <FormField
-                control={editForm.control}
-                name="notes"
-                render={({ field }) => (
-                  <FormItem>
-                    <FormLabel>Notes</FormLabel>
-                    <FormControl>
-                      <Input {...field} />
-                    </FormControl>
-                    <FormMessage />
-                  </FormItem>
-                )}
-              />
+              
               <DialogFooter>
-                <DialogClose asChild>
-                  <Button variant="outline">Cancel</Button>
-                </DialogClose>
-                <Button type="submit">Update Contact</Button>
+                <Button type="button" variant="outline" onClick={() => setIsEditDialogOpen(false)}>
+                  Cancel
+                </Button>
+                <Button type="submit">Save Changes</Button>
               </DialogFooter>
             </form>
           </Form>

@@ -11,7 +11,7 @@ import CallLog from './CallLog';
 import SMSComposer from './SMSComposer';
 import SMSLog from './SMSLog';
 import { format } from 'date-fns';
-import { Contact } from './AddressBook';
+import { Contact } from '../../lib/services/communicationService';
 
 // Mock call log data
 const mockCallLogs = [

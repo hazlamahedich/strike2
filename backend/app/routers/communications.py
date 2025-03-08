@@ -3,7 +3,7 @@ Communications router module for handling email, SMS, and call API endpoints.
 """
 from typing import Any, Dict, List, Optional
 
-from fastapi import APIRouter, Depends, HTTPException, status, Query, Path
+from fastapi import APIRouter, Depends, HTTPException, status, Query, Path, Body
 from fastapi.responses import JSONResponse
 
 from app.models.communication import (
@@ -124,21 +124,65 @@ async def get_call_transcript(
 
 @router.post("/call-status-callback")
 async def call_status_callback(
-    status: Dict[str, Any]
+    status_callback: Dict[str, Any] = Body(...)
 ) -> JSONResponse:
     """
     Webhook for Twilio call status updates
     
     This endpoint is called by Twilio when a call status changes.
     It's a webhook and doesn't require authentication.
-    """
-    # In a real implementation, this would update the call status in the database
-    # and potentially trigger other actions based on the status
     
-    return JSONResponse(
-        status_code=status.HTTP_200_OK,
-        content={"message": "Call status updated"}
-    )
+    Twilio sends the following parameters:
+    - CallSid: The unique identifier for the call
+    - CallStatus: The new status of the call (queued, ringing, in-progress, completed, busy, failed, no-answer, canceled)
+    - CallDuration: The duration of the call in seconds (only for completed calls)
+    - RecordingUrl: URL to the call recording (if recording was enabled)
+    """
+    try:
+        # Extract key information from the callback
+        call_sid = status_callback.get('CallSid')
+        call_status = status_callback.get('CallStatus')
+        call_duration = status_callback.get('CallDuration')
+        recording_url = status_callback.get('RecordingUrl')
+        
+        if not call_sid or not call_status:
+            return JSONResponse(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                content={"message": "Missing required parameters"}
+            )
+        
+        # Map Twilio call status to our internal status
+        status_mapping = {
+            'queued': 'queued',
+            'ringing': 'ringing',
+            'in-progress': 'in-progress',
+            'completed': 'completed',
+            'busy': 'busy',
+            'failed': 'failed',
+            'no-answer': 'no-answer',
+            'canceled': 'canceled'
+        }
+        
+        internal_status = status_mapping.get(call_status, 'unknown')
+        
+        # Update the call log in the database
+        await communication_service.update_call_status(
+            call_sid=call_sid,
+            status=internal_status,
+            duration=int(call_duration) if call_duration else None,
+            recording_url=recording_url
+        )
+        
+        return JSONResponse(
+            status_code=status.HTTP_200_OK,
+            content={"message": f"Call status updated to {internal_status}"}
+        )
+    except Exception as e:
+        logger.error(f"Error processing call status callback: {str(e)}")
+        return JSONResponse(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            content={"message": f"Error processing callback: {str(e)}"}
+        )
 
 # Contact (Address Book) endpoints
 

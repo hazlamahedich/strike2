@@ -39,7 +39,8 @@ import {
   Play
 } from 'lucide-react';
 import { useToast } from '@/components/ui/use-toast';
-import { Contact } from './AddressBook';
+import { Contact } from '@/lib/services/communicationService';
+import { makeCall } from '@/lib/services/communicationService';
 
 // Define the call state type
 type CallState = 'idle' | 'connecting' | 'connected' | 'completed' | 'failed' | 'busy' | 'no-answer' | 'canceled' | 'on-hold';
@@ -93,11 +94,12 @@ interface DialpadProps {
   initialPhoneNumber?: string;
   contact?: Contact;
   onCallComplete?: (callSid: string, duration: number) => void;
+  lead_id?: number;
 }
 
-export default function Dialpad({ initialPhoneNumber, contact, onCallComplete }: DialpadProps) {
+export default function Dialpad({ initialPhoneNumber, contact, onCallComplete, lead_id }: DialpadProps) {
   const [phoneNumber, setPhoneNumber] = useState(initialPhoneNumber || '');
-  const [selectedTrunkLine, setSelectedTrunkLine] = useState<string>(trunkLines[0].id);
+  const [selectedTrunkLine, setSelectedTrunkLine] = useState<TrunkLine>(trunkLines[0]);
   const [callState, setCallState] = useState<CallState>('idle');
   const [callSid, setCallSid] = useState<string | null>(null);
   const [isMuted, setIsMuted] = useState(false);
@@ -178,26 +180,32 @@ export default function Dialpad({ initialPhoneNumber, contact, onCallComplete }:
       });
       return;
     }
-
+    
+    setCallState('connecting');
+    setCallDuration(0);
+    
     try {
-      setCallState('connecting');
-      const trunkLine = trunkLines.find(line => line.id === selectedTrunkLine);
-      
-      if (!trunkLine) {
-        throw new Error('Selected trunk line not found');
-      }
-      
-      const result = await initiateCall(phoneNumber, trunkLine.phoneNumber);
-      setCallSid(result.callSid);
-      setCallState('connected');
-      startTimer();
-      
-      toast({
-        title: 'Call Connected',
-        description: `Connected to ${contact?.name || phoneNumber}`,
+      // Use the makeCall function from the service
+      const result = await makeCall({
+        to: phoneNumber,
+        from: selectedTrunkLine.phoneNumber,
+        lead_id: lead_id
       });
+      
+      if (result.success) {
+        setCallSid(result.call_id || '');
+        setCallState('connected');
+        startTimer();
+        
+        toast({
+          title: 'Call Connected',
+          description: `Connected to ${phoneNumber}`,
+        });
+      } else {
+        throw new Error(result.message || 'Failed to connect call');
+      }
     } catch (error) {
-      console.error('Failed to initiate call:', error);
+      console.error('Error initiating call:', error);
       setCallState('failed');
       toast({
         title: 'Call Failed',
@@ -342,8 +350,8 @@ export default function Dialpad({ initialPhoneNumber, contact, onCallComplete }:
             className="flex-1"
           />
           <Select 
-            value={selectedTrunkLine} 
-            onValueChange={setSelectedTrunkLine}
+            value={selectedTrunkLine.id} 
+            onValueChange={(value) => setSelectedTrunkLine(trunkLines.find(line => line.id === value) || trunkLines[0])}
             disabled={callState !== 'idle'}
           >
             <SelectTrigger className="w-[140px]">

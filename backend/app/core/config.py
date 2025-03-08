@@ -38,6 +38,9 @@ class Settings(BaseSettings):
     TWILIO_ACCOUNT_SID: Optional[str] = None
     TWILIO_AUTH_TOKEN: Optional[str] = None
     TWILIO_PHONE_NUMBER: Optional[str] = None
+    TWILIO_API_KEY_SID: Optional[str] = None
+    TWILIO_API_KEY_SECRET: Optional[str] = None
+    TWILIO_TWIML_APP_SID: Optional[str] = None
     
     # Supabase settings
     SUPABASE_URL: str = os.getenv("SUPABASE_URL", "")

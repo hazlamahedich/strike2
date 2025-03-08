@@ -11,17 +11,8 @@ import { Button } from '../ui/button';
 import { Input } from '../ui/input';
 import { Search, FileText } from 'lucide-react';
 import { useToast } from '../ui/use-toast';
-import { getEmailTemplates } from '../../lib/services/emailService';
+import { getEmailTemplates, EmailTemplate } from '../../lib/services/communicationService';
 import { Card, CardContent } from '../ui/card';
-
-export interface EmailTemplate {
-  id: string;
-  name: string;
-  subject: string;
-  content: string;
-  createdAt: string;
-  updatedAt: string;
-}
 
 interface TemplateSelectionDialogProps {
   open: boolean;

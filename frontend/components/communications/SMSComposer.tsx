@@ -41,21 +41,15 @@ import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
 import { Loader2, Send, FileText, Sparkles } from 'lucide-react';
 import { useToast } from '@/components/ui/use-toast';
-import { Contact } from './AddressBook';
 import { SMSTemplateSelectionDialog } from './SMSTemplateSelectionDialog';
-
-// Define the SMS template type
-export interface SMSTemplate {
-  id: number;
-  name: string;
-  body: string;
-  created_by: number;
-  team_id?: number;
-  is_global: boolean;
-  variables: string[];
-  created_at: string;
-  updated_at: string;
-}
+import { 
+  sendSMS, 
+  generateSMSWithAI, 
+  getSMSTemplates, 
+  SMSTemplate,
+  Contact
+} from '@/lib/services/communicationService';
+import { USE_MOCK_DATA } from '@/lib/config';
 
 // Define the form schema
 const smsFormSchema = z.object({
@@ -65,61 +59,13 @@ const smsFormSchema = z.object({
 
 type SMSFormValues = z.infer<typeof smsFormSchema>;
 
-// Mock API functions (replace with actual API calls)
-const sendSMS = async (to: string, body: string): Promise<{ success: boolean; message_id: string }> => {
-  // In a real app, this would be an API call to your backend
-  console.log(`Sending SMS to ${to}: ${body}`);
-  return { success: true, message_id: `SM${Math.random().toString(36).substring(2, 15)}` };
-};
-
-const generateSMSWithAI = async (prompt: string): Promise<string> => {
-  // In a real app, this would be an API call to your backend
-  console.log(`Generating SMS with AI: ${prompt}`);
-  return `This is an AI-generated SMS based on your prompt: "${prompt}". We're excited to help you with your inquiry. Please let us know if you need any further assistance.`;
-};
-
-const fetchSMSTemplates = async (): Promise<SMSTemplate[]> => {
-  // In a real app, this would be an API call to your backend
-  return [
-    {
-      id: 1,
-      name: 'Appointment Reminder',
-      body: 'Hi {{name}}, this is a reminder about your appointment on {{date}} at {{time}}. Please reply YES to confirm or call us to reschedule.',
-      created_by: 1,
-      is_global: true,
-      variables: ['name', 'date', 'time'],
-      created_at: new Date().toISOString(),
-      updated_at: new Date().toISOString()
-    },
-    {
-      id: 2,
-      name: 'Follow-up',
-      body: 'Hi {{name}}, thank you for your interest in our services. I wanted to follow up on our conversation. Please let me know if you have any questions.',
-      created_by: 1,
-      is_global: true,
-      variables: ['name'],
-      created_at: new Date().toISOString(),
-      updated_at: new Date().toISOString()
-    },
-    {
-      id: 3,
-      name: 'Payment Confirmation',
-      body: 'Thank you for your payment of {{amount}}. Your transaction has been processed successfully. Reference: {{reference}}',
-      created_by: 1,
-      is_global: true,
-      variables: ['amount', 'reference'],
-      created_at: new Date().toISOString(),
-      updated_at: new Date().toISOString()
-    }
-  ];
-};
-
 interface SMSComposerProps {
   contact?: Contact;
   onSMSSent?: (to: string, body: string) => void;
+  lead_id?: number;
 }
 
-export default function SMSComposer({ contact, onSMSSent }: SMSComposerProps) {
+export default function SMSComposer({ contact, onSMSSent, lead_id }: SMSComposerProps) {
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [isGeneratingAI, setIsGeneratingAI] = useState(false);
   const [templates, setTemplates] = useState<SMSTemplate[]>([]);
@@ -149,7 +95,7 @@ export default function SMSComposer({ contact, onSMSSent }: SMSComposerProps) {
   useEffect(() => {
     const loadTemplates = async () => {
       try {
-        const data = await fetchSMSTemplates();
+        const data = await getSMSTemplates();
         setTemplates(data);
       } catch (error) {
         console.error('Failed to fetch SMS templates:', error);
@@ -168,7 +114,11 @@ export default function SMSComposer({ contact, onSMSSent }: SMSComposerProps) {
   const handleSubmit = async (data: SMSFormValues) => {
     try {
       setIsSubmitting(true);
-      const result = await sendSMS(data.to, data.body);
+      const result = await sendSMS({
+        to: data.to,
+        body: data.body,
+        lead_id: lead_id
+      });
       
       if (result.success) {
         toast({
@@ -182,13 +132,13 @@ export default function SMSComposer({ contact, onSMSSent }: SMSComposerProps) {
           onSMSSent(data.to, data.body);
         }
       } else {
-        throw new Error('Failed to send SMS');
+        throw new Error(result.message || 'Failed to send SMS');
       }
     } catch (error) {
       console.error('Failed to send SMS:', error);
       toast({
         title: 'Error',
-        description: 'Failed to send SMS. Please try again.',
+        description: error instanceof Error ? error.message : 'Failed to send SMS. Please try again.',
         variant: 'destructive'
       });
     } finally {
@@ -249,9 +199,9 @@ export default function SMSComposer({ contact, onSMSSent }: SMSComposerProps) {
   return (
     <Card className="w-full">
       <CardHeader>
-        <CardTitle>Compose SMS</CardTitle>
+        <CardTitle>Send SMS {USE_MOCK_DATA ? '(Mock Mode)' : ''}</CardTitle>
         <CardDescription>
-          Create and send SMS messages to your contacts
+          Send text messages to your contacts
         </CardDescription>
       </CardHeader>
       <CardContent>
@@ -264,7 +214,7 @@ export default function SMSComposer({ contact, onSMSSent }: SMSComposerProps) {
                 <FormItem>
                   <FormLabel>To</FormLabel>
                   <FormControl>
-                    <Input placeholder="+1 (555) 123-4567" {...field} />
+                    <Input placeholder="+1234567890" {...field} />
                   </FormControl>
                   <FormMessage />
                 </FormItem>
@@ -277,7 +227,7 @@ export default function SMSComposer({ contact, onSMSSent }: SMSComposerProps) {
               render={({ field }) => (
                 <FormItem>
                   <FormLabel>Message</FormLabel>
-                  <div className="flex space-x-2 mb-2">
+                  <div className="flex justify-end space-x-2 mb-2">
                     <Button 
                       type="button" 
                       variant="outline" 
@@ -285,7 +235,7 @@ export default function SMSComposer({ contact, onSMSSent }: SMSComposerProps) {
                       onClick={() => setIsTemplateDialogOpen(true)}
                     >
                       <FileText className="h-4 w-4 mr-2" />
-                      Use Template
+                      Templates
                     </Button>
                     <Button 
                       type="button" 
@@ -309,10 +259,11 @@ export default function SMSComposer({ contact, onSMSSent }: SMSComposerProps) {
                       {...field} 
                     />
                   </FormControl>
+                  <div className="flex justify-between text-xs text-muted-foreground mt-1">
+                    <span>{remainingChars} characters remaining</span>
+                    <span>{messageCount} message{messageCount !== 1 ? 's' : ''}</span>
+                  </div>
                   <FormMessage />
-                  <p className="text-xs text-muted-foreground mt-2">
-                    {field.value.length} / 1600 characters
-                  </p>
                 </FormItem>
               )}
             />
@@ -327,27 +278,28 @@ export default function SMSComposer({ contact, onSMSSent }: SMSComposerProps) {
                 ) : (
                   <Send className="h-4 w-4 mr-2" />
                 )}
-                Send SMS
+                Send Message
               </Button>
             </div>
           </form>
         </Form>
       </CardContent>
-
+      
       {/* Template Selection Dialog */}
       <SMSTemplateSelectionDialog
         open={isTemplateDialogOpen}
         onOpenChange={setIsTemplateDialogOpen}
+        templates={templates}
         onSelectTemplate={handleSelectTemplate}
       />
-
+      
       {/* Template Variables Dialog */}
       <Dialog open={isVariableDialogOpen} onOpenChange={setIsVariableDialogOpen}>
-        <DialogContent className="sm:max-w-[500px]">
+        <DialogContent>
           <DialogHeader>
             <DialogTitle>Fill Template Variables</DialogTitle>
             <DialogDescription>
-              Please fill in the variables for the template
+              Please fill in the variables for this template
             </DialogDescription>
           </DialogHeader>
           
@@ -359,10 +311,10 @@ export default function SMSComposer({ contact, onSMSSent }: SMSComposerProps) {
                   id={variable}
                   value={templateVariables[variable]}
                   onChange={(e) => {
-                    setTemplateVariables(prev => ({
-                      ...prev,
-                      [variable]: e.target.value
-                    }));
+                    setTemplateVariables({
+                      ...templateVariables,
+                      [variable]: e.target.value,
+                    });
                   }}
                   placeholder={`Enter ${variable}`}
                 />
@@ -371,27 +323,22 @@ export default function SMSComposer({ contact, onSMSSent }: SMSComposerProps) {
           </div>
           
           <DialogFooter>
-            <Button
-              variant="outline"
-              onClick={() => setIsVariableDialogOpen(false)}
-            >
+            <Button variant="outline" onClick={() => setIsVariableDialogOpen(false)}>
               Cancel
             </Button>
-            <Button
-              onClick={() => {
-                if (!selectedTemplate) return;
-                
-                let messageBody = selectedTemplate.body;
+            <Button onClick={() => {
+              if (selectedTemplate) {
+                let templateText = selectedTemplate.body;
                 
                 // Replace variables in the template
-                Object.entries(templateVariables).forEach(([variable, value]) => {
-                  messageBody = messageBody.replace(new RegExp(`{{${variable}}}`, 'g'), value || `[${variable}]`);
+                Object.entries(templateVariables).forEach(([key, value]) => {
+                  templateText = templateText.replace(new RegExp(`{{${key}}}`, 'g'), value || `[${key}]`);
                 });
                 
-                form.setValue('body', messageBody);
+                form.setValue('body', templateText);
                 setIsVariableDialogOpen(false);
-              }}
-            >
+              }
+            }}>
               Apply Template
             </Button>
           </DialogFooter>

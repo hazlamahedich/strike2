@@ -12,32 +12,35 @@ import { Input } from '../ui/input';
 import { Search, MessageSquare } from 'lucide-react';
 import { useToast } from '../ui/use-toast';
 import { Card, CardContent } from '../ui/card';
-import { SMSTemplate } from './SMSComposer';
+import { SMSTemplate } from '@/lib/services/communicationService';
 
 interface SMSTemplateSelectionDialogProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   onSelectTemplate: (template: SMSTemplate) => void;
+  templates: SMSTemplate[];
 }
 
 export function SMSTemplateSelectionDialog({
   open,
   onOpenChange,
   onSelectTemplate,
+  templates
 }: SMSTemplateSelectionDialogProps) {
   const { toast } = useToast();
-  const [templates, setTemplates] = useState<SMSTemplate[]>([]);
   const [filteredTemplates, setFilteredTemplates] = useState<SMSTemplate[]>([]);
   const [searchQuery, setSearchQuery] = useState('');
-  const [loading, setLoading] = useState(false);
   const [selectedTemplate, setSelectedTemplate] = useState<SMSTemplate | null>(null);
 
+  // Reset selected template when dialog opens/closes
   useEffect(() => {
-    if (open) {
-      fetchTemplates();
+    if (!open) {
+      setSelectedTemplate(null);
+      setSearchQuery('');
     }
   }, [open]);
 
+  // Filter templates based on search query
   useEffect(() => {
     if (searchQuery.trim() === '') {
       setFilteredTemplates(templates);
@@ -49,57 +52,6 @@ export function SMSTemplateSelectionDialog({
       setFilteredTemplates(filtered);
     }
   }, [searchQuery, templates]);
-
-  const fetchTemplates = async () => {
-    try {
-      setLoading(true);
-      // In a real app, this would be an API call to your backend
-      const mockTemplates: SMSTemplate[] = [
-        {
-          id: 1,
-          name: 'Appointment Reminder',
-          body: 'Hi {{name}}, this is a reminder about your appointment on {{date}} at {{time}}. Please reply YES to confirm or call us to reschedule.',
-          created_by: 1,
-          is_global: true,
-          variables: ['name', 'date', 'time'],
-          created_at: new Date().toISOString(),
-          updated_at: new Date().toISOString()
-        },
-        {
-          id: 2,
-          name: 'Follow-up',
-          body: 'Hi {{name}}, thank you for your interest in our services. I wanted to follow up on our conversation. Please let me know if you have any questions.',
-          created_by: 1,
-          is_global: true,
-          variables: ['name'],
-          created_at: new Date().toISOString(),
-          updated_at: new Date().toISOString()
-        },
-        {
-          id: 3,
-          name: 'Payment Confirmation',
-          body: 'Thank you for your payment of {{amount}}. Your transaction has been processed successfully. Reference: {{reference}}',
-          created_by: 1,
-          is_global: true,
-          variables: ['amount', 'reference'],
-          created_at: new Date().toISOString(),
-          updated_at: new Date().toISOString()
-        }
-      ];
-      
-      setTemplates(mockTemplates);
-      setFilteredTemplates(mockTemplates);
-    } catch (error) {
-      console.error('Failed to fetch SMS templates:', error);
-      toast({
-        title: 'Error',
-        description: 'Failed to load SMS templates. Please try again.',
-        variant: 'destructive'
-      });
-    } finally {
-      setLoading(false);
-    }
-  };
 
   const handleSelectTemplate = (template: SMSTemplate) => {
     setSelectedTemplate(template);
@@ -133,14 +85,15 @@ export function SMSTemplateSelectionDialog({
         </div>
         
         <div className="max-h-[400px] overflow-y-auto space-y-2">
-          {loading ? (
-            <div className="flex justify-center items-center h-40">
-              <p>Loading templates...</p>
+          {templates.length === 0 ? (
+            <div className="flex flex-col items-center justify-center h-40 text-center">
+              <MessageSquare className="h-12 w-12 text-muted-foreground mb-4" />
+              <p className="text-muted-foreground">No templates available</p>
             </div>
           ) : filteredTemplates.length === 0 ? (
             <div className="flex flex-col items-center justify-center h-40 text-center">
               <MessageSquare className="h-12 w-12 text-muted-foreground mb-4" />
-              <p className="text-muted-foreground">No templates found</p>
+              <p className="text-muted-foreground">No templates found matching your search</p>
             </div>
           ) : (
             filteredTemplates.map((template) => (

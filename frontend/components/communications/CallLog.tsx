@@ -48,6 +48,8 @@ import {
 } from 'lucide-react';
 import { useToast } from '@/components/ui/use-toast';
 import { format, formatDistance } from 'date-fns';
+import { getCallLogs, CallLog as CallLogType } from '@/lib/services/communicationService';
+import { USE_MOCK_DATA } from '@/lib/config';
 
 // Define the call log type
 export interface CallLog {
@@ -72,75 +74,13 @@ export interface CallLog {
   updated_at: string;
 }
 
-// Mock API functions (replace with actual API calls)
-const fetchCallLogs = async (): Promise<CallLog[]> => {
-  // In a real app, this would be an API call
-  return [
-    {
-      id: 1,
-      contact_id: 1,
-      lead_id: 1,
-      direction: 'outbound',
-      duration: 120,
-      caller_number: '+1234567890',
-      recipient_number: '+0987654321',
-      status: 'completed',
-      call_time: new Date(Date.now() - 3600000).toISOString(), // 1 hour ago
-      recording_url: 'https://api.twilio.com/2010-04-01/Accounts/AC123/Recordings/RE123.mp3',
-      transcription: 'Hello, this is a test call. I wanted to discuss our upcoming meeting. Please call me back when you have a chance.',
-      contact: {
-        id: 1,
-        name: 'John Doe'
-      },
-      created_at: new Date().toISOString(),
-      updated_at: new Date().toISOString()
-    },
-    {
-      id: 2,
-      contact_id: 2,
-      lead_id: 2,
-      direction: 'inbound',
-      duration: 60,
-      caller_number: '+0987654321',
-      recipient_number: '+1234567890',
-      status: 'completed',
-      call_time: new Date(Date.now() - 86400000).toISOString(), // 1 day ago
-      recording_url: 'https://api.twilio.com/2010-04-01/Accounts/AC123/Recordings/RE456.mp3',
-      transcription: "Hi, I'm returning your call about the proposal. I think we can move forward with the project. Let's schedule a follow-up call next week.",
-      contact: {
-        id: 2,
-        name: 'Jane Smith'
-      },
-      created_at: new Date().toISOString(),
-      updated_at: new Date().toISOString()
-    },
-    {
-      id: 3,
-      contact_id: 3,
-      lead_id: 3,
-      direction: 'inbound',
-      duration: 0,
-      caller_number: '+1122334455',
-      recipient_number: '+1234567890',
-      status: 'missed',
-      call_time: new Date(Date.now() - 172800000).toISOString(), // 2 days ago
-      contact: {
-        id: 3,
-        name: 'Bob Johnson'
-      },
-      created_at: new Date().toISOString(),
-      updated_at: new Date().toISOString()
-    }
-  ];
-};
-
 export default function CallLog({ onCallContact }: { onCallContact?: (phoneNumber: string) => void }) {
-  const [callLogs, setCallLogs] = useState<CallLog[]>([]);
+  const [callLogs, setCallLogs] = useState<CallLogType[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState('');
   const [filterDirection, setFilterDirection] = useState<string>('all');
   const [filterStatus, setFilterStatus] = useState<string>('all');
-  const [selectedCallLog, setSelectedCallLog] = useState<CallLog | null>(null);
+  const [selectedCallLog, setSelectedCallLog] = useState<CallLogType | null>(null);
   const [isTranscriptDialogOpen, setIsTranscriptDialogOpen] = useState(false);
   const { toast } = useToast();
 
@@ -149,7 +89,7 @@ export default function CallLog({ onCallContact }: { onCallContact?: (phoneNumbe
     const loadCallLogs = async () => {
       try {
         setIsLoading(true);
-        const data = await fetchCallLogs();
+        const data = await getCallLogs();
         setCallLogs(data);
       } catch (error) {
         console.error('Failed to fetch call logs:', error);
@@ -205,7 +145,7 @@ export default function CallLog({ onCallContact }: { onCallContact?: (phoneNumbe
   };
 
   // Open transcript dialog
-  const openTranscriptDialog = (callLog: CallLog) => {
+  const openTranscriptDialog = (callLog: CallLogType) => {
     setSelectedCallLog(callLog);
     setIsTranscriptDialogOpen(true);
   };
@@ -240,7 +180,7 @@ export default function CallLog({ onCallContact }: { onCallContact?: (phoneNumbe
   return (
     <div className="space-y-4">
       <div className="flex justify-between items-center">
-        <h2 className="text-2xl font-bold">Call Log</h2>
+        <h2 className="text-2xl font-bold">Call Log {USE_MOCK_DATA ? '(Mock Mode)' : ''}</h2>
         <div className="flex space-x-2">
           <Select value={filterDirection} onValueChange={setFilterDirection}>
             <SelectTrigger className="w-[130px]">
@@ -267,20 +207,38 @@ export default function CallLog({ onCallContact }: { onCallContact?: (phoneNumbe
           </Select>
         </div>
       </div>
-
-      <div className="flex items-center space-x-2">
-        <Search className="h-4 w-4 text-gray-400" />
+      
+      <div className="relative">
+        <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
         <Input
+          type="search"
           placeholder="Search call logs..."
+          className="pl-8"
           value={searchTerm}
           onChange={(e) => setSearchTerm(e.target.value)}
-          className="max-w-sm"
         />
       </div>
-
+      
       {isLoading ? (
-        <div className="flex justify-center py-8">
-          <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-gray-900"></div>
+        <div className="flex justify-center items-center h-64">
+          <p>Loading call logs...</p>
+        </div>
+      ) : filteredCallLogs.length === 0 ? (
+        <div className="flex flex-col justify-center items-center h-64 text-center">
+          <Phone className="h-12 w-12 text-muted-foreground mb-4" />
+          <p className="text-muted-foreground">No call logs found</p>
+          {searchTerm && (
+            <Button 
+              variant="link" 
+              onClick={() => {
+                setSearchTerm('');
+                setFilterDirection('all');
+                setFilterStatus('all');
+              }}
+            >
+              Clear filters
+            </Button>
+          )}
         </div>
       ) : (
         <div className="border rounded-md">
@@ -292,126 +250,100 @@ export default function CallLog({ onCallContact }: { onCallContact?: (phoneNumbe
                 <TableHead>Status</TableHead>
                 <TableHead>Time</TableHead>
                 <TableHead>Duration</TableHead>
-                <TableHead>Actions</TableHead>
+                <TableHead className="text-right">Actions</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
-              {filteredCallLogs.length === 0 ? (
-                <TableRow>
-                  <TableCell colSpan={6} className="text-center py-8">
-                    No call logs found.
+              {filteredCallLogs.map((log) => (
+                <TableRow key={log.id}>
+                  <TableCell>
+                    <div className="flex flex-col">
+                      <span className="font-medium">
+                        {log.contact?.name || 'Unknown'}
+                      </span>
+                      <span className="text-sm text-muted-foreground">
+                        {log.direction === 'inbound' ? log.caller_number : log.recipient_number}
+                      </span>
+                    </div>
+                  </TableCell>
+                  <TableCell>
+                    <div className="flex items-center">
+                      {renderDirectionIcon(log.direction, log.status)}
+                      <span className="ml-2 capitalize">{log.direction}</span>
+                    </div>
+                  </TableCell>
+                  <TableCell>
+                    {renderStatusBadge(log.status)}
+                  </TableCell>
+                  <TableCell>
+                    <div className="flex flex-col">
+                      <span>{format(new Date(log.call_time), 'MMM d, yyyy')}</span>
+                      <span className="text-sm text-muted-foreground">
+                        {format(new Date(log.call_time), 'h:mm a')}
+                      </span>
+                    </div>
+                  </TableCell>
+                  <TableCell>
+                    {log.duration ? formatDuration(log.duration) : '-'}
+                  </TableCell>
+                  <TableCell className="text-right">
+                    <div className="flex justify-end space-x-2">
+                      {log.transcription && (
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          onClick={() => openTranscriptDialog(log)}
+                        >
+                          <FileText className="h-4 w-4" />
+                          <span className="sr-only">View Transcript</span>
+                        </Button>
+                      )}
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        onClick={() => handleCallContact(log.direction === 'inbound' ? log.caller_number : log.recipient_number)}
+                      >
+                        <Phone className="h-4 w-4" />
+                        <span className="sr-only">Call Back</span>
+                      </Button>
+                    </div>
                   </TableCell>
                 </TableRow>
-              ) : (
-                filteredCallLogs.map((log) => (
-                  <TableRow key={log.id}>
-                    <TableCell>
-                      <div className="flex items-center space-x-2">
-                        <User className="h-4 w-4 text-gray-400" />
-                        <span className="font-medium">
-                          {log.contact?.name || log.direction === 'inbound' ? log.caller_number : log.recipient_number}
-                        </span>
-                      </div>
-                    </TableCell>
-                    <TableCell>
-                      <div className="flex items-center space-x-2">
-                        {renderDirectionIcon(log.direction, log.status)}
-                        <span className="capitalize">{log.direction}</span>
-                      </div>
-                    </TableCell>
-                    <TableCell>
-                      {renderStatusBadge(log.status)}
-                    </TableCell>
-                    <TableCell>
-                      <div className="flex flex-col">
-                        <div className="flex items-center space-x-1">
-                          <Calendar className="h-3 w-3 text-gray-400" />
-                          <span className="text-sm">{format(new Date(log.call_time), 'MMM d, yyyy')}</span>
-                        </div>
-                        <div className="flex items-center space-x-1">
-                          <Clock className="h-3 w-3 text-gray-400" />
-                          <span className="text-sm">{format(new Date(log.call_time), 'h:mm a')}</span>
-                        </div>
-                      </div>
-                    </TableCell>
-                    <TableCell>
-                      {log.duration ? formatDuration(log.duration) : 'N/A'}
-                    </TableCell>
-                    <TableCell>
-                      <div className="flex space-x-2">
-                        <Button 
-                          variant="ghost" 
-                          size="sm" 
-                          onClick={() => handleCallContact(log.direction === 'inbound' ? log.caller_number : log.recipient_number)}
-                        >
-                          <Phone className="h-4 w-4" />
-                        </Button>
-                        {log.recording_url && (
-                          <Button 
-                            variant="ghost" 
-                            size="sm" 
-                            onClick={() => window.open(log.recording_url, '_blank')}
-                          >
-                            <Play className="h-4 w-4" />
-                          </Button>
-                        )}
-                        {log.transcription && (
-                          <Button 
-                            variant="ghost" 
-                            size="sm" 
-                            onClick={() => openTranscriptDialog(log)}
-                          >
-                            <FileText className="h-4 w-4" />
-                          </Button>
-                        )}
-                      </div>
-                    </TableCell>
-                  </TableRow>
-                ))
-              )}
+              ))}
             </TableBody>
           </Table>
         </div>
       )}
-
+      
       {/* Transcript Dialog */}
       <Dialog open={isTranscriptDialogOpen} onOpenChange={setIsTranscriptDialogOpen}>
-        <DialogContent className="max-w-3xl">
+        <DialogContent className="sm:max-w-[600px]">
           <DialogHeader>
             <DialogTitle>Call Transcript</DialogTitle>
           </DialogHeader>
+          
           {selectedCallLog && (
             <div className="space-y-4">
-              <div className="flex justify-between">
+              <div className="flex justify-between items-start">
                 <div>
-                  <p className="text-sm text-gray-500">
-                    <span className="font-medium">Contact:</span> {selectedCallLog.contact?.name || 'Unknown'}
-                  </p>
-                  <p className="text-sm text-gray-500">
-                    <span className="font-medium">Phone:</span> {selectedCallLog.direction === 'inbound' ? selectedCallLog.caller_number : selectedCallLog.recipient_number}
+                  <h3 className="font-medium">{selectedCallLog.contact?.name || 'Unknown'}</h3>
+                  <p className="text-sm text-muted-foreground">
+                    {selectedCallLog.direction === 'inbound' ? selectedCallLog.caller_number : selectedCallLog.recipient_number}
                   </p>
                 </div>
-                <div>
-                  <p className="text-sm text-gray-500">
-                    <span className="font-medium">Date:</span> {format(new Date(selectedCallLog.call_time), 'MMM d, yyyy h:mm a')}
+                <div className="text-right">
+                  <p className="text-sm">
+                    {format(new Date(selectedCallLog.call_time), 'MMM d, yyyy h:mm a')}
                   </p>
-                  <p className="text-sm text-gray-500">
-                    <span className="font-medium">Duration:</span> {formatDuration(selectedCallLog.duration)}
+                  <p className="text-sm text-muted-foreground">
+                    Duration: {formatDuration(selectedCallLog.duration)}
                   </p>
                 </div>
               </div>
               
-              <Card>
-                <CardHeader>
-                  <CardTitle>Transcript</CardTitle>
-                  <CardDescription>
-                    Automatically generated from call recording
-                  </CardDescription>
-                </CardHeader>
-                <CardContent>
-                  <p className="whitespace-pre-line">{selectedCallLog.transcription}</p>
-                </CardContent>
-              </Card>
+              <div className="border rounded-md p-4 bg-muted/30">
+                <p className="whitespace-pre-wrap">{selectedCallLog.transcription}</p>
+              </div>
               
               {selectedCallLog.recording_url && (
                 <div className="flex justify-center">
@@ -420,17 +352,19 @@ export default function CallLog({ onCallContact }: { onCallContact?: (phoneNumbe
                   </audio>
                 </div>
               )}
-              
-              <DialogFooter>
-                <Button 
-                  onClick={() => handleCallContact(selectedCallLog.direction === 'inbound' ? selectedCallLog.caller_number : selectedCallLog.recipient_number)}
-                >
-                  <Phone className="h-4 w-4 mr-2" />
-                  Call Back
-                </Button>
-              </DialogFooter>
             </div>
           )}
+          
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setIsTranscriptDialogOpen(false)}>
+              Close
+            </Button>
+            {selectedCallLog && (
+              <Button onClick={() => handleCallContact(selectedCallLog.direction === 'inbound' ? selectedCallLog.caller_number : selectedCallLog.recipient_number)}>
+                Call Back
+              </Button>
+            )}
+          </DialogFooter>
         </DialogContent>
       </Dialog>
     </div>

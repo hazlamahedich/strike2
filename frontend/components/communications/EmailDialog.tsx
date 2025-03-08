@@ -11,9 +11,16 @@ import { z } from 'zod';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { Loader2, Send, FileText, Sparkles } from 'lucide-react';
 import { useToast } from '../ui/use-toast';
-import { sendEmail, generateEmailWithAI, getEmailTemplates, getReceivedEmails, ReceivedEmail } from '../../lib/services/emailService';
+import { 
+  sendEmail, 
+  generateEmailWithAI, 
+  getEmailTemplates, 
+  getReceivedEmails, 
+  ReceivedEmail,
+  EmailTemplate 
+} from '../../lib/services/communicationService';
 import RichTextEditor from './RichTextEditor';
-import { TemplateSelectionDialog, EmailTemplate } from './TemplateSelectionDialog';
+import { TemplateSelectionDialog } from './TemplateSelectionDialog';
 import { format } from 'date-fns';
 
 // Define the form schema
