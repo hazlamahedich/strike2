@@ -2,6 +2,7 @@
 Communications router module for handling email, SMS, and call API endpoints.
 """
 from typing import Any, Dict, List, Optional
+import logging
 
 from fastapi import APIRouter, Depends, HTTPException, status, Query, Path, Body
 from fastapi.responses import JSONResponse
@@ -28,6 +29,9 @@ from app.models.communication import (
 from app.services.communication import CommunicationService
 from app.core.security import get_current_active_user
 from app.models.user import User
+
+# Configure logger for this module
+logger = logging.getLogger(__name__)
 
 router = APIRouter(
     prefix="/api/v1/communications",

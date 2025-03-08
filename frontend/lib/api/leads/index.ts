@@ -475,25 +475,55 @@ export const getLeadTimeline = async (
           id: 1,
           type: 'note',
           content: 'Added a note about the lead',
-          created_at: new Date(Date.now() - 86400000 * 3).toISOString(),
+          created_at: new Date(Date.now() - 86400000 * 5).toISOString(),
           user: { name: 'John Doe' }
         },
         {
           id: 2,
           type: 'email',
           content: 'Sent an email about the product demo',
-          created_at: new Date(Date.now() - 86400000 * 2).toISOString(),
+          created_at: new Date(Date.now() - 86400000 * 4).toISOString(),
           user: { name: 'Jane Smith' }
         },
         {
           id: 3,
           type: 'call',
           content: 'Had a call to discuss requirements',
-          created_at: new Date(Date.now() - 86400000).toISOString(),
+          created_at: new Date(Date.now() - 86400000 * 3).toISOString(),
           user: { name: 'John Doe' }
         },
         {
           id: 4,
+          type: 'meeting',
+          content: 'Scheduled an initial discovery meeting',
+          created_at: new Date(Date.now() - 86400000 * 2).toISOString(),
+          user: { name: 'John Doe' },
+          metadata: {
+            title: 'Initial Discovery Meeting',
+            start_time: new Date(Date.now() + 86400000 * 2).toISOString(), // 2 days in the future
+            end_time: new Date(Date.now() + 86400000 * 2 + 3600000).toISOString(), // 1 hour later
+            location: 'Zoom Meeting',
+            status: 'scheduled',
+            action: 'created'
+          }
+        },
+        {
+          id: 5,
+          type: 'meeting',
+          content: 'Updated meeting time for discovery call',
+          created_at: new Date(Date.now() - 86400000).toISOString(),
+          user: { name: 'Jane Smith' },
+          metadata: {
+            title: 'Initial Discovery Meeting',
+            start_time: new Date(Date.now() + 86400000 * 3).toISOString(), // 3 days in the future
+            end_time: new Date(Date.now() + 86400000 * 3 + 3600000).toISOString(), // 1 hour later
+            location: 'Zoom Meeting',
+            status: 'rescheduled',
+            action: 'updated'
+          }
+        },
+        {
+          id: 6,
           type: 'status_change',
           content: 'Changed status from New to Qualified',
           created_at: new Date().toISOString(),

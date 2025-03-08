@@ -135,36 +135,66 @@ export default function Dashboard() {
           setRecentActivities(mockRecentActivity);
         } else {
           // Use API data
-          const statsResponse = await apiClient.get<DashboardStats>('/api/dashboard/stats');
-          const activityResponse = await apiClient.get<Activity[]>('/api/dashboard/activity');
-          
-          if (statsResponse.error) {
-            console.error('Error fetching dashboard stats:', statsResponse.error);
+          try {
+            const statsResponse = await apiClient.get<DashboardStats>('/api/dashboard/stats');
+            
+            if (statsResponse.error) {
+              console.error('Error fetching dashboard stats:', statsResponse.error);
+              // Fall back to mock data
+              setStats(mockDashboardStats);
+              toast({
+                title: 'Notice',
+                description: 'Using mock dashboard statistics due to API error',
+                variant: 'default',
+              });
+            } else {
+              setStats(statsResponse.data);
+            }
+          } catch (error) {
+            console.error('Error fetching dashboard stats:', error);
+            // Fall back to mock data
+            setStats(mockDashboardStats);
             toast({
-              title: 'Error',
-              description: 'Failed to load dashboard statistics',
-              variant: 'destructive',
+              title: 'Notice',
+              description: 'Using mock dashboard statistics due to API error',
+              variant: 'default',
             });
-          } else {
-            setStats(statsResponse.data);
           }
           
-          if (activityResponse.error) {
-            console.error('Error fetching recent activity:', activityResponse.error);
+          try {
+            const activityResponse = await apiClient.get<Activity[]>('/api/dashboard/activity');
+            
+            if (activityResponse.error) {
+              console.error('Error fetching recent activity:', activityResponse.error);
+              // Fall back to mock data
+              setRecentActivities(mockRecentActivity);
+              toast({
+                title: 'Notice',
+                description: 'Using mock activity data due to API error',
+                variant: 'default',
+              });
+            } else {
+              setRecentActivities(activityResponse.data);
+            }
+          } catch (error) {
+            console.error('Error fetching recent activity:', error);
+            // Fall back to mock data
+            setRecentActivities(mockRecentActivity);
             toast({
-              title: 'Error',
-              description: 'Failed to load recent activity',
-              variant: 'destructive',
+              title: 'Notice',
+              description: 'Using mock activity data due to API error',
+              variant: 'default',
             });
-          } else {
-            setRecentActivities(activityResponse.data);
           }
         }
       } catch (error) {
-        console.error('Error fetching dashboard data:', error);
+        console.error('Error in fetchDashboardData:', error);
+        // Fall back to mock data in case of any other errors
+        setStats(mockDashboardStats);
+        setRecentActivities(mockRecentActivity);
         toast({
           title: 'Error',
-          description: 'Failed to load dashboard data',
+          description: 'Failed to load dashboard data. Using mock data instead.',
           variant: 'destructive',
         });
       } finally {

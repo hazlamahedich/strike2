@@ -58,25 +58,36 @@ export interface MeetingLocation {
   conference_details?: Record<string, any>;
 }
 
+export interface MeetingContact {
+  name: string;
+  email?: string;
+  phone?: string;
+}
+
 export interface Meeting {
   id: number;
+  lead_id: number;
   title: string;
   description?: string;
   start_time: string;
   end_time: string;
-  timezone?: string;
-  status: MeetingStatus;
   location?: string;
-  meeting_type: MeetingType;
-  lead_id: number;
-  user_id: number;
+  status: MeetingStatus;
+  notes?: string;
+  created_by?: string; // UUID of the user who created the meeting
+  
+  // These fields are not in the database but used in the frontend
+  timezone?: string;
+  meeting_type?: MeetingType;
+  user_id?: number;
   calendar_id?: string;
   meeting_url?: string;
-  created_at: string;
-  updated_at: string;
+  created_at?: string;
+  updated_at?: string;
   lead?: Lead;
   organizer?: User;
   attendees?: MeetingAttendee[];
+  contact?: MeetingContact;
 }
 
 export interface MeetingCreate {
@@ -85,10 +96,15 @@ export interface MeetingCreate {
   description?: string;
   start_time: string;
   end_time: string;
-  timezone?: string;
-  meeting_type: MeetingType;
   location?: string;
-  lead_email: string;
+  status?: MeetingStatus;
+  notes?: string;
+  created_by?: string; // UUID of the user who created the meeting
+  
+  // Additional fields used in the frontend but not required by the database
+  timezone?: string;
+  meeting_type?: MeetingType;
+  lead_email?: string; // Used for sending invitations
 }
 
 export interface MeetingUpdate {

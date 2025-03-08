@@ -48,6 +48,8 @@ import { LeadEditDialog } from '@/components/leads/LeadEditDialog';
 import { TaskActionsMenu } from '@/components/leads/TaskActionsMenu';
 import { formatDistanceToNow } from 'date-fns';
 import dynamic from 'next/dynamic';
+import { createMeeting } from '@/lib/api/meetings';
+import { MeetingStatus, MeetingType } from '@/lib/types/meeting';
 
 // Import API hooks
 import { 
@@ -1068,71 +1070,46 @@ export default function LeadDetailPage() {
   };
   
   // Handle scheduling a meeting
-  const handleScheduleMeeting = (meetingData: any) => {
-    if (USE_MOCK_DATA) {
-      // Mock implementation
-      toast.success('Meeting scheduled successfully');
-    } else {
-      // Real implementation with Supabase
-      const scheduleMeetingMutation = useMutation({
-        mutationFn: async () => {
-          // Create the meeting in the database
-          const { data, error } = await supabase
-            .from('meetings')
-            .insert({
-              lead_id: leadId,
-              title: meetingData.title,
-              description: meetingData.description,
-              start_time: meetingData.start_time,
-              end_time: meetingData.end_time,
-              location: meetingData.location,
-              meeting_type: meetingData.meeting_type,
-              status: 'scheduled',
-              created_at: new Date().toISOString(),
-              updated_at: new Date().toISOString(),
-              created_by: (await supabase.auth.getUser()).data.user?.id
-            })
-            .select()
-            .single();
-            
-          if (error) throw error;
-          
-          // Add to timeline
-          await supabase.from('lead_timeline').insert({
-            lead_id: leadId,
-            type: 'meeting',
-            content: `Scheduled meeting: "${meetingData.title}"`,
-            data: { 
-              meeting_id: data.id, 
-              title: meetingData.title, 
-              start_time: meetingData.start_time,
-              end_time: meetingData.end_time,
-              location: meetingData.location
-            },
-            created_at: new Date().toISOString(),
-            user_id: (await supabase.auth.getUser()).data.user?.id
-          });
-          
-          // In a real implementation, this would also create a calendar event
-          // and send invitations to attendees
-          
-          return data;
-        },
-        onSuccess: () => {
-          // Invalidate queries to refresh data
-          queryClient.invalidateQueries({ queryKey: leadKeys.detail(leadId) });
-          queryClient.invalidateQueries({ queryKey: leadKeys.timeline(leadId) });
-          
-          // Show toast
-          toast.success('Meeting scheduled successfully');
-        },
-        onError: (error) => {
-          console.error('Failed to schedule meeting:', error);
-          toast.error('Failed to schedule meeting');
+  const handleScheduleMeeting = async (meetingData: any) => {
+    try {
+      if (USE_MOCK_DATA) {
+        // Mock implementation
+        toast.success('Meeting scheduled successfully');
+        
+        // In mock mode, we don't need to update the timeline as it will be refreshed
+        // when the page is reloaded
+      } else {
+        // Real implementation with Supabase
+        // Prepare the meeting data
+        const meetingCreateData = {
+          lead_id: leadId,
+          title: meetingData.title,
+          description: meetingData.description || '',
+          start_time: meetingData.start_time,
+          end_time: meetingData.end_time,
+          location: meetingData.location || 'Virtual',
+          status: MeetingStatus.SCHEDULED,
+          meeting_type: meetingData.meeting_type as MeetingType || MeetingType.OTHER,
+          lead_email: leadData?.email || '',
+          notes: meetingData.notes || `Meeting scheduled from lead details page for lead ${leadId}`
+        };
+        
+        // Call the API to create the meeting
+        const response = await createMeeting(meetingCreateData);
+        
+        if (response.error) {
+          throw new Error(response.error.message || 'Failed to schedule meeting');
         }
-      });
-      
-      scheduleMeetingMutation.mutate();
+        
+        // Show success toast
+        toast.success('Meeting scheduled successfully');
+        
+        // Refresh the page to show the updated timeline
+        router.refresh();
+      }
+    } catch (error: any) {
+      console.error('Failed to schedule meeting:', error);
+      toast.error('Failed to schedule meeting: ' + (error.message || 'Unknown error'));
     }
   };
   

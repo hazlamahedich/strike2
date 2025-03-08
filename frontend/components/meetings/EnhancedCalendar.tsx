@@ -2,7 +2,7 @@ import { useState, useEffect, useRef } from 'react';
 import { Meeting, MeetingStatus, MeetingType } from '@/lib/types/meeting';
 import { format, parseISO, isSameDay, addDays, isPast, differenceInMinutes } from 'date-fns';
 import { Button } from '@/components/ui/button';
-import { Clock, MapPin, Plus, User, Phone, Mail, MessageSquare, Video, Calendar, X, Edit, AlertTriangle } from 'lucide-react';
+import { Clock, MapPin, Plus, User, Phone, Mail, MessageSquare, Video, Calendar, X, Edit, AlertTriangle, RefreshCw } from 'lucide-react';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from '@/components/ui/dialog';
 import { MeetingCard } from './MeetingCard';
 import { toast } from '@/components/ui/use-toast';
@@ -13,6 +13,9 @@ import { EnhancedMeetingForm } from './EnhancedMeetingForm';
 import { Textarea } from '@/components/ui/textarea';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
+import { getMeetings } from '@/lib/api/meetings';
+import { USE_MOCK_DATA } from '@/lib/config';
+import { ApiResponse } from '@/lib/api/client';
 
 // FullCalendar imports
 import FullCalendar from '@fullcalendar/react';
@@ -163,23 +166,94 @@ const createTestEvents = () => {
 };
 
 export function EnhancedCalendar() {
-  const [selectedMeeting, setSelectedMeeting] = useState<any>(null);
-  const [showMeetingDialog, setShowMeetingDialog] = useState(false);
-  const [showScheduleDialog, setShowScheduleDialog] = useState(false);
-  const [currentView, setCurrentView] = useState<'dayGridMonth' | 'timeGridWeek' | 'timeGridDay'>(
-    window.innerWidth < 768 ? 'timeGridDay' : 'dayGridMonth'
-  );
   const calendarRef = useRef<FullCalendar>(null);
-  
-  // Dialog states
-  const [showCallDialog, setShowCallDialog] = useState(false);
-  const [showSMSDialog, setShowSMSDialog] = useState(false);
-  const [showEmailDialog, setShowEmailDialog] = useState(false);
-  const [showNoShowDialog, setShowNoShowDialog] = useState(false);
-  const [messageText, setMessageText] = useState('');
+  const [meetings, setMeetings] = useState<Meeting[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+  const [selectedMeeting, setSelectedMeeting] = useState<Meeting | null>(null);
+  const [showMeetingDetails, setShowMeetingDetails] = useState(false);
+  const [showScheduleForm, setShowScheduleForm] = useState(false);
+  const [showNoShowForm, setShowNoShowForm] = useState(false);
+  const [noShowNotes, setNoShowNotes] = useState('');
+  const [showCallForm, setShowCallForm] = useState(false);
+  const [callNotes, setCallNotes] = useState('');
+  const [showSMSForm, setShowSMSForm] = useState(false);
+  const [smsMessage, setSMSMessage] = useState('');
+  const [showEmailForm, setShowEmailForm] = useState(false);
   const [emailSubject, setEmailSubject] = useState('');
   const [emailBody, setEmailBody] = useState('');
-  const [noShowReason, setNoShowReason] = useState('');
+  const [currentView, setCurrentView] = useState<'dayGridMonth' | 'timeGridWeek' | 'timeGridDay'>('timeGridWeek');
+  
+  // Fetch meetings data
+  const fetchMeetings = async () => {
+    try {
+      setLoading(true);
+      setError(null);
+      
+      if (USE_MOCK_DATA) {
+        // Use mock data when the flag is set to true
+        console.log('Using mock meeting data for EnhancedCalendar');
+        setMeetings(MOCK_MEETINGS);
+      } else {
+        // Use real API data when the flag is set to false
+        console.log('Fetching meetings from API for EnhancedCalendar');
+        try {
+          const response = await getMeetings();
+          
+          // Check if response is an ApiResponse object with data property
+          if (response && typeof response === 'object' && 'data' in response) {
+            const apiResponse = response as unknown as ApiResponse<Meeting[]>;
+            if (apiResponse.error) {
+              throw new Error(apiResponse.error.message || 'Failed to fetch meetings');
+            }
+            // Ensure data is an array
+            const meetingsData = Array.isArray(apiResponse.data) ? apiResponse.data : [];
+            console.log('Meetings data from API:', meetingsData);
+            setMeetings(meetingsData);
+          } else if (Array.isArray(response)) {
+            // If response is already an array, use it directly
+            console.log('Meetings array from API:', response);
+            setMeetings(response);
+          } else {
+            // If response is neither an ApiResponse nor an array, log and use empty array
+            console.error('Unexpected response format:', response);
+            setError('Received unexpected data format from API');
+            setMeetings([]);
+          }
+        } catch (apiError: any) {
+          console.error('Error fetching meetings:', apiError);
+          setError('Failed to load meetings. Please try again later.');
+          // Fall back to mock data if API fails
+          setMeetings(MOCK_MEETINGS);
+        }
+      }
+    } catch (err: any) {
+      console.error('Error in fetchMeetings:', err);
+      setError('An unexpected error occurred. Please try again later.');
+      // Fall back to mock data if there's an exception
+      setMeetings(MOCK_MEETINGS);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  // Call fetchMeetings when the component mounts
+  useEffect(() => {
+    fetchMeetings();
+  }, []);
+
+  // Handle refresh button click
+  const handleRefresh = () => {
+    fetchMeetings();
+    toast({
+      title: "Refreshed",
+      description: "Calendar data has been refreshed",
+    });
+  };
+
+  // Dialog states
+  const [showMeetingDialog, setShowMeetingDialog] = useState(false);
+  const [showScheduleDialog, setShowScheduleDialog] = useState(false);
 
   // Function to change calendar view
   const changeView = (newView: 'dayGridMonth' | 'timeGridWeek' | 'timeGridDay') => {
@@ -192,7 +266,9 @@ export function EnhancedCalendar() {
   // Handle event click
   const handleEventClick = (clickInfo: EventClickArg) => {
     console.log('Event clicked:', clickInfo.event);
-    setSelectedMeeting({
+    
+    // Create a complete Meeting object with all required properties
+    const meetingData: Meeting = {
       id: parseInt(clickInfo.event.id),
       title: clickInfo.event.title,
       start_time: clickInfo.event.start?.toISOString() || new Date().toISOString(),
@@ -200,12 +276,19 @@ export function EnhancedCalendar() {
       description: clickInfo.event.extendedProps?.description || 'No description available',
       status: MeetingStatus.SCHEDULED,
       location: clickInfo.event.extendedProps?.location || 'No location specified',
+      meeting_type: clickInfo.event.extendedProps?.meeting_type || MeetingType.OTHER,
+      lead_id: clickInfo.event.extendedProps?.lead_id || 1,
+      user_id: clickInfo.event.extendedProps?.user_id || 1,
+      created_at: clickInfo.event.extendedProps?.created_at || new Date().toISOString(),
+      updated_at: clickInfo.event.extendedProps?.updated_at || new Date().toISOString(),
       contact: {
-        phone: '+1234567890',
-        email: 'contact@example.com',
-        name: 'John Doe'
+        phone: clickInfo.event.extendedProps?.contact_phone || '+1234567890',
+        email: clickInfo.event.extendedProps?.contact_email || 'contact@example.com',
+        name: clickInfo.event.extendedProps?.contact_name || 'John Doe'
       }
-    });
+    };
+    
+    setSelectedMeeting(meetingData);
     setShowMeetingDialog(true);
   };
   
@@ -403,8 +486,8 @@ export function EnhancedCalendar() {
   // Handle manually marking a meeting as no-show
   const handleMarkNoShow = () => {
     if (!selectedMeeting) return;
-    setNoShowReason('');
-    setShowNoShowDialog(true);
+    setNoShowNotes('');
+    setShowNoShowForm(true);
   };
   
   // Handle submitting no-show reason
@@ -416,7 +499,7 @@ export function EnhancedCalendar() {
       ...selectedMeeting,
       status: MeetingStatus.NO_SHOW,
       updated_at: new Date().toISOString(),
-      no_show_reason: noShowReason || 'No reason provided'
+      no_show_reason: noShowNotes || 'No reason provided'
     };
     
     // Update the meeting in our local state
@@ -436,7 +519,7 @@ export function EnhancedCalendar() {
       description: "The lead timeline has been updated.",
     });
     
-    setShowNoShowDialog(false);
+    setShowNoShowForm(false);
     setShowMeetingDialog(false);
   };
 
@@ -462,11 +545,12 @@ export function EnhancedCalendar() {
   // Handle call contact
   const handleCallContact = () => {
     if (selectedMeeting?.contact?.phone) {
-      setShowCallDialog(true);
+      setCallNotes('');
+      setShowCallForm(true);
     } else {
       toast({
         title: "No phone number",
-        description: "This contact does not have a phone number.",
+        description: "This contact doesn't have a phone number.",
         variant: "destructive",
       });
     }
@@ -475,12 +559,12 @@ export function EnhancedCalendar() {
   // Handle send SMS
   const handleSendSMS = () => {
     if (selectedMeeting?.contact?.phone) {
-      setMessageText('');
-      setShowSMSDialog(true);
+      setSMSMessage('');
+      setShowSMSForm(true);
     } else {
       toast({
         title: "No phone number",
-        description: "This contact does not have a phone number.",
+        description: "This contact doesn't have a phone number.",
         variant: "destructive",
       });
     }
@@ -491,11 +575,11 @@ export function EnhancedCalendar() {
     if (selectedMeeting?.contact?.email) {
       setEmailSubject(`Regarding our meeting on ${format(parseISO(selectedMeeting.start_time), 'MMMM d, yyyy')}`);
       setEmailBody('');
-      setShowEmailDialog(true);
+      setShowEmailForm(true);
     } else {
       toast({
         title: "No email address",
-        description: "This contact does not have an email address.",
+        description: "This contact doesn't have an email address.",
         variant: "destructive",
       });
     }
@@ -503,19 +587,37 @@ export function EnhancedCalendar() {
 
   // Handle submit call
   const handleSubmitCall = () => {
+    if (!selectedMeeting || !selectedMeeting.contact || !selectedMeeting.contact.phone) {
+      toast({
+        title: "Error",
+        description: "Contact information is missing",
+        variant: "destructive",
+      });
+      return;
+    }
+    
     toast({
       title: "Calling contact",
       description: `Initiating call to ${selectedMeeting.contact.name} at ${selectedMeeting.contact.phone}`,
     });
-    setShowCallDialog(false);
+    setShowCallForm(false);
   };
 
   // Handle submit SMS
   const handleSubmitSMS = () => {
-    if (!messageText.trim()) {
+    if (!smsMessage.trim()) {
       toast({
         title: "Empty message",
         description: "Please enter a message to send.",
+        variant: "destructive",
+      });
+      return;
+    }
+    
+    if (!selectedMeeting || !selectedMeeting.contact || !selectedMeeting.contact.phone) {
+      toast({
+        title: "Error",
+        description: "Contact information is missing",
         variant: "destructive",
       });
       return;
@@ -525,7 +627,7 @@ export function EnhancedCalendar() {
       title: "Message sent",
       description: `SMS sent to ${selectedMeeting.contact.name}`,
     });
-    setShowSMSDialog(false);
+    setShowSMSForm(false);
   };
 
   // Handle submit email
@@ -533,7 +635,16 @@ export function EnhancedCalendar() {
     if (!emailSubject.trim() || !emailBody.trim()) {
       toast({
         title: "Incomplete email",
-        description: "Please enter both subject and message.",
+        description: "Please enter both subject and body for the email.",
+        variant: "destructive",
+      });
+      return;
+    }
+    
+    if (!selectedMeeting || !selectedMeeting.contact || !selectedMeeting.contact.email) {
+      toast({
+        title: "Error",
+        description: "Contact information is missing",
         variant: "destructive",
       });
       return;
@@ -543,7 +654,7 @@ export function EnhancedCalendar() {
       title: "Email sent",
       description: `Email sent to ${selectedMeeting.contact.name}`,
     });
-    setShowEmailDialog(false);
+    setShowEmailForm(false);
   };
 
   // Function to handle scheduling a new meeting
@@ -561,41 +672,35 @@ export function EnhancedCalendar() {
     <div className="space-y-4">
       <div className="border rounded-lg p-4 bg-card">
         <div className="flex justify-between items-center mb-4">
-          <h3 className="text-xl font-semibold">Enhanced Meeting Calendar</h3>
+          <h2 className="text-2xl font-bold">Calendar</h2>
           <div className="flex items-center space-x-2">
-            <div className="flex flex-wrap gap-2">
-              <Button
-                variant={currentView === 'dayGridMonth' ? 'default' : 'outline'}
-                size="sm"
-                onClick={() => changeView('dayGridMonth')}
-                className="hidden md:inline-flex"
-              >
+            <div className="flex space-x-2">
+              <Button variant="outline" size="sm" onClick={() => changeView('dayGridMonth')}>
                 Month
               </Button>
-              <Button
-                variant={currentView === 'timeGridWeek' ? 'default' : 'outline'}
-                size="sm"
-                onClick={() => changeView('timeGridWeek')}
-                className="hidden sm:inline-flex"
-              >
+              <Button variant="outline" size="sm" onClick={() => changeView('timeGridWeek')}>
                 Week
               </Button>
-              <Button
-                variant={currentView === 'timeGridDay' ? 'default' : 'outline'}
-                size="sm"
-                onClick={() => changeView('timeGridDay')}
-              >
+              <Button variant="outline" size="sm" onClick={() => changeView('timeGridDay')}>
                 Day
               </Button>
             </div>
             <Button
-              variant="default"
+              variant="outline"
+              size="sm"
+              onClick={handleRefresh}
+              className="flex items-center"
+            >
+              <RefreshCw className="h-4 w-4 mr-2" />
+              Refresh
+            </Button>
+            <Button
               size="sm"
               onClick={handleScheduleMeeting}
-              className="ml-2"
+              className="flex items-center"
             >
-              <Plus className="h-4 w-4 mr-1" />
-              New Meeting
+              <Plus className="h-4 w-4 mr-2" />
+              Schedule Meeting
             </Button>
           </div>
         </div>
@@ -760,7 +865,7 @@ export function EnhancedCalendar() {
       </Dialog>
 
       {/* Call Dialog */}
-      <Dialog open={showCallDialog} onOpenChange={setShowCallDialog}>
+      <Dialog open={showCallForm} onOpenChange={setShowCallForm}>
         <DialogContent className="sm:max-w-md">
           <DialogHeader>
             <DialogTitle>Call Contact</DialogTitle>
@@ -779,14 +884,14 @@ export function EnhancedCalendar() {
           )}
           
           <DialogFooter>
-            <Button variant="outline" onClick={() => setShowCallDialog(false)}>Cancel</Button>
+            <Button variant="outline" onClick={() => setShowCallForm(false)}>Cancel</Button>
             <Button onClick={handleSubmitCall}>Call Now</Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>
 
       {/* SMS Dialog */}
-      <Dialog open={showSMSDialog} onOpenChange={setShowSMSDialog}>
+      <Dialog open={showSMSForm} onOpenChange={setShowSMSForm}>
         <DialogContent className="sm:max-w-md">
           <DialogHeader>
             <DialogTitle>Send SMS</DialogTitle>
@@ -807,8 +912,8 @@ export function EnhancedCalendar() {
                 <Textarea 
                   id="message" 
                   placeholder="Type your message here..." 
-                  value={messageText}
-                  onChange={(e) => setMessageText(e.target.value)}
+                  value={smsMessage}
+                  onChange={(e) => setSMSMessage(e.target.value)}
                   rows={4}
                 />
               </div>
@@ -816,14 +921,14 @@ export function EnhancedCalendar() {
           )}
           
           <DialogFooter>
-            <Button variant="outline" onClick={() => setShowSMSDialog(false)}>Cancel</Button>
+            <Button variant="outline" onClick={() => setShowSMSForm(false)}>Cancel</Button>
             <Button onClick={handleSubmitSMS}>Send Message</Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>
 
       {/* Email Dialog */}
-      <Dialog open={showEmailDialog} onOpenChange={setShowEmailDialog}>
+      <Dialog open={showEmailForm} onOpenChange={setShowEmailForm}>
         <DialogContent className="sm:max-w-lg">
           <DialogHeader>
             <DialogTitle>Send Email</DialogTitle>
@@ -863,14 +968,14 @@ export function EnhancedCalendar() {
           )}
           
           <DialogFooter>
-            <Button variant="outline" onClick={() => setShowEmailDialog(false)}>Cancel</Button>
+            <Button variant="outline" onClick={() => setShowEmailForm(false)}>Cancel</Button>
             <Button onClick={handleSubmitEmail}>Send Email</Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>
 
       {/* No-Show Dialog */}
-      <Dialog open={showNoShowDialog} onOpenChange={setShowNoShowDialog}>
+      <Dialog open={showNoShowForm} onOpenChange={setShowNoShowForm}>
         <DialogContent className="sm:max-w-md">
           <DialogHeader>
             <DialogTitle>Mark as No-Show</DialogTitle>
@@ -889,12 +994,12 @@ export function EnhancedCalendar() {
               </div>
               
               <div className="space-y-2">
-                <Label htmlFor="noShowReason">Reason for No-Show (Optional)</Label>
+                <Label htmlFor="noShowNotes">Reason for No-Show (Optional)</Label>
                 <Textarea 
-                  id="noShowReason" 
+                  id="noShowNotes" 
                   placeholder="Enter the reason why the lead didn't attend..." 
-                  value={noShowReason}
-                  onChange={(e) => setNoShowReason(e.target.value)}
+                  value={noShowNotes}
+                  onChange={(e) => setNoShowNotes(e.target.value)}
                   rows={3}
                 />
               </div>
@@ -902,7 +1007,7 @@ export function EnhancedCalendar() {
           )}
           
           <DialogFooter>
-            <Button variant="outline" onClick={() => setShowNoShowDialog(false)}>Cancel</Button>
+            <Button variant="outline" onClick={() => setShowNoShowForm(false)}>Cancel</Button>
             <Button 
               onClick={handleSubmitNoShow}
               className="bg-purple-600 hover:bg-purple-700 text-white"

@@ -7,35 +7,75 @@ import { Button } from '@/components/ui/button';
 import { MeetingForm } from './MeetingForm';
 import { toast } from '@/components/ui/use-toast';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
+import { USE_MOCK_DATA } from '@/lib/config';
 import { MOCK_MEETINGS } from '@/lib/mock/meetings';
+import { ApiResponse } from '@/lib/api/client';
 
 export function MeetingList() {
-  const [meetings, setMeetings] = useState<Meeting[]>(MOCK_MEETINGS);
-  const [loading, setLoading] = useState(false);
+  const [meetings, setMeetings] = useState<Meeting[]>([]);
+  const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [editingMeeting, setEditingMeeting] = useState<Meeting | null>(null);
   const [activeTab, setActiveTab] = useState('upcoming');
 
-  // Derived state
-  const upcomingMeetings = meetings.filter(m => new Date(m.start_time) > new Date() && m.status !== MeetingStatus.CANCELED);
-  const pastMeetings = meetings.filter(m => new Date(m.start_time) <= new Date() && m.status !== MeetingStatus.CANCELED);
-  const canceledMeetings = meetings.filter(m => m.status === MeetingStatus.CANCELED);
+  // Derived state - ensure meetings is always an array before filtering
+  const upcomingMeetings = Array.isArray(meetings) 
+    ? meetings.filter(m => new Date(m.start_time) > new Date() && m.status !== MeetingStatus.CANCELED)
+    : [];
+  const pastMeetings = Array.isArray(meetings)
+    ? meetings.filter(m => new Date(m.start_time) <= new Date() && m.status !== MeetingStatus.CANCELED)
+    : [];
+  const canceledMeetings = Array.isArray(meetings)
+    ? meetings.filter(m => m.status === MeetingStatus.CANCELED)
+    : [];
 
   const fetchMeetings = async () => {
     try {
       setLoading(true);
       setError(null);
       
-      // Try to fetch meetings, but don't block UI functionality if it fails
-      try {
+      if (USE_MOCK_DATA) {
+        // Use mock data when the flag is set to true
         console.log('Using mock meeting data for MeetingList');
-        setError('Using sample meeting data. API connection not available.');
-        
-        // We're using the mock data directly instead of making an API call
-        // This ensures consistency with the calendar view
-      } catch (err: any) {
-        console.error('Error fetching meetings:', err);
+        setMeetings(MOCK_MEETINGS);
+      } else {
+        // Use real API data when the flag is set to false
+        console.log('Fetching meetings from API');
+        try {
+          const response = await getUpcomingMeetings(30); // Get meetings for the next 30 days
+          
+          // Check if response is an ApiResponse object with data property
+          if (response && typeof response === 'object' && 'data' in response) {
+            const apiResponse = response as unknown as ApiResponse<Meeting[]>;
+            if (apiResponse.error) {
+              throw new Error(apiResponse.error.message || 'Failed to fetch meetings');
+            }
+            // Ensure data is an array
+            const meetingsData = Array.isArray(apiResponse.data) ? apiResponse.data : [];
+            console.log('Meetings data from API:', meetingsData);
+            setMeetings(meetingsData);
+          } else if (Array.isArray(response)) {
+            // If response is already an array, use it directly
+            console.log('Meetings array from API:', response);
+            setMeetings(response);
+          } else {
+            // If response is neither an ApiResponse nor an array, log and use empty array
+            console.error('Unexpected response format:', response);
+            setError('Received unexpected data format from API');
+            setMeetings([]);
+          }
+        } catch (apiError: any) {
+          console.error('Error fetching meetings:', apiError);
+          setError('Failed to load meetings. Please try again later.');
+          // Fall back to mock data if API fails
+          setMeetings(MOCK_MEETINGS);
+        }
       }
+    } catch (err: any) {
+      console.error('Error in fetchMeetings:', err);
+      setError('An unexpected error occurred. Please try again later.');
+      // Fall back to mock data if there's an exception
+      setMeetings(MOCK_MEETINGS);
     } finally {
       setLoading(false);
     }
@@ -75,19 +115,43 @@ export function MeetingList() {
   const handleDeleteMeeting = async (meeting: Meeting) => {
     if (window.confirm(`Are you sure you want to cancel the meeting "${meeting.title}"?`)) {
       try {
-        // Update the meeting status locally
-        const updatedMeetings = meetings.map(m => 
-          m.id === meeting.id 
-            ? { ...m, status: MeetingStatus.CANCELED, updated_at: new Date().toISOString() } 
-            : m
-        );
-        setMeetings(updatedMeetings);
+        if (USE_MOCK_DATA) {
+          // Update the meeting status locally for mock data
+          const updatedMeetings = meetings.map(m => 
+            m.id === meeting.id 
+              ? { ...m, status: MeetingStatus.CANCELED, updated_at: new Date().toISOString() } 
+              : m
+          );
+          setMeetings(updatedMeetings);
+        } else {
+          // Call the API to delete/cancel the meeting
+          try {
+            const response = await deleteMeeting(meeting.id);
+            
+            if (response.error) {
+              throw new Error(response.error.message || 'Failed to cancel meeting');
+            }
+            
+            console.log('Meeting canceled successfully:', response.data);
+            
+            // Update the local state after successful API call
+            const updatedMeetings = meetings.map(m => 
+              m.id === meeting.id 
+                ? { ...m, status: MeetingStatus.CANCELED, updated_at: new Date().toISOString() } 
+                : m
+            );
+            setMeetings(updatedMeetings);
+          } catch (apiError: any) {
+            console.error('API error canceling meeting:', apiError);
+            throw new Error('Failed to cancel meeting via API');
+          }
+        }
         
         toast({
           title: "Meeting canceled",
           description: "The meeting has been successfully canceled.",
         });
-      } catch (error) {
+      } catch (error: any) {
         console.error('Failed to delete meeting:', error);
         toast({
           title: "Failed to cancel meeting",
@@ -191,6 +255,12 @@ export function MeetingList() {
       {error && (
         <div className="bg-yellow-100 border border-yellow-400 text-yellow-700 px-4 py-3 rounded relative" role="alert">
           <span className="block sm:inline">{error}</span>
+        </div>
+      )}
+      
+      {USE_MOCK_DATA && (
+        <div className="bg-blue-100 border border-blue-400 text-blue-700 px-4 py-3 rounded relative" role="alert">
+          <span className="block sm:inline">Using mock data. Set USE_MOCK_DATA to false in config.ts to use real data.</span>
         </div>
       )}
       
