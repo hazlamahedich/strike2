@@ -131,10 +131,12 @@ const FloatingChatbot: React.FC = () => {
   };
 
   const toggleChat = () => {
+    // When opening the chat, position it in a visible area in the lower right corner
     if (!isOpen) {
+      // Calculate position in the lower right corner
       const newPosition = {
-        x: window.innerWidth - 400,
-        y: window.innerHeight - 550
+        x: Math.max(window.innerWidth - 400, 20), // 400px from right edge or 20px from left if window is small
+        y: Math.max(window.innerHeight - 550, 20) // Position it near the bottom but ensure it's visible
       };
       setDragPosition(newPosition);
       setIsMinimized(false);
@@ -196,6 +198,9 @@ const FloatingChatbot: React.FC = () => {
 
   const handleMouseUp = () => {
     setIsDragging(false);
+    
+    // Ensure the chatbot is positioned in a visible area after dragging
+    ensureVisiblePosition();
   };
 
   useEffect(() => {
@@ -213,19 +218,47 @@ const FloatingChatbot: React.FC = () => {
     };
   }, [isDragging, dragOffset]);
 
+  // Function to ensure the chatbot is positioned in a visible area
+  const ensureVisiblePosition = () => {
+    const chatbotWidth = 350;
+    const chatbotHeight = 500;
+    const margin = 20;
+    
+    // Calculate a position that ensures visibility
+    const x = Math.min(
+      Math.max(margin, dragPosition.x),
+      window.innerWidth - chatbotWidth - margin
+    );
+    
+    const y = Math.min(
+      Math.max(margin, dragPosition.y),
+      window.innerHeight - chatbotHeight - margin
+    );
+    
+    // Update position if needed
+    if (x !== dragPosition.x || y !== dragPosition.y) {
+      setDragPosition({ x, y });
+    }
+  };
+
+  // Update the resize handler to use the ensureVisiblePosition function
   useEffect(() => {
     const handleResize = () => {
-      if (dragPosition.x > window.innerWidth - 100) {
-        setDragPosition(prev => ({ ...prev, x: window.innerWidth - 400 }));
-      }
-      if (dragPosition.y > window.innerHeight - 100) {
-        setDragPosition(prev => ({ ...prev, y: window.innerHeight - 550 }));
+      if (isOpen) {
+        ensureVisiblePosition();
       }
     };
 
     window.addEventListener('resize', handleResize);
     return () => window.removeEventListener('resize', handleResize);
-  }, [dragPosition]);
+  }, [isOpen, dragPosition]);
+
+  // Call ensureVisiblePosition when the chatbot is opened
+  useEffect(() => {
+    if (isOpen) {
+      ensureVisiblePosition();
+    }
+  }, [isOpen]);
 
   return (
     <Box sx={{ position: 'fixed', bottom: 20, right: 20, zIndex: 1000 }}>

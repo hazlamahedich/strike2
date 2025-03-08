@@ -461,7 +461,7 @@ The chatbot interface includes several controls for easy interaction:
 3. **Copy to Clipboard**: Each message has a copy icon that appears on hover, allowing you to copy specific responses.
 4. **Feedback Buttons**: After receiving a response, you can provide feedback using the thumbs up/down buttons.
 5. **Expand/Collapse**: Some responses, especially those with multiple steps or sections, can be expanded or collapsed for easier reading.
-6. **Draggable Window**: The chatbot window can be moved anywhere on the screen by clicking and dragging the header bar. The chatbot will automatically position itself in a visible area when opened and will stay within the screen boundaries when dragged.
+6. **Draggable Window**: The chatbot window can be moved anywhere on the screen by clicking and dragging the header bar. By default, the chatbot opens in the lower right corner of the screen in a visible area, and will automatically stay within the screen boundaries when dragged.
 
 #### Using the Chatbot for Help
 
