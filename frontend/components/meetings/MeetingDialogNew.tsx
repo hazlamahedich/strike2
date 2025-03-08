@@ -15,7 +15,7 @@ interface MeetingDialogNewProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   lead?: Lead;
-  onSuccess?: () => void;
+  onSuccess?: (meetingData?: any) => void;
   onCancel?: () => void;
 }
 
@@ -38,8 +38,8 @@ export function MeetingDialogNew({
         
         <MeetingForm 
           lead={lead}
-          onSuccess={() => {
-            if (onSuccess) onSuccess();
+          onSuccess={(meetingData) => {
+            if (onSuccess) onSuccess(meetingData);
             onOpenChange(false);
           }} 
           onCancel={() => {

@@ -28,14 +28,18 @@ export enum LeadCampaignStatus {
   UNSUBSCRIBED = "unsubscribed"
 }
 
+// Base Lead interface with fields common to both API and Supabase
 export interface Lead {
   id: number;
   first_name: string;
   last_name: string;
   email?: string;
   phone?: string;
+  // Support both field naming conventions
   company?: string;
+  company_name?: string;
   title?: string;
+  job_title?: string;
   source: LeadSource;
   status: LeadStatus;
   owner_id?: number;
@@ -68,8 +72,11 @@ export interface LeadCreate {
   last_name: string;
   email?: string;
   phone?: string;
+  // Support both field naming conventions
   company?: string;
+  company_name?: string;
   title?: string;
+  job_title?: string;
   source: LeadSource;
   status: LeadStatus;
   owner_id?: number;
@@ -86,8 +93,11 @@ export interface LeadUpdate {
   last_name?: string;
   email?: string;
   phone?: string;
+  // Support both field naming conventions
   company?: string;
+  company_name?: string;
   title?: string;
+  job_title?: string;
   source?: LeadSource;
   status?: LeadStatus;
   owner_id?: number;
@@ -101,6 +111,24 @@ export interface LeadUpdate {
   facebook_url?: string;
   twitter_url?: string;
   status_change_notes?: string;
+}
+
+// Form values interface for the lead form
+export interface LeadFormValues {
+  first_name: string;
+  last_name: string;
+  email?: string;
+  phone?: string;
+  company_name?: string;
+  job_title?: string;
+  status?: string;
+  source?: string;
+  notes?: string;
+  owner_id?: string;
+  custom_fields?: Record<string, any>;
+  linkedin_url?: string;
+  facebook_url?: string;
+  twitter_url?: string;
 }
 
 export interface LeadFilter {

@@ -64,9 +64,21 @@ export const useLead = (leadId: number, includeDetails: boolean = false) => {
         return null;
       }
       
-      return await leadApi.getLead(leadId, includeDetails);
+      // Validate leadId
+      if (isNaN(leadId) || leadId <= 0) {
+        console.error(`Invalid lead ID in useLead hook: ${leadId}`);
+        throw new Error(`Invalid lead ID: ${leadId}`);
+      }
+      
+      try {
+        return await leadApi.getLead(leadId, includeDetails);
+      } catch (error: any) {
+        console.error(`Error in useLead hook for leadId ${leadId}:`, error);
+        throw error; // Re-throw to be caught by React Query
+      }
     },
     enabled: leadId !== -1, // Only run the query if leadId is not -1
+    retry: 1, // Only retry once to avoid excessive retries on permanent errors
   });
 };
 

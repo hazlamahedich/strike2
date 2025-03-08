@@ -95,15 +95,17 @@ interface PhoneDialogProps {
   onOpenChange: (open: boolean) => void;
   leadPhone?: string;
   leadName: string;
+  onSuccess?: (callData: { phoneNumber: string; duration: number; notes: string }) => void;
 }
 
-export function PhoneDialog({ open, onOpenChange, leadPhone, leadName }: PhoneDialogProps) {
+export function PhoneDialog({ open, onOpenChange, leadPhone, leadName, onSuccess }: PhoneDialogProps) {
   const { toast } = useToast();
   const [activeTab, setActiveTab] = useState('dialpad');
   const [callLogs, setCallLogs] = useState<any[]>([]);
   const [smsLogs, setSMSLogs] = useState<any[]>([]);
   const [isLoading, setIsLoading] = useState(false);
   const [isSMSLoading, setIsSMSLoading] = useState(false);
+  const [activePhoneNumber, setActivePhoneNumber] = useState<string | undefined>(leadPhone);
   
   // Fetch call logs when dialog opens
   useEffect(() => {
@@ -163,12 +165,24 @@ export function PhoneDialog({ open, onOpenChange, leadPhone, leadName }: PhoneDi
   };
   
   // Handle call completion
-  const handleCallComplete = (callSid: string, duration: number) => {
+  const handleCallComplete = (callSid: string, duration: number, notes: string = '') => {
+    // In a real implementation, this would update the call record in the database
+    console.log(`Call ${callSid} completed with duration ${duration} seconds`);
+    
+    // Show toast
     toast({
-      title: 'Call Completed',
-      description: `Call lasted ${formatDuration(duration)}`,
+      title: 'Call completed',
+      description: `Call duration: ${formatDuration(duration)}`,
     });
-    fetchCallLogs(); // Refresh call logs
+    
+    // Call onSuccess callback if provided
+    if (onSuccess) {
+      onSuccess({
+        phoneNumber: activePhoneNumber || leadPhone || '',
+        duration,
+        notes
+      });
+    }
   };
 
   // Handle sending SMS

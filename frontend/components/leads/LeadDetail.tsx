@@ -217,22 +217,39 @@ const LeadDetail: React.FC<LeadDetailProps> = ({
     return <div className="flex justify-center p-8 text-red-500">Error loading lead details. Please try again.</div>;
   }
   
+  // Ensure we have consistent field names regardless of Supabase schema
+  const leadData = {
+    ...lead,
+    // Handle potential field name differences between API and Supabase
+    full_name: lead.full_name || `${lead.first_name} ${lead.last_name}`,
+    company: lead.company || lead.company_name,
+    title: lead.title || lead.job_title,
+    // Ensure these fields exist with default values if missing
+    lead_score: lead.lead_score || 0,
+    conversion_probability: lead.conversion_probability || 0,
+    tasks: lead.tasks || [],
+    notes: lead.notes || [],
+    campaigns: lead.campaigns || [],
+    activities: lead.activities || [],
+    custom_fields: lead.custom_fields || {}
+  };
+  
   return (
     <div className="space-y-6">
       <div className="flex justify-between items-start">
         <div>
-          <h1 className="text-3xl font-bold">{lead.full_name}</h1>
-          {lead.title && lead.company && (
+          <h1 className="text-3xl font-bold">{leadData.full_name}</h1>
+          {leadData.title && leadData.company && (
             <p className="text-muted-foreground">
-              {lead.title} at {lead.company}
+              {leadData.title} at {leadData.company}
             </p>
           )}
           <div className="flex gap-2 mt-2">
-            <Badge className={getStatusColor(lead.status)}>
-              {lead.status.charAt(0).toUpperCase() + lead.status.slice(1)}
+            <Badge className={getStatusColor(leadData.status)}>
+              {leadData.status.charAt(0).toUpperCase() + leadData.status.slice(1)}
             </Badge>
-            <Badge className={getSourceColor(lead.source)}>
-              {lead.source.split('_').map(word => word.charAt(0).toUpperCase() + word.slice(1)).join(' ')}
+            <Badge className={getSourceColor(leadData.source)}>
+              {leadData.source.split('_').map(word => word.charAt(0).toUpperCase() + word.slice(1)).join(' ')}
             </Badge>
           </div>
         </div>
@@ -257,10 +274,10 @@ const LeadDetail: React.FC<LeadDetailProps> = ({
               <div className="w-full bg-gray-200 rounded-full h-2.5 mr-2">
                 <div 
                   className="bg-blue-600 h-2.5 rounded-full" 
-                  style={{ width: `${Math.min(100, Math.max(0, lead.lead_score * 10))}%` }}
+                  style={{ width: `${Math.min(100, Math.max(0, leadData.lead_score * 10))}%` }}
                 ></div>
               </div>
-              <span className="text-2xl font-bold">{lead.lead_score.toFixed(1)}</span>
+              <span className="text-2xl font-bold">{leadData.lead_score.toFixed(1)}</span>
             </div>
           </CardContent>
         </Card>
@@ -272,7 +289,7 @@ const LeadDetail: React.FC<LeadDetailProps> = ({
           <CardContent>
             <div className="flex items-center">
               <Clock className="mr-2 h-4 w-4 text-muted-foreground" />
-              <span>{formatDate(lead.created_at)}</span>
+              <span>{formatDate(leadData.created_at)}</span>
             </div>
           </CardContent>
         </Card>
@@ -284,7 +301,7 @@ const LeadDetail: React.FC<LeadDetailProps> = ({
           <CardContent>
             <div className="flex items-center">
               <Activity className="mr-2 h-4 w-4 text-muted-foreground" />
-              <span>{formatDate(lead.updated_at)}</span>
+              <span>{formatDate(leadData.updated_at)}</span>
             </div>
           </CardContent>
         </Card>
@@ -295,8 +312,8 @@ const LeadDetail: React.FC<LeadDetailProps> = ({
           </CardHeader>
           <CardContent>
             <div className="flex items-center">
-              {lead.owner ? (
-                <span>{lead.owner.name}</span>
+              {leadData.owner ? (
+                <span>{leadData.owner.name}</span>
               ) : (
                 <span className="text-muted-foreground">Unassigned</span>
               )}
@@ -312,9 +329,9 @@ const LeadDetail: React.FC<LeadDetailProps> = ({
         </CardHeader>
         <CardContent>
           <div className="flex flex-wrap gap-4">
-            {lead.linkedin_url ? (
+            {leadData.linkedin_url ? (
               <a 
-                href={lead.linkedin_url} 
+                href={leadData.linkedin_url} 
                 target="_blank" 
                 rel="noopener noreferrer"
                 className="flex items-center text-blue-600 hover:underline"
@@ -329,9 +346,9 @@ const LeadDetail: React.FC<LeadDetailProps> = ({
               </span>
             )}
             
-            {lead.facebook_url ? (
+            {leadData.facebook_url ? (
               <a 
-                href={lead.facebook_url} 
+                href={leadData.facebook_url} 
                 target="_blank" 
                 rel="noopener noreferrer"
                 className="flex items-center text-blue-600 hover:underline"
@@ -346,9 +363,9 @@ const LeadDetail: React.FC<LeadDetailProps> = ({
               </span>
             )}
             
-            {lead.twitter_url ? (
+            {leadData.twitter_url ? (
               <a 
-                href={lead.twitter_url} 
+                href={leadData.twitter_url} 
                 target="_blank" 
                 rel="noopener noreferrer"
                 className="flex items-center text-blue-600 hover:underline"
@@ -404,17 +421,17 @@ const LeadDetail: React.FC<LeadDetailProps> = ({
             <CardContent className="grid grid-cols-1 md:grid-cols-2 gap-4">
               <div className="space-y-1">
                 <h3 className="text-sm font-medium text-muted-foreground">Email</h3>
-                <p>{lead.email || 'N/A'}</p>
+                <p>{leadData.email || 'N/A'}</p>
               </div>
               <div className="space-y-1">
                 <h3 className="text-sm font-medium text-muted-foreground">Phone</h3>
-                {lead.phone ? (
+                {leadData.phone ? (
                   <button 
                     onClick={handleCall}
                     className="text-blue-600 hover:underline flex items-center"
                   >
                     <Phone className="h-3 w-3 mr-1" />
-                    {lead.phone}
+                    {leadData.phone}
                   </button>
                 ) : (
                   <p>N/A</p>
@@ -422,22 +439,22 @@ const LeadDetail: React.FC<LeadDetailProps> = ({
               </div>
               <div>
                 <h3 className="text-sm font-medium text-muted-foreground">Company</h3>
-                <p>{lead.company || 'N/A'}</p>
+                <p>{leadData.company || 'N/A'}</p>
               </div>
               <div>
                 <h3 className="text-sm font-medium text-muted-foreground">Job Title</h3>
-                <p>{lead.title || 'N/A'}</p>
+                <p>{leadData.title || 'N/A'}</p>
               </div>
             </CardContent>
           </Card>
           
-          {Object.keys(lead.custom_fields).length > 0 && (
+          {Object.keys(leadData.custom_fields).length > 0 && (
             <Card>
               <CardHeader>
                 <CardTitle>Custom Fields</CardTitle>
               </CardHeader>
               <CardContent className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                {Object.entries(lead.custom_fields).map(([key, value]) => (
+                {Object.entries(leadData.custom_fields).map(([key, value]) => (
                   <div key={key}>
                     <h3 className="text-sm font-medium text-muted-foreground">
                       {key.split('_').map(word => word.charAt(0).toUpperCase() + word.slice(1)).join(' ')}
@@ -454,9 +471,9 @@ const LeadDetail: React.FC<LeadDetailProps> = ({
               <CardTitle>Recent Activity</CardTitle>
             </CardHeader>
             <CardContent>
-              {lead.activities && lead.activities.length > 0 ? (
+              {leadData.activities && leadData.activities.length > 0 ? (
                 <div className="space-y-4">
-                  {lead.activities.slice(0, 5).map((activity, index) => (
+                  {leadData.activities.slice(0, 5).map((activity, index) => (
                     <div key={index} className="flex items-start gap-2">
                       <div className="w-2 h-2 rounded-full bg-blue-500 mt-2"></div>
                       <div>
@@ -635,9 +652,9 @@ const LeadDetail: React.FC<LeadDetailProps> = ({
               </Button>
             </CardHeader>
             <CardContent>
-              {lead.tasks && lead.tasks.length > 0 ? (
+              {leadData.tasks && leadData.tasks.length > 0 ? (
                 <div className="space-y-4">
-                  {lead.tasks.map((task, index) => (
+                  {leadData.tasks.map((task, index) => (
                     <div key={index} className="flex items-start gap-4 pb-4 border-b last:border-0">
                       <div className={`w-2 h-2 rounded-full ${task.completed ? 'bg-green-500' : 'bg-orange-500'} mt-2`}></div>
                       <div className="flex-1">
@@ -680,18 +697,18 @@ const LeadDetail: React.FC<LeadDetailProps> = ({
             </CardHeader>
             <CardContent>
               {/* Debug information */}
-              {showDebugInfo && lead.campaigns && (
+              {showDebugInfo && leadData.campaigns && (
                 <div className="mb-4 p-4 bg-gray-100 rounded overflow-auto max-h-60">
                   <h4 className="font-medium mb-2">Raw Campaign Data:</h4>
                   <pre className="text-xs">
-                    {JSON.stringify(lead.campaigns, null, 2)}
+                    {JSON.stringify(leadData.campaigns, null, 2)}
                   </pre>
                 </div>
               )}
               
-              {lead.campaigns && lead.campaigns.length > 0 ? (
+              {leadData.campaigns && leadData.campaigns.length > 0 ? (
                 <div className="space-y-6">
-                  {lead.campaigns.map((campaignData, index) => {
+                  {leadData.campaigns.map((campaignData, index) => {
                     // Simple fallback for when the data is just a string or simple object
                     if (typeof campaignData === 'string' || (typeof campaignData === 'object' && !campaignData.name && !campaignData.campaign)) {
                       return (
@@ -927,21 +944,21 @@ const LeadDetail: React.FC<LeadDetailProps> = ({
         </TabsContent>
       </Tabs>
       
-      {lead && lead.email && (
+      {leadData && leadData.email && (
         <EmailDialog
           open={showEmailDialog}
           onOpenChange={(open) => setShowEmailDialog(open)}
-          leadEmail={lead.email}
-          leadName={lead.full_name}
+          leadEmail={leadData.email}
+          leadName={leadData.full_name}
         />
       )}
       
-      {lead && (
+      {leadData && (
         <PhoneDialog
           open={showPhoneDialog}
           onOpenChange={(open) => setShowPhoneDialog(open)}
-          leadPhone={lead.phone}
-          leadName={lead.full_name}
+          leadPhone={leadData.phone}
+          leadName={leadData.full_name}
         />
       )}
     </div>

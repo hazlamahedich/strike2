@@ -22,7 +22,7 @@ interface NoteDialogProps {
   onOpenChange: (open: boolean) => void;
   leadId: number;
   leadName: string;
-  onSuccess?: () => void;
+  onSuccess?: (noteData?: { content: string; is_private: boolean }) => void;
   isMock?: boolean; // Flag to indicate if we're using mock data
 }
 
@@ -77,7 +77,10 @@ export function NoteDialog({
       
       // Call success callback if provided
       if (onSuccess) {
-        onSuccess();
+        onSuccess({
+          content,
+          is_private: isPrivate
+        });
       }
     } catch (error) {
       console.error('Failed to add note:', error);

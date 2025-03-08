@@ -20,7 +20,16 @@ import {
   FileText,
   Flag,
   UserIcon,
-  Activity
+  Activity,
+  AlertCircle,
+  FileQuestion,
+  Loader2,
+  RefreshCw,
+  PlusCircle,
+  Trash2,
+  Users,
+  PencilIcon,
+  XCircle
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
@@ -37,6 +46,8 @@ import { MeetingDialog } from '@/components/meetings/MeetingDialog';
 import { MeetingDialogNew } from '@/components/meetings/MeetingDialogNew';
 import { LeadEditDialog } from '@/components/leads/LeadEditDialog';
 import { TaskActionsMenu } from '@/components/leads/TaskActionsMenu';
+import { formatDistanceToNow } from 'date-fns';
+import dynamic from 'next/dynamic';
 
 // Import API hooks
 import { 
@@ -44,12 +55,31 @@ import {
   useUpdateLead, 
   useLeadTimeline, 
   useLeadInsights,
-  useAddLeadNote
+  useAddLeadNote,
+  leadKeys,
+  useDeleteLead
 } from '@/lib/hooks/useLeads';
 
+// Import Supabase client
+import supabase from '@/lib/supabase/client';
+
+// Import React Query
+import { useMutation, useQueryClient } from '@tanstack/react-query';
+
+// Import getLeadInsights and addLeadNote functions
+import { 
+  getLeadTimeline, 
+  getLeadInsights, 
+  addLeadNote, 
+  deleteLead 
+} from '@/lib/api/leads';
+
+// Dynamically import the InsightsEditor component
+const InsightsEditor = dynamic(() => import('./InsightsEditor'), { ssr: false });
+
 // Configuration flag to toggle between mock and real data
-// Set to true to use mock data, false to use real API data
-const USE_MOCK_DATA = true;
+// Set this to false to use the API's decision on whether to use mock data
+const USE_MOCK_DATA = false;
 
 // Mock lead details data
 // This is now just a fallback in case the mockService fails
@@ -109,51 +139,62 @@ const mockLeadDetails: Record<string, any> = {
   }
 };
 
-// Mock timeline data
-const mockTimeline = [
+// Mock data for development
+const mockLeadTimeline = [
   {
     id: 1,
     type: 'note',
-    content: 'Added a note',
-    created_at: '2023-05-15T10:35:00Z',
-    user: { id: 1, name: 'Jane Doe' }
+    content: 'Added a note about the lead',
+    created_at: '2023-06-01T10:00:00Z',
+    user: { name: 'John Doe' }
   },
   {
     id: 2,
     type: 'email',
-    content: 'Sent introduction email',
-    created_at: '2023-05-15T11:00:00Z',
-    user: { id: 1, name: 'Jane Doe' }
+    content: 'Sent an email about the product demo',
+    created_at: '2023-06-02T14:30:00Z',
+    user: { name: 'Jane Smith' }
   },
   {
     id: 3,
     type: 'call',
-    content: 'Made initial contact call (15 min)',
-    created_at: '2023-05-16T09:30:00Z',
-    user: { id: 1, name: 'Jane Doe' }
+    content: 'Had a call to discuss requirements',
+    created_at: '2023-06-03T11:15:00Z',
+    user: { name: 'John Doe' }
   }
 ];
+
+const mockInsightsData = {
+  score_factors: [
+    { factor: "Recent engagement", impact: 1, description: "Opened emails in the last 7 days" },
+    { factor: "Website visits", impact: 1, description: "Visited pricing page 3 times" },
+    { factor: "Response time", impact: -0.5, description: "Slow response to last outreach" }
+  ],
+  recommendations: [
+    { text: "Schedule a product demo", priority: "high" },
+    { text: "Share case study on similar company", priority: "medium" },
+    { text: "Follow up on pricing discussion", priority: "medium" }
+  ],
+  conversion_probability: 0.75
+};
 
 export default function LeadDetailPage() {
   const router = useRouter();
   const params = useParams();
-  const leadId = params.id as string;
+  const leadId = safeParseInt(params.id as string);
+  const queryClient = useQueryClient();
   
-  // Set up mock user in localStorage for development
-  useEffect(() => {
-    if (USE_MOCK_DATA && typeof window !== 'undefined') {
-      // Check if we already have a mock user
-      if (!localStorage.getItem('strike_app_user')) {
-        // Set up a mock user to trigger the mockService
-        localStorage.setItem('strike_app_user', JSON.stringify({
-          id: '1',
-          email: 'demo@example.com',
-          name: 'Demo User',
-          role: 'admin'
-        }));
-      }
-    }
-  }, []);
+  // State for lead data
+  const [lead, setLead] = useState<any>(null);
+  const [loading, setLoading] = useState(true);
+  const [activeTab, setActiveTab] = useState('overview');
+  const [timelineFilters, setTimelineFilters] = useState<string[]>([]);
+  const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
+  const [showAddToCampaign, setShowAddToCampaign] = useState(false);
+  const [showTaskModal, setShowTaskModal] = useState(false);
+  const [currentTask, setCurrentTask] = useState<any>(null);
+  const [isEditingTask, setIsEditingTask] = useState(false);
+  const [showInsightsEditor, setShowInsightsEditor] = useState(false);
   
   // State for dialogs
   const [showStatusDialog, setShowStatusDialog] = useState(false);
@@ -164,33 +205,136 @@ export default function LeadDetailPage() {
   const [showCallDialog, setShowCallDialog] = useState(false);
   const [showMeetingDialog, setShowMeetingDialog] = useState(false);
   const [showEditDialog, setShowEditDialog] = useState(false);
-  const [currentTask, setCurrentTask] = useState<any>(null);
-  const [isEditingTask, setIsEditingTask] = useState(false);
+  
+  // Initialize mock service if using mock data
+  useEffect(() => {
+    if (USE_MOCK_DATA && typeof window !== 'undefined') {
+      // Set up a mock user to trigger the mockService
+      localStorage.setItem('strike_app_user', JSON.stringify({
+        id: '1',
+        email: 'demo@example.com',
+        name: 'Demo User',
+        role: 'admin'
+      }));
+    }
+    
+    // Redirect if leadId is invalid
+    if (!USE_MOCK_DATA && (leadId === -1 || isNaN(leadId))) {
+      toast.error('Invalid lead ID');
+      router.push('/dashboard/leads');
+    }
+  }, [leadId, router]);
   
   // API hooks for real data - only run when not using mock data
   const { 
     data: apiLead, 
     isLoading: isLoadingLead, 
-    isError: isErrorLead 
-  } = useLead(USE_MOCK_DATA ? -1 : parseInt(leadId), true);
+    isError: isErrorLead,
+    error: leadError
+  } = useLead(USE_MOCK_DATA ? -1 : leadId, true);
   
   const { 
     data: apiTimeline, 
     isLoading: isLoadingTimeline 
-  } = useLeadTimeline(USE_MOCK_DATA ? -1 : parseInt(leadId));
+  } = useLeadTimeline(USE_MOCK_DATA ? -1 : leadId);
   
   const { 
     data: apiInsights, 
     isLoading: isLoadingInsights 
-  } = useLeadInsights(USE_MOCK_DATA ? -1 : parseInt(leadId));
+  } = useLeadInsights(USE_MOCK_DATA ? -1 : leadId);
   
   const updateLeadMutation = useUpdateLead();
+  const addLeadNoteMutation = useAddLeadNote();
   
-  // Get the lead data based on the configuration flag
-  const lead = USE_MOCK_DATA ? mockLeadDetails[leadId] : apiLead;
-  const timeline = USE_MOCK_DATA ? mockTimeline : apiTimeline;
-  const isLoading = !USE_MOCK_DATA && (isLoadingLead || isLoadingTimeline || isLoadingInsights);
-  const isError = !USE_MOCK_DATA && isErrorLead;
+  // Use mock or API data based on configuration
+  const leadData = USE_MOCK_DATA ? mockLeadDetails[params.id as string] : apiLead;
+  const timeline = USE_MOCK_DATA ? mockLeadTimeline : apiTimeline;
+  const insights = USE_MOCK_DATA ? mockInsightsData : apiInsights;
+  
+  const isLoading = USE_MOCK_DATA ? false : isLoadingLead;
+  const isError = USE_MOCK_DATA ? false : isErrorLead;
+  
+  // Mock data for development
+  const mockLead = mockLeadDetails[params.id as string];
+  
+  // Set lead data
+  useEffect(() => {
+    if (leadData) {
+      console.log("Setting lead data:", leadData);
+      console.log("Lead status:", leadData.status);
+      
+      // Ensure lead status is a valid LeadStatus enum value
+      if (leadData.status && !Object.values(LeadStatus).includes(leadData.status)) {
+        console.warn("Invalid lead status:", leadData.status);
+        // Set a default status if the current one is invalid
+        const updatedLeadData = {
+          ...leadData,
+          status: LeadStatus.NEW
+        };
+        setLead(updatedLeadData);
+      } else {
+        setLead(leadData);
+      }
+      
+      setLoading(false);
+    }
+  }, [leadData]);
+  
+  // Show loading state
+  if (isLoading) {
+    return (
+      <div className="flex h-full w-full items-center justify-center">
+        <Loader2 className="h-8 w-8 animate-spin text-primary" />
+        <span className="ml-2 text-lg">Loading lead details...</span>
+      </div>
+    );
+  }
+  
+  // Show error state
+  if (isError) {
+    return (
+      <div className="flex h-full w-full flex-col items-center justify-center gap-4 p-6">
+        <AlertCircle className="h-12 w-12 text-destructive" />
+        <h2 className="text-xl font-semibold">Error Loading Lead</h2>
+        <p className="text-center text-muted-foreground">
+          {leadError instanceof Error 
+            ? leadError.message 
+            : "There was a problem loading the lead details. Please try again."}
+        </p>
+        <Button 
+          onClick={() => window.location.reload()}
+          variant="outline"
+        >
+          Try Again
+        </Button>
+        <Button 
+          onClick={() => window.history.back()}
+          variant="ghost"
+        >
+          Go Back
+        </Button>
+      </div>
+    );
+  }
+  
+  // Show not found state if no lead data
+  if (!leadData) {
+    return (
+      <div className="flex h-full w-full flex-col items-center justify-center gap-4 p-6">
+        <FileQuestion className="h-12 w-12 text-muted-foreground" />
+        <h2 className="text-xl font-semibold">Lead Not Found</h2>
+        <p className="text-center text-muted-foreground">
+          The lead you're looking for doesn't exist or you don't have permission to view it.
+        </p>
+        <Button 
+          onClick={() => window.history.back()}
+          variant="outline"
+        >
+          Go Back to Leads
+        </Button>
+      </div>
+    );
+  }
   
   // Handle status change
   const handleStatusChange = (status: LeadStatus, reason?: string) => {
@@ -229,7 +373,7 @@ export default function LeadDetailPage() {
         
         // Add to timeline
         const timelineEntry = {
-          id: mockTimeline.length + 1,
+          id: mockLeadTimeline.length + 1,
           type: 'status_change',
           content: `Changed status from ${previousStatusLabel} to ${statusLabel}${reason ? `: "${reason}"` : ''}`,
           created_at: new Date().toISOString(),
@@ -237,31 +381,77 @@ export default function LeadDetailPage() {
         };
         
         // Add to the beginning of the timeline
-        mockTimeline.unshift(timelineEntry);
+        mockLeadTimeline.unshift(timelineEntry);
         
         // Force re-render
         router.refresh();
       }
     } else {
-      // Real API implementation
-      updateLeadMutation.mutate(
-        { 
-          leadId: parseInt(leadId), 
-          leadData: { 
-            status, 
-            status_change_notes: reason 
-          } 
-        },
-        {
-          onSuccess: () => {
-            toast.success(`Lead status updated to ${status.charAt(0).toUpperCase() + status.slice(1)}`);
-          },
-          onError: (error) => {
-            console.error('Failed to update lead status:', error);
-            toast.error('Failed to update lead status');
+      // Real implementation with Supabase
+      const updateStatusMutation = useMutation({
+        mutationFn: async () => {
+          // Get the current status to record the change
+          const { data: currentLead } = await supabase
+            .from('leads')
+            .select('status')
+            .eq('id', leadId)
+            .single();
+            
+          const previousStatus = currentLead?.status || '';
+          const previousStatusLabel = previousStatus.charAt(0).toUpperCase() + previousStatus.slice(1);
+          const statusLabel = status.charAt(0).toUpperCase() + status.slice(1);
+          
+          // Update the lead status
+          const { data, error } = await supabase
+            .from('leads')
+            .update({ 
+              status, 
+              updated_at: new Date().toISOString() 
+            })
+            .eq('id', leadId)
+            .select()
+            .single();
+            
+          if (error) throw error;
+          
+          // Add to timeline
+          const timelineContent = `Changed status from ${previousStatusLabel} to ${statusLabel}${reason ? `: "${reason}"` : ''}`;
+          
+          await supabase.from('lead_timeline').insert({
+            lead_id: leadId,
+            type: 'status_change',
+            content: timelineContent,
+            created_at: new Date().toISOString(),
+            user_id: (await supabase.auth.getUser()).data.user?.id
+          });
+          
+          // Add a note if reason is provided
+          if (reason) {
+            await supabase.from('lead_notes').insert({
+              lead_id: leadId,
+              content: `Status changed to ${statusLabel}: "${reason}"`,
+              created_at: new Date().toISOString(),
+              created_by: (await supabase.auth.getUser()).data.user?.id
+            });
           }
+          
+          return data;
+        },
+        onSuccess: () => {
+          // Invalidate queries to refresh data
+          queryClient.invalidateQueries({ queryKey: leadKeys.detail(leadId) });
+          queryClient.invalidateQueries({ queryKey: leadKeys.timeline(leadId) });
+          
+          // Show toast
+          toast.success(`Lead status updated to ${status.charAt(0).toUpperCase() + status.slice(1)}`);
+        },
+        onError: (error) => {
+          console.error('Failed to update lead status:', error);
+          toast.error('Failed to update lead status');
         }
-      );
+      });
+      
+      updateStatusMutation.mutate();
     }
   };
   
@@ -316,7 +506,7 @@ export default function LeadDetailPage() {
           
           // Add to timeline
           const timelineEntry = {
-            id: mockTimeline.length + 1,
+            id: mockLeadTimeline.length + 1,
             type: 'task_update',
             content: `${completed ? 'Completed' : 'Reopened'} task: "${lead.tasks[taskIndex].title}"`,
             created_at: new Date().toISOString(),
@@ -324,7 +514,7 @@ export default function LeadDetailPage() {
           };
           
           // Add to the beginning of the timeline
-          mockTimeline.unshift(timelineEntry);
+          mockLeadTimeline.unshift(timelineEntry);
           
           // Force re-render
           router.refresh();
@@ -334,8 +524,34 @@ export default function LeadDetailPage() {
         }
       }
     } else {
-      // Real API implementation would go here
-      toast.success(`Task ${completed ? 'completed' : 'reopened'}`);
+      // Real API implementation
+      const updateTaskMutation = useMutation({
+        mutationFn: async () => {
+          const { data, error } = await supabase
+            .from('lead_tasks')
+            .update({ completed, updated_at: new Date().toISOString() })
+            .eq('id', taskId)
+            .select()
+            .single();
+          
+          if (error) throw error;
+          return data;
+        },
+        onSuccess: () => {
+          // Invalidate queries to refresh data
+          queryClient.invalidateQueries({ queryKey: leadKeys.detail(leadId) });
+          queryClient.invalidateQueries({ queryKey: leadKeys.timeline(leadId) });
+          
+          // Show toast
+          toast.success(`Task ${completed ? 'completed' : 'reopened'}`);
+        },
+        onError: (error) => {
+          console.error('Failed to update task:', error);
+          toast.error('Failed to update task status');
+        }
+      });
+      
+      updateTaskMutation.mutate();
     }
   };
   
@@ -364,7 +580,7 @@ export default function LeadDetailPage() {
           
           // Add to timeline
           const timelineEntry = {
-            id: mockTimeline.length + 1,
+            id: mockLeadTimeline.length + 1,
             type: 'task_delete',
             content: `Deleted task: "${taskTitle}"`,
             created_at: new Date().toISOString(),
@@ -372,7 +588,7 @@ export default function LeadDetailPage() {
           };
           
           // Add to the beginning of the timeline
-          mockTimeline.unshift(timelineEntry);
+          mockLeadTimeline.unshift(timelineEntry);
           
           // Force re-render
           router.refresh();
@@ -382,8 +598,52 @@ export default function LeadDetailPage() {
         }
       }
     } else {
-      // Real API implementation would go here
-      toast.success('Task deleted');
+      // Real API implementation
+      const deleteTaskMutation = useMutation({
+        mutationFn: async () => {
+          // First get the task to record its title for the timeline
+          const { data: task } = await supabase
+            .from('lead_tasks')
+            .select('title')
+            .eq('id', taskId)
+            .single();
+          
+          // Delete the task
+          const { error } = await supabase
+            .from('lead_tasks')
+            .delete()
+            .eq('id', taskId);
+          
+          if (error) throw error;
+          
+          // Add to timeline
+          if (task) {
+            await supabase.from('lead_timeline').insert({
+              lead_id: leadId,
+              type: 'task_delete',
+              content: `Deleted task: "${task.title}"`,
+              created_at: new Date().toISOString(),
+              user_id: (await supabase.auth.getUser()).data.user?.id
+            });
+          }
+          
+          return { success: true };
+        },
+        onSuccess: () => {
+          // Invalidate queries to refresh data
+          queryClient.invalidateQueries({ queryKey: leadKeys.detail(leadId) });
+          queryClient.invalidateQueries({ queryKey: leadKeys.timeline(leadId) });
+          
+          // Show toast
+          toast.success('Task deleted');
+        },
+        onError: (error) => {
+          console.error('Failed to delete task:', error);
+          toast.error('Failed to delete task');
+        }
+      });
+      
+      deleteTaskMutation.mutate();
     }
   };
   
@@ -405,7 +665,7 @@ export default function LeadDetailPage() {
           
           // Add to timeline
           const timelineEntry = {
-            id: mockTimeline.length + 1,
+            id: mockLeadTimeline.length + 1,
             type: 'task_update',
             content: `Updated task: "${updatedTask.title}"`,
             created_at: new Date().toISOString(),
@@ -413,7 +673,7 @@ export default function LeadDetailPage() {
           };
           
           // Add to the beginning of the timeline
-          mockTimeline.unshift(timelineEntry);
+          mockLeadTimeline.unshift(timelineEntry);
           
           // Force re-render
           router.refresh();
@@ -423,8 +683,49 @@ export default function LeadDetailPage() {
         }
       }
     } else {
-      // Real API implementation would go here
-      toast.success('Task updated');
+      // Real API implementation
+      const updateTaskMutation = useMutation({
+        mutationFn: async () => {
+          const taskData = {
+            ...updatedTask,
+            updated_at: new Date().toISOString()
+          };
+          
+          const { data, error } = await supabase
+            .from('lead_tasks')
+            .update(taskData)
+            .eq('id', updatedTask.id)
+            .select()
+            .single();
+          
+          if (error) throw error;
+          
+          // Add to timeline
+          await supabase.from('lead_timeline').insert({
+            lead_id: leadId,
+            type: 'task_update',
+            content: `Updated task: "${updatedTask.title}"`,
+            created_at: new Date().toISOString(),
+            user_id: (await supabase.auth.getUser()).data.user?.id
+          });
+          
+          return data;
+        },
+        onSuccess: () => {
+          // Invalidate queries to refresh data
+          queryClient.invalidateQueries({ queryKey: leadKeys.detail(leadId) });
+          queryClient.invalidateQueries({ queryKey: leadKeys.timeline(leadId) });
+          
+          // Show toast
+          toast.success('Task updated');
+        },
+        onError: (error) => {
+          console.error('Failed to update task:', error);
+          toast.error('Failed to update task');
+        }
+      });
+      
+      updateTaskMutation.mutate();
     }
   };
   
@@ -457,7 +758,7 @@ export default function LeadDetailPage() {
         
         // Add to timeline
         const timelineEntry = {
-          id: mockTimeline.length + 1,
+          id: mockLeadTimeline.length + 1,
           type: 'task_create',
           content: `Created task: "${task.title}"`,
           created_at: new Date().toISOString(),
@@ -465,7 +766,7 @@ export default function LeadDetailPage() {
         };
         
         // Add to the beginning of the timeline
-        mockTimeline.unshift(timelineEntry);
+        mockLeadTimeline.unshift(timelineEntry);
         
         // Force re-render
         router.refresh();
@@ -474,8 +775,51 @@ export default function LeadDetailPage() {
         toast.success('Task created');
       }
     } else {
-      // Real API implementation would go here
-      toast.success('Task created');
+      // Real API implementation
+      const createTaskMutation = useMutation({
+        mutationFn: async () => {
+          const taskData = {
+            ...newTask,
+            lead_id: leadId,
+            created_at: new Date().toISOString(),
+            updated_at: new Date().toISOString(),
+            created_by: (await supabase.auth.getUser()).data.user?.id
+          };
+          
+          const { data, error } = await supabase
+            .from('lead_tasks')
+            .insert(taskData)
+            .select()
+            .single();
+          
+          if (error) throw error;
+          
+          // Add to timeline
+          await supabase.from('lead_timeline').insert({
+            lead_id: leadId,
+            type: 'task_create',
+            content: `Created task: "${newTask.title}"`,
+            created_at: new Date().toISOString(),
+            user_id: (await supabase.auth.getUser()).data.user?.id
+          });
+          
+          return data;
+        },
+        onSuccess: () => {
+          // Invalidate queries to refresh data
+          queryClient.invalidateQueries({ queryKey: leadKeys.detail(leadId) });
+          queryClient.invalidateQueries({ queryKey: leadKeys.timeline(leadId) });
+          
+          // Show toast
+          toast.success('Task created');
+        },
+        onError: (error) => {
+          console.error('Failed to create task:', error);
+          toast.error('Failed to create task');
+        }
+      });
+      
+      createTaskMutation.mutate();
     }
   };
   
@@ -490,672 +834,1151 @@ export default function LeadDetailPage() {
     }
   };
   
-  // If loading or error, show appropriate UI
-  if (!USE_MOCK_DATA && isLoading) {
-    return (
-      <div className="flex items-center justify-center h-screen">
-        <div className="text-center">
-          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-primary mx-auto"></div>
-          <p className="mt-4 text-lg">Loading lead data...</p>
-        </div>
-      </div>
-    );
-  }
+  // Handle lead deletion
+  const handleDeleteLead = () => {
+    if (USE_MOCK_DATA) {
+      // Mock implementation
+      if (confirm('Are you sure you want to delete this lead?')) {
+        toast.success('Lead deleted');
+        router.push('/dashboard/leads');
+      }
+    } else {
+      // Real implementation with Supabase
+      const deleteLeadMutation = useMutation({
+        mutationFn: async () => {
+          // First get the lead to record its name for the toast
+          const { data: lead } = await supabase
+            .from('leads')
+            .select('first_name, last_name')
+            .eq('id', leadId)
+            .single();
+          
+          // Delete the lead
+          const { error } = await supabase
+            .from('leads')
+            .delete()
+            .eq('id', leadId);
+          
+          if (error) throw error;
+          
+          return { success: true, lead };
+        },
+        onSuccess: (data) => {
+          // Show toast
+          const leadName = data.lead ? `${data.lead.first_name} ${data.lead.last_name}` : 'Lead';
+          toast.success(`${leadName} deleted successfully`);
+          
+          // Navigate back to leads list
+          router.push('/dashboard/leads');
+        },
+        onError: (error) => {
+          console.error('Failed to delete lead:', error);
+          toast.error('Failed to delete lead');
+        }
+      });
+      
+      if (confirm('Are you sure you want to delete this lead?')) {
+        deleteLeadMutation.mutate();
+      }
+    }
+  };
   
-  if (!USE_MOCK_DATA && isError) {
-    return (
-      <div className="flex items-center justify-center h-screen">
-        <div className="text-center">
-          <div className="text-red-500 text-5xl mb-4">⚠️</div>
-          <h2 className="text-2xl font-bold mb-2">Error Loading Lead</h2>
-          <p className="text-muted-foreground mb-4">There was a problem loading the lead data.</p>
-          <Button onClick={() => router.push('/dashboard/leads')}>
-            Return to Leads
-          </Button>
-        </div>
-      </div>
-    );
-  }
+  // Handle adding lead to campaign
+  const handleAddToCampaign = (campaignId: number) => {
+    if (USE_MOCK_DATA) {
+      // Mock implementation
+      toast.info('Add to campaign functionality will be implemented');
+    } else {
+      // Real implementation with Supabase
+      const addToCampaignMutation = useMutation({
+        mutationFn: async () => {
+          // Get campaign details
+          const { data: campaign } = await supabase
+            .from('campaigns')
+            .select('name')
+            .eq('id', campaignId)
+            .single();
+            
+          if (!campaign) {
+            throw new Error('Campaign not found');
+          }
+          
+          // Add lead to campaign
+          const { data, error } = await supabase
+            .from('lead_campaigns')
+            .insert({
+              lead_id: leadId,
+              campaign_id: campaignId,
+              status: 'added',
+              added_at: new Date().toISOString(),
+              updated_at: new Date().toISOString(),
+              added_by: (await supabase.auth.getUser()).data.user?.id
+            })
+            .select()
+            .single();
+            
+          if (error) throw error;
+          
+          // Add to timeline
+          await supabase.from('lead_timeline').insert({
+            lead_id: leadId,
+            type: 'campaign',
+            content: `Added to campaign: "${campaign.name}"`,
+            created_at: new Date().toISOString(),
+            user_id: (await supabase.auth.getUser()).data.user?.id
+          });
+          
+          return { success: true, campaign };
+        },
+        onSuccess: (data) => {
+          // Invalidate queries to refresh data
+          queryClient.invalidateQueries({ queryKey: leadKeys.detail(leadId) });
+          queryClient.invalidateQueries({ queryKey: leadKeys.campaigns(leadId) });
+          
+          // Show toast
+          toast.success(`Lead added to campaign: ${data.campaign?.name || 'Unknown'}`);
+        },
+        onError: (error) => {
+          console.error('Failed to add lead to campaign:', error);
+          toast.error('Failed to add lead to campaign');
+        }
+      });
+      
+      addToCampaignMutation.mutate();
+    }
+  };
   
-  // If lead not found, show appropriate UI
-  if (!lead) {
-    return (
-      <div className="flex items-center justify-center h-screen">
-        <div className="text-center">
-          <div className="text-amber-500 text-5xl mb-4">🔍</div>
-          <h2 className="text-2xl font-bold mb-2">Lead Not Found</h2>
-          <p className="text-muted-foreground mb-4">The lead you're looking for doesn't exist or you don't have access to it.</p>
-          <Button onClick={() => router.push('/dashboard/leads')}>
-            Return to Leads
-          </Button>
-        </div>
-      </div>
-    );
-  }
+  // Handle adding a note
+  const handleAddNote = (content: string, isPrivate: boolean = false) => {
+    if (USE_MOCK_DATA) {
+      // Mock implementation
+      const lead = mockLeadDetails[leadId];
+      
+      // Create a new note
+      const newNote = {
+        id: lead.notes.length + 1,
+        body: content,
+        is_private: isPrivate,
+        created_at: new Date().toISOString(),
+        updated_at: new Date().toISOString(),
+        created_by: 1
+      };
+      
+      // Add to lead's notes
+      lead.notes.push(newNote);
+      
+      // Add to timeline
+      const timelineEntry = {
+        id: mockLeadTimeline.length + 1,
+        type: 'note',
+        content: `Added note: "${content.substring(0, 50)}${content.length > 50 ? '...' : ''}"`,
+        created_at: new Date().toISOString(),
+        user: { name: 'Demo User' }
+      };
+      
+      // Add to the beginning of the timeline
+      mockLeadTimeline.unshift(timelineEntry);
+      
+      // Force re-render
+      setShowNoteDialog(false);
+      toast.success('Note added successfully');
+    } else {
+      // Real implementation with Supabase
+      addLeadNoteMutation.mutate({
+        leadId: leadId,
+        content,
+        isPrivate
+      }, {
+        onSuccess: () => {
+          // Invalidate queries to refresh data
+          queryClient.invalidateQueries({ queryKey: leadKeys.detail(leadId) });
+          queryClient.invalidateQueries({ queryKey: leadKeys.timeline(leadId) });
+          
+          // Show toast
+          toast.success('Note added successfully');
+          
+          // Close dialog
+          setShowNoteDialog(false);
+        },
+        onError: (error: Error) => {
+          console.error('Error adding note:', error);
+          toast.error('Failed to add note');
+        }
+      });
+    }
+  };
+  
+  // Handle sending an email
+  const handleSendEmail = (emailData: { to: string; subject: string; body: string }) => {
+    if (USE_MOCK_DATA) {
+      // Mock implementation
+      toast.success('Email sent successfully');
+    } else {
+      // Real implementation with Supabase
+      const sendEmailMutation = useMutation({
+        mutationFn: async () => {
+          // Record the email in the database
+          const { data, error } = await supabase
+            .from('lead_emails')
+            .insert({
+              lead_id: leadId,
+              subject: emailData.subject,
+              body: emailData.body,
+              recipient: emailData.to,
+              sent_at: new Date().toISOString(),
+              sent_by: (await supabase.auth.getUser()).data.user?.id,
+              status: 'sent'
+            })
+            .select()
+            .single();
+            
+          if (error) throw error;
+          
+          // Add to timeline
+          await supabase.from('lead_timeline').insert({
+            lead_id: leadId,
+            type: 'email',
+            content: `Sent email: "${emailData.subject}"`,
+            data: { email_id: data.id, subject: emailData.subject, body_preview: emailData.body.substring(0, 100) },
+            created_at: new Date().toISOString(),
+            user_id: (await supabase.auth.getUser()).data.user?.id
+          });
+          
+          // In a real implementation, this would also send the actual email
+          // through an email service like SendGrid or AWS SES
+          
+          return data;
+        },
+        onSuccess: () => {
+          // Invalidate queries to refresh data
+          queryClient.invalidateQueries({ queryKey: leadKeys.detail(leadId) });
+          queryClient.invalidateQueries({ queryKey: leadKeys.timeline(leadId) });
+          
+          // Show toast
+          toast.success('Email sent successfully');
+        },
+        onError: (error) => {
+          console.error('Failed to send email:', error);
+          toast.error('Failed to send email');
+        }
+      });
+      
+      sendEmailMutation.mutate();
+    }
+  };
+  
+  // Handle scheduling a meeting
+  const handleScheduleMeeting = (meetingData: any) => {
+    if (USE_MOCK_DATA) {
+      // Mock implementation
+      toast.success('Meeting scheduled successfully');
+    } else {
+      // Real implementation with Supabase
+      const scheduleMeetingMutation = useMutation({
+        mutationFn: async () => {
+          // Create the meeting in the database
+          const { data, error } = await supabase
+            .from('meetings')
+            .insert({
+              lead_id: leadId,
+              title: meetingData.title,
+              description: meetingData.description,
+              start_time: meetingData.start_time,
+              end_time: meetingData.end_time,
+              location: meetingData.location,
+              meeting_type: meetingData.meeting_type,
+              status: 'scheduled',
+              created_at: new Date().toISOString(),
+              updated_at: new Date().toISOString(),
+              created_by: (await supabase.auth.getUser()).data.user?.id
+            })
+            .select()
+            .single();
+            
+          if (error) throw error;
+          
+          // Add to timeline
+          await supabase.from('lead_timeline').insert({
+            lead_id: leadId,
+            type: 'meeting',
+            content: `Scheduled meeting: "${meetingData.title}"`,
+            data: { 
+              meeting_id: data.id, 
+              title: meetingData.title, 
+              start_time: meetingData.start_time,
+              end_time: meetingData.end_time,
+              location: meetingData.location
+            },
+            created_at: new Date().toISOString(),
+            user_id: (await supabase.auth.getUser()).data.user?.id
+          });
+          
+          // In a real implementation, this would also create a calendar event
+          // and send invitations to attendees
+          
+          return data;
+        },
+        onSuccess: () => {
+          // Invalidate queries to refresh data
+          queryClient.invalidateQueries({ queryKey: leadKeys.detail(leadId) });
+          queryClient.invalidateQueries({ queryKey: leadKeys.timeline(leadId) });
+          
+          // Show toast
+          toast.success('Meeting scheduled successfully');
+        },
+        onError: (error) => {
+          console.error('Failed to schedule meeting:', error);
+          toast.error('Failed to schedule meeting');
+        }
+      });
+      
+      scheduleMeetingMutation.mutate();
+    }
+  };
+  
+  // Handle making a call
+  const handleCall = (callData: { phoneNumber: string; duration: number; notes: string }) => {
+    if (USE_MOCK_DATA) {
+      // Mock implementation
+      toast.success('Call logged successfully');
+    } else {
+      // Real implementation with Supabase
+      const logCallMutation = useMutation({
+        mutationFn: async () => {
+          // Record the call in the database
+          const { data, error } = await supabase
+            .from('lead_calls')
+            .insert({
+              lead_id: leadId,
+              phone_number: callData.phoneNumber,
+              duration: callData.duration,
+              notes: callData.notes,
+              called_at: new Date().toISOString(),
+              called_by: (await supabase.auth.getUser()).data.user?.id,
+              status: 'completed'
+            })
+            .select()
+            .single();
+            
+          if (error) throw error;
+          
+          // Add to timeline
+          await supabase.from('lead_timeline').insert({
+            lead_id: leadId,
+            type: 'call',
+            content: `Made a call (${callData.duration} seconds)${callData.notes ? ': ' + callData.notes.substring(0, 50) + (callData.notes.length > 50 ? '...' : '') : ''}`,
+            data: { 
+              call_id: data.id, 
+              duration: callData.duration,
+              notes: callData.notes
+            },
+            created_at: new Date().toISOString(),
+            user_id: (await supabase.auth.getUser()).data.user?.id
+          });
+          
+          return data;
+        },
+        onSuccess: () => {
+          // Invalidate queries to refresh data
+          queryClient.invalidateQueries({ queryKey: leadKeys.detail(leadId) });
+          queryClient.invalidateQueries({ queryKey: leadKeys.timeline(leadId) });
+          
+          // Show toast
+          toast.success('Call logged successfully');
+        },
+        onError: (error) => {
+          console.error('Failed to log call:', error);
+          toast.error('Failed to log call');
+        }
+      });
+      
+      logCallMutation.mutate();
+    }
+  };
+  
+  // Helper function to get timeline icon based on type
+  const getTimelineIcon = (type: string) => {
+    switch (type) {
+      case 'note':
+        return <MessageSquare className="h-5 w-5 text-blue-500" />;
+      case 'email':
+        return <Mail className="h-5 w-5 text-green-500" />;
+      case 'call':
+        return <Phone className="h-5 w-5 text-purple-500" />;
+      case 'status_change':
+        return <RefreshCw className="h-5 w-5 text-amber-500" />;
+      case 'task_create':
+        return <PlusCircle className="h-5 w-5 text-emerald-500" />;
+      case 'task_update':
+        return <Edit className="h-5 w-5 text-indigo-500" />;
+      case 'task_delete':
+        return <Trash2 className="h-5 w-5 text-red-500" />;
+      case 'meeting':
+        return <Calendar className="h-5 w-5 text-cyan-500" />;
+      case 'campaign':
+        return <Users className="h-5 w-5 text-orange-500" />;
+      default:
+        return <Activity className="h-5 w-5 text-gray-500" />;
+    }
+  };
+  
+  // Function to refresh insights data
+  const refreshInsights = async () => {
+    if (lead) {
+      try {
+        const insightsData = await getLeadInsights(lead.id);
+        setLead({
+          ...lead,
+          insights: insightsData
+        });
+      } catch (error) {
+        console.error('Error refreshing insights:', error);
+      }
+    }
+  };
   
   // Render the lead detail page with modern layout
   return (
-    <div className="flex-1 space-y-6 p-6 md:p-8 pt-6">
-      {/* Status Change Dialog */}
-      {statusToChange && (
-        <StatusChangeDialog
-          open={showStatusDialog}
-          onOpenChange={setShowStatusDialog}
-          leadId={parseInt(leadId)}
-          leadName={lead.full_name}
-          currentStatus={lead.status}
-          newStatus={statusToChange}
-          onConfirm={(status, reason) => handleStatusChange(status, reason)}
-          isMock={USE_MOCK_DATA}
-        />
+    <div className="flex h-full flex-col">
+      {/* Loading state */}
+      {loading && (
+        <div className="flex h-full w-full flex-col items-center justify-center gap-4 p-6">
+          <div className="h-12 w-12 animate-spin rounded-full border-4 border-primary border-t-transparent"></div>
+          <p className="text-lg font-medium">Loading lead details...</p>
+        </div>
       )}
-      
-      {/* Header with back button and lead name */}
-      <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
-        <div className="flex items-center">
-          <Button 
-            variant="ghost" 
-            size="sm" 
-            className="mr-2"
-            onClick={() => router.push('/dashboard/leads')}
-          >
-            <ArrowLeft className="h-4 w-4 mr-2" />
-            Back
-          </Button>
-          <h1 className="text-2xl font-bold">{lead.full_name}</h1>
-          <Badge className={`ml-3 ${getStatusColor(lead.status)}`}>
-            {formatStatus(lead.status)}
-          </Badge>
-        </div>
-        
-        <div className="flex items-center space-x-2">
-          <Button variant="outline" onClick={() => setShowEditDialog(true)}>
-            <Edit className="h-4 w-4 mr-2" />
-            Edit
-          </Button>
-          <Button 
-            variant="destructive" 
-            onClick={() => {
-              if (confirm('Are you sure you want to delete this lead?')) {
-                toast.success('Lead deleted');
-                router.push('/dashboard/leads');
-              }
-            }}
-          >
-            <Trash className="h-4 w-4 mr-2" />
-            Delete
+
+      {/* Error state */}
+      {isError && !loading && (
+        <div className="flex h-full w-full flex-col items-center justify-center gap-4 p-6">
+          <div className="rounded-full bg-red-100 p-3">
+            <XCircle className="h-8 w-8 text-red-600" />
+          </div>
+          <p className="text-lg font-medium">Error loading lead details</p>
+          <p className="text-gray-500">Please try again later or contact support.</p>
+          <Button onClick={() => router.push('/dashboard/leads')}>
+            Back to Leads
           </Button>
         </div>
-      </div>
-      
-      {/* Lead summary card */}
-      <Card className="shadow-sm">
-        <CardContent className="p-6">
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-            {/* Lead info */}
-            <div className="space-y-4">
-              <div className="flex items-center">
-                <User className="h-5 w-5 text-muted-foreground mr-2" />
-                <div>
-                  <p className="text-sm text-muted-foreground">Contact</p>
-                  <p className="font-medium">{lead.full_name}</p>
-                </div>
-              </div>
-              
-              <div className="flex items-center">
-                <Mail className="h-5 w-5 text-muted-foreground mr-2" />
-                <div>
-                  <p className="text-sm text-muted-foreground">Email</p>
-                  <p className="font-medium">{lead.email || 'N/A'}</p>
-                </div>
-              </div>
-              
-              <div className="flex items-center">
-                <Phone className="h-5 w-5 text-muted-foreground mr-2" />
-                <div>
-                  <p className="text-sm text-muted-foreground">Phone</p>
-                  <p className="font-medium">{lead.phone || 'N/A'}</p>
-                </div>
-              </div>
+      )}
+
+      {/* Main content */}
+      {!loading && !isError && lead && (
+        <div className="flex-1 space-y-6 p-6 md:p-8 pt-6">
+          {/* Status change dialog */}
+          {showStatusDialog && lead && statusToChange && (
+            <StatusChangeDialog
+              open={showStatusDialog}
+              onOpenChange={setShowStatusDialog}
+              leadId={leadId}
+              leadName={lead.full_name || ''}
+              currentStatus={lead.status || LeadStatus.NEW}
+              newStatus={statusToChange}
+              onConfirm={(status, reason) => handleStatusChange(status, reason)}
+              isMock={USE_MOCK_DATA}
+            />
+          )}
+          
+          {/* Rest of the dialogs */}
+          {/* ... */}
+          
+          {/* Lead header */}
+          <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
+            <div className="flex items-center">
+              <Button variant="ghost" onClick={() => router.push('/dashboard/leads')} className="mr-4">
+                <ArrowLeft className="h-4 w-4 mr-2" />
+                Back
+              </Button>
+              <h1 className="text-2xl font-bold">{lead.full_name}</h1>
+              <Badge className={`ml-3 ${getStatusColor(lead.status)}`}>
+                {formatStatus(lead.status)}
+              </Badge>
             </div>
             
-            {/* Company info */}
-            <div className="space-y-4">
-              <div className="flex items-center">
-                <Building className="h-5 w-5 text-muted-foreground mr-2" />
-                <div>
-                  <p className="text-sm text-muted-foreground">Company</p>
-                  <p className="font-medium">{lead.company || 'N/A'}</p>
-                </div>
-              </div>
-              
-              <div className="flex items-center">
-                <User className="h-5 w-5 text-muted-foreground mr-2" />
-                <div>
-                  <p className="text-sm text-muted-foreground">Title</p>
-                  <p className="font-medium">{lead.title || 'N/A'}</p>
-                </div>
-              </div>
-              
-              <div className="flex items-center">
-                <Tag className="h-5 w-5 text-muted-foreground mr-2" />
-                <div>
-                  <p className="text-sm text-muted-foreground">Source</p>
-                  <p className="font-medium">{lead.source}</p>
-                </div>
-              </div>
+            <div className="flex items-center space-x-2">
+              <Button variant="outline" onClick={() => setShowEditDialog(true)}>
+                <Edit className="h-4 w-4 mr-2" />
+                Edit
+              </Button>
+              <Button 
+                variant="destructive" 
+                onClick={handleDeleteLead}
+              >
+                <Trash className="h-4 w-4 mr-2" />
+                Delete
+              </Button>
             </div>
-            
-            {/* Lead metrics */}
-            <div className="space-y-4">
-              <div className="flex items-center">
-                <BarChart className="h-5 w-5 text-muted-foreground mr-2" />
-                <div>
-                  <p className="text-sm text-muted-foreground">Lead Score</p>
-                  <p className="font-medium">{lead.lead_score || 'N/A'}</p>
-                </div>
-              </div>
-              
-              {/* Add Conversion Probability */}
-              <div className="flex items-center">
-                <Activity className="h-5 w-5 text-muted-foreground mr-2" />
-                <div>
-                  <p className="text-sm text-muted-foreground">Conversion Probability</p>
+          </div>
+          
+          {/* Lead summary card */}
+          <Card className="shadow-sm">
+            <CardContent className="p-6">
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+                {/* Lead info */}
+                <div className="space-y-4">
                   <div className="flex items-center">
-                    {lead.conversion_probability !== undefined ? (
-                      <>
-                        <div className="w-24 bg-gray-200 dark:bg-gray-700 rounded-full h-2 mr-2">
+                    <User className="h-5 w-5 text-muted-foreground mr-2" />
+                    <div>
+                      <p className="text-sm text-muted-foreground">Contact</p>
+                      <p className="font-medium">{lead.full_name}</p>
+                    </div>
+                  </div>
+                  
+                  <div className="flex items-center">
+                    <Mail className="h-5 w-5 text-muted-foreground mr-2" />
+                    <div>
+                      <p className="text-sm text-muted-foreground">Email</p>
+                      <p className="font-medium">{lead.email || 'N/A'}</p>
+                    </div>
+                  </div>
+                  
+                  <div className="flex items-center">
+                    <Phone className="h-5 w-5 text-muted-foreground mr-2" />
+                    <div>
+                      <p className="text-sm text-muted-foreground">Phone</p>
+                      <p className="font-medium">{lead.phone || 'N/A'}</p>
+                    </div>
+                  </div>
+                </div>
+                
+                {/* Company info */}
+                <div className="space-y-4">
+                  <div className="flex items-center">
+                    <Building className="h-5 w-5 text-muted-foreground mr-2" />
+                    <div>
+                      <p className="text-sm text-muted-foreground">Company</p>
+                      <p className="font-medium">{lead.company || 'N/A'}</p>
+                    </div>
+                  </div>
+                  
+                  <div className="flex items-center">
+                    <User className="h-5 w-5 text-muted-foreground mr-2" />
+                    <div>
+                      <p className="text-sm text-muted-foreground">Title</p>
+                      <p className="font-medium">{lead.title || 'N/A'}</p>
+                    </div>
+                  </div>
+                  
+                  <div className="flex items-center">
+                    <Tag className="h-5 w-5 text-muted-foreground mr-2" />
+                    <div>
+                      <p className="text-sm text-muted-foreground">Source</p>
+                      <p className="font-medium">{lead.source}</p>
+                    </div>
+                  </div>
+                </div>
+                
+                {/* Lead metrics */}
+                <div className="space-y-4">
+                  <div className="flex items-center">
+                    <BarChart className="h-5 w-5 text-muted-foreground mr-2" />
+                    <div>
+                      <p className="text-sm text-muted-foreground">Lead Score</p>
+                      <p className="font-medium">{lead.lead_score || 'N/A'}</p>
+                    </div>
+                  </div>
+                  
+                  {/* Add Conversion Probability */}
+                  <div className="flex items-center">
+                    <Activity className="h-5 w-5 text-muted-foreground mr-2" />
+                    <div>
+                      <p className="text-sm text-muted-foreground">Conversion Probability</p>
+                      <div className="flex items-center">
+                        {(lead.conversion_probability !== undefined || (insights && insights.conversion_probability !== undefined)) ? (
+                          <>
+                            <div className="w-24 bg-gray-200 dark:bg-gray-700 rounded-full h-2 mr-2">
+                              <div 
+                                className={`h-2 rounded-full ${
+                                  (lead.conversion_probability || insights?.conversion_probability || 0) >= 0.7 ? 'bg-green-500' : 
+                                  (lead.conversion_probability || insights?.conversion_probability || 0) >= 0.4 ? 'bg-amber-500' : 
+                                  'bg-red-500'
+                                }`}
+                                style={{ width: `${Math.min(100, Math.max(0, (lead.conversion_probability || insights?.conversion_probability || 0) * 100))}%` }}
+                              ></div>
+                            </div>
+                            <p className="font-medium">
+                              <span className="mr-1">{Math.round((lead.conversion_probability || insights?.conversion_probability || 0) * 100)}%</span>
+                              <span className={getConversionProbabilityLabel(lead.conversion_probability || insights?.conversion_probability || 0).color}>
+                                ({getConversionProbabilityLabel(lead.conversion_probability || insights?.conversion_probability || 0).label})
+                              </span>
+                            </p>
+                          </>
+                        ) : (
+                          <p className="font-medium">N/A</p>
+                        )}
+                      </div>
+                    </div>
+                  </div>
+                  
+                  <div className="flex items-center">
+                    <User className="h-5 w-5 text-muted-foreground mr-2" />
+                    <div>
+                      <p className="text-sm text-muted-foreground">Owner</p>
+                      <p className="font-medium">{lead.owner?.name || 'Unassigned'}</p>
+                    </div>
+                  </div>
+                  
+                  <div className="flex items-center">
+                    <Clock className="h-5 w-5 text-muted-foreground mr-2" />
+                    <div>
+                      <p className="text-sm text-muted-foreground">Created</p>
+                      <p className="font-medium">{formatDate(lead.created_at)}</p>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </CardContent>
+          </Card>
+          
+          {/* Quick action buttons */}
+          <div className="flex flex-wrap gap-2">
+            <Button onClick={() => setShowEmailDialog(true)}>
+              <Mail className="mr-2 h-4 w-4" />
+              Send Email
+            </Button>
+            <Button onClick={() => setShowCallDialog(true)}>
+              <Phone className="mr-2 h-4 w-4" />
+              Call
+            </Button>
+            <Button onClick={() => setShowMeetingDialog(true)}>
+              <Calendar className="mr-2 h-4 w-4" />
+              Schedule Meeting
+            </Button>
+            <Button onClick={() => setShowNoteDialog(true)}>
+              <MessageSquare className="mr-2 h-4 w-4" />
+              Add Note
+            </Button>
+            <Button onClick={() => setShowTaskDialog(true)}>
+              <CheckCircle className="mr-2 h-4 w-4" />
+              Add Task
+            </Button>
+          </div>
+          
+          {/* Status change section */}
+          <Card className="shadow-sm">
+            <CardHeader>
+              <CardTitle>Lead Status</CardTitle>
+              <CardDescription>Update the lead's position in your sales pipeline</CardDescription>
+            </CardHeader>
+            <CardContent>
+              <div className="overflow-x-auto pb-4">
+                <div className="flex gap-4 min-w-max">
+                  {Object.values(LeadStatus).map((status) => {
+                    // More robust comparison that handles case sensitivity and string/enum differences
+                    const isCurrentStatus = 
+                      lead.status === status || 
+                      (typeof lead.status === 'string' && typeof status === 'string' && 
+                       lead.status.toLowerCase() === status.toLowerCase());
+                    
+                    console.log(`Comparing status: ${status} with lead.status: ${lead.status}, equal: ${isCurrentStatus}`);
+                    
+                    return (
+                    <div key={status} className="w-40">
+                      <div className={`p-3 rounded-md ${isCurrentStatus ? getStatusColor(status) : 'bg-gray-100 dark:bg-gray-800 bg-opacity-50'}`}>
+                        <div className="flex justify-between items-center mb-2">
+                          <h3 className="font-medium text-sm">{formatStatus(status)}</h3>
+                        </div>
+                        {isCurrentStatus ? (
+                          <div className="p-2 bg-white dark:bg-gray-700 rounded-md border dark:border-gray-600 shadow-sm">
+                            <div className="flex items-center gap-2 p-2">
+                              <div className="h-8 w-8 rounded-full bg-primary text-white flex items-center justify-center text-xs font-medium">
+                                {lead.first_name?.[0]}{lead.last_name?.[0]}
+                              </div>
+                              <div>
+                                <p className="text-sm font-medium">{lead.full_name}</p>
+                                {lead.company && <p className="text-xs text-muted-foreground">{lead.company}</p>}
+                              </div>
+                            </div>
+                          </div>
+                        ) : (
                           <div 
-                            className={`h-2 rounded-full ${
-                              lead.conversion_probability >= 0.7 ? 'bg-green-500' : 
-                              lead.conversion_probability >= 0.4 ? 'bg-amber-500' : 
-                              'bg-red-500'
-                            }`}
-                            style={{ width: `${Math.min(100, Math.max(0, lead.conversion_probability * 100))}%` }}
-                          ></div>
-                        </div>
-                        <p className="font-medium">
-                          <span className="mr-1">{Math.round(lead.conversion_probability * 100)}%</span>
-                          <span className={getConversionProbabilityLabel(lead.conversion_probability).color}>
-                            ({getConversionProbabilityLabel(lead.conversion_probability).label})
-                          </span>
-                        </p>
-                      </>
-                    ) : (
-                      <p className="font-medium">N/A</p>
-                    )}
-                  </div>
+                            className="p-4 border dark:border-gray-600 border-dashed rounded-md flex items-center justify-center cursor-pointer hover:bg-gray-50 dark:hover:bg-gray-700"
+                            onClick={() => {
+                              if (!isCurrentStatus) {
+                                setStatusToChange(status);
+                                setShowStatusDialog(true);
+                              }
+                            }}
+                          >
+                            <p className="text-xs text-muted-foreground">Move here</p>
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                  )})}
                 </div>
               </div>
-              
-              <div className="flex items-center">
-                <User className="h-5 w-5 text-muted-foreground mr-2" />
-                <div>
-                  <p className="text-sm text-muted-foreground">Owner</p>
-                  <p className="font-medium">{lead.owner?.name || 'Unassigned'}</p>
-                </div>
-              </div>
-              
-              <div className="flex items-center">
-                <Clock className="h-5 w-5 text-muted-foreground mr-2" />
-                <div>
-                  <p className="text-sm text-muted-foreground">Created</p>
-                  <p className="font-medium">{formatDate(lead.created_at)}</p>
-                </div>
-              </div>
-            </div>
-          </div>
-        </CardContent>
-      </Card>
-      
-      {/* Quick action buttons */}
-      <div className="flex flex-wrap gap-2">
-        <Button onClick={() => setShowEmailDialog(true)}>
-          <Mail className="mr-2 h-4 w-4" />
-          Send Email
-        </Button>
-        <Button onClick={() => setShowCallDialog(true)}>
-          <Phone className="mr-2 h-4 w-4" />
-          Call
-        </Button>
-        <Button onClick={() => setShowMeetingDialog(true)}>
-          <Calendar className="mr-2 h-4 w-4" />
-          Schedule Meeting
-        </Button>
-        <Button onClick={() => setShowNoteDialog(true)}>
-          <MessageSquare className="mr-2 h-4 w-4" />
-          Add Note
-        </Button>
-        <Button onClick={() => setShowTaskDialog(true)}>
-          <CheckCircle className="mr-2 h-4 w-4" />
-          Add Task
-        </Button>
-      </div>
-      
-      {/* Dialog Components */}
-      {showEmailDialog && (
-        <EmailDialog
-          open={showEmailDialog}
-          onOpenChange={setShowEmailDialog}
-          leadEmail={lead.email || ''}
-          leadName={lead.full_name || ''}
-        />
-      )}
-      
-      {showCallDialog && (
-        <PhoneDialog
-          open={showCallDialog}
-          onOpenChange={setShowCallDialog}
-          leadPhone={lead.phone || ''}
-          leadName={lead.full_name || ''}
-        />
-      )}
-      
-      {showNoteDialog && (
-        <NoteDialog
-          open={showNoteDialog}
-          onOpenChange={setShowNoteDialog}
-          leadId={parseInt(leadId)}
-          leadName={lead.full_name || ''}
-          isMock={USE_MOCK_DATA}
-          onSuccess={() => router.refresh()}
-        />
-      )}
-      
-      {/* Task Dialog */}
-      {showTaskDialog && (
-        <TaskDialog
-          open={showTaskDialog}
-          onOpenChange={setShowTaskDialog}
-          leadId={parseInt(leadId)}
-          leadName={lead.full_name || ''}
-          isMock={USE_MOCK_DATA}
-          onSuccess={(taskData) => {
-            if (isEditingTask && currentTask && taskData) {
-              // Handle task update
-              handleTaskUpdate({
-                ...currentTask,
-                ...taskData
-              });
-            } else if (taskData) {
-              // Handle task creation
-              handleTaskCreate(taskData);
-            }
-            router.refresh();
-          }}
-          task={isEditingTask ? currentTask : undefined}
-          isEditing={isEditingTask}
-        />
-      )}
-      
-      {/* Meeting Dialog */}
-      {showMeetingDialog && (
-        <MeetingDialogNew
-          open={showMeetingDialog}
-          onOpenChange={setShowMeetingDialog}
-          lead={lead}
-          onSuccess={() => router.refresh()}
-        />
-      )}
-      
-      {/* Edit Dialog */}
-      {showEditDialog && (
-        <LeadEditDialog
-          leadId={leadId}
-          open={showEditDialog}
-          onOpenChange={setShowEditDialog}
-          onSuccess={() => router.refresh()}
-        />
-      )}
-      
-      {/* Status change section */}
-      <Card className="shadow-sm">
-        <CardHeader>
-          <CardTitle>Lead Status</CardTitle>
-          <CardDescription>Update the lead's position in your sales pipeline</CardDescription>
-        </CardHeader>
-        <CardContent>
-          <div className="overflow-x-auto pb-4">
-            <div className="flex gap-4 min-w-max">
-              {Object.values(LeadStatus).map((status) => (
-                <div key={status} className="w-40">
-                  <div className={`p-3 rounded-md ${lead.status === status ? getStatusColor(status) : 'bg-gray-100 dark:bg-gray-800 bg-opacity-50'}`}>
-                    <div className="flex justify-between items-center mb-2">
-                      <h3 className="font-medium text-sm">{formatStatus(status)}</h3>
-                    </div>
-                    {lead.status === status ? (
-                      <div className="p-2 bg-white dark:bg-gray-700 rounded-md border dark:border-gray-600 shadow-sm">
-                        <div className="flex items-center gap-2 p-2">
-                          <div className="h-8 w-8 rounded-full bg-primary text-white flex items-center justify-center text-xs font-medium">
-                            {lead.first_name?.[0]}{lead.last_name?.[0]}
-                          </div>
-                          <div>
-                            <p className="text-sm font-medium">{lead.full_name}</p>
-                            {lead.company && <p className="text-xs text-muted-foreground">{lead.company}</p>}
-                          </div>
-                        </div>
-                      </div>
-                    ) : (
-                      <div 
-                        className="p-4 border dark:border-gray-600 border-dashed rounded-md flex items-center justify-center cursor-pointer hover:bg-gray-50 dark:hover:bg-gray-700"
-                        onClick={() => {
-                          if (lead.status !== status) {
-                            setStatusToChange(status);
-                            setShowStatusDialog(true);
-                          }
-                        }}
-                      >
-                        <p className="text-xs text-muted-foreground">Move here</p>
-                      </div>
-                    )}
-                  </div>
-                </div>
-              ))}
-            </div>
-          </div>
-        </CardContent>
-      </Card>
-      
-      {/* Tabs for different sections */}
-      <Tabs defaultValue="timeline" className="w-full">
-        <TabsList className="grid grid-cols-5 mb-4">
-          <TabsTrigger value="timeline">Timeline</TabsTrigger>
-          <TabsTrigger value="tasks">Tasks</TabsTrigger>
-          <TabsTrigger value="notes">Notes</TabsTrigger>
-          <TabsTrigger value="campaigns">Campaigns</TabsTrigger>
-          <TabsTrigger value="insights">Insights</TabsTrigger>
-        </TabsList>
-        
-        {/* Timeline Tab */}
-        <TabsContent value="timeline" className="space-y-4">
-          <Card>
-            <CardHeader>
-              <CardTitle>Activity Timeline</CardTitle>
-            </CardHeader>
-            <CardContent>
-              {timeline && timeline.length > 0 ? (
-                <div className="space-y-4">
-                  {timeline.map((item) => (
-                    <div key={item.id} className="flex gap-4 p-4 border-b last:border-0">
-                      <div className="flex-shrink-0 mt-1">
-                        {item.type === 'note' && <MessageSquare className="h-5 w-5 text-blue-500" />}
-                        {item.type === 'email' && <Mail className="h-5 w-5 text-green-500" />}
-                        {item.type === 'call' && <Phone className="h-5 w-5 text-purple-500" />}
-                        {item.type === 'status_change' && <Tag className="h-5 w-5 text-amber-500" />}
-                      </div>
-                      <div className="flex-1">
-                        <p>{item.content}</p>
-                        <p className="text-sm text-muted-foreground">
-                          {new Date(item.created_at).toLocaleString()} by {item.user.name}
-                        </p>
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              ) : (
-                <p className="text-muted-foreground">No activity yet.</p>
-              )}
             </CardContent>
           </Card>
-        </TabsContent>
-        
-        {/* Tasks Tab */}
-        <TabsContent value="tasks" className="space-y-4">
-          <Card>
-            <CardHeader className="flex flex-row items-center justify-between">
-              <CardTitle>Tasks</CardTitle>
-              <Button size="sm" onClick={() => {
-                setCurrentTask(null);
-                setIsEditingTask(false);
-                setShowTaskDialog(true);
-              }}>
-                <Plus className="h-4 w-4 mr-2" />
-                Add Task
-              </Button>
-            </CardHeader>
-            <CardContent>
-              {lead.tasks && lead.tasks.length > 0 ? (
-                <div className="space-y-4">
-                  {lead.tasks.map((task: any) => (
-                    <div key={task.id} className="flex items-center justify-between p-4 border rounded-md">
-                      <div className="flex items-center gap-3">
-                        <Button 
-                          variant="ghost" 
-                          size="sm" 
-                          className="p-0 h-auto"
-                          onClick={() => handleToggleTaskComplete(task.id, !task.completed)}
-                        >
-                          <CheckCircle 
-                            className={`h-5 w-5 ${task.completed ? 'text-green-500' : 'text-gray-400'}`} 
-                          />
-                        </Button>
-                        <div>
-                          <p className={task.completed ? 'line-through text-muted-foreground' : ''}>
-                            {task.title}
-                          </p>
-                          <div className="flex items-center gap-2 text-xs text-muted-foreground mt-1">
-                            <span className="flex items-center">
-                              <Clock className="h-3 w-3 mr-1" />
-                              Due: {formatDate(task.due_date)}
-                            </span>
-                            {task.priority && (
-                              <span className={`flex items-center ${
-                                task.priority === 'high' ? 'text-red-500' : 
-                                task.priority === 'medium' ? 'text-amber-500' : 
-                                'text-green-500'
-                              }`}>
-                                <Flag className="h-3 w-3 mr-1" />
-                                {task.priority.charAt(0).toUpperCase() + task.priority.slice(1)}
-                              </span>
-                            )}
-                            {task.assignee && (
-                              <span className="flex items-center">
-                                <UserIcon className="h-3 w-3 mr-1" />
-                                {typeof task.assignee === 'string' ? task.assignee : task.assignee.name}
-                              </span>
-                            )}
+          
+          {/* Tabs for different sections */}
+          <Tabs defaultValue="timeline" className="w-full">
+            <TabsList className="grid grid-cols-5 mb-4">
+              <TabsTrigger value="timeline">Timeline</TabsTrigger>
+              <TabsTrigger value="tasks">Tasks</TabsTrigger>
+              <TabsTrigger value="notes">Notes</TabsTrigger>
+              <TabsTrigger value="campaigns">Campaigns</TabsTrigger>
+              <TabsTrigger value="insights">Insights</TabsTrigger>
+            </TabsList>
+            
+            {/* Timeline Tab */}
+            <TabsContent value="timeline" className="space-y-4">
+              <Card>
+                <CardHeader>
+                  <CardTitle>Activity Timeline</CardTitle>
+                </CardHeader>
+                <CardContent>
+                  {timeline && timeline.length > 0 ? (
+                    <div className="space-y-4">
+                      {timeline.map((item: {
+                        id: number;
+                        type: string;
+                        content: string;
+                        created_at: string;
+                        user?: { name: string };
+                      }) => (
+                        <div key={item.id} className="flex gap-4 pb-4 border-b border-border">
+                          <div className="mt-1">
+                            {getTimelineIcon(item.type)}
+                          </div>
+                          <div className="flex-1">
+                            <div className="flex justify-between items-start">
+                              <div>
+                                <p className="text-sm text-muted-foreground">
+                                  {item.user ? `${item.user.name} ` : ''}
+                                  <span className="text-foreground font-medium">
+                                    {getTimelineAction(item.type)}
+                                  </span>
+                                </p>
+                                <p className="mt-1">{item.content}</p>
+                              </div>
+                              <div className="text-xs text-muted-foreground">
+                                {formatDistanceToNow(new Date(item.created_at), { addSuffix: true })}
+                              </div>
+                            </div>
                           </div>
                         </div>
-                      </div>
-                      <TaskActionsMenu 
-                        task={task}
-                        onMarkComplete={handleToggleTaskComplete}
-                        onEdit={handleEditTask}
-                        onDelete={handleDeleteTask}
-                      />
-                    </div>
-                  ))}
-                </div>
-              ) : (
-                <p className="text-muted-foreground">No tasks yet.</p>
-              )}
-            </CardContent>
-          </Card>
-        </TabsContent>
-        
-        {/* Notes Tab */}
-        <TabsContent value="notes" className="space-y-4">
-          <Card>
-            <CardHeader className="flex flex-row items-center justify-between">
-              <CardTitle>Notes</CardTitle>
-              <Button size="sm" onClick={() => setShowNoteDialog(true)}>
-                <Plus className="h-4 w-4 mr-2" />
-                Add Note
-              </Button>
-            </CardHeader>
-            <CardContent>
-              {lead.notes && lead.notes.length > 0 ? (
-                <div className="space-y-4">
-                  {lead.notes.map((note: any) => (
-                    <div key={note.id} className="p-4 border rounded-md">
-                      <p>{note.content}</p>
-                      <p className="text-sm text-muted-foreground mt-2">
-                        {new Date(note.created_at).toLocaleString()}
-                      </p>
-                    </div>
-                  ))}
-                </div>
-              ) : (
-                <p className="text-muted-foreground">No notes yet.</p>
-              )}
-            </CardContent>
-          </Card>
-        </TabsContent>
-        
-        {/* Campaigns Tab */}
-        <TabsContent value="campaigns" className="space-y-4">
-          <Card>
-            <CardHeader className="flex flex-row items-center justify-between">
-              <CardTitle>Campaigns</CardTitle>
-              <Button size="sm" onClick={() => toast.info('Add to campaign functionality will be implemented')}>
-                <Plus className="h-4 w-4 mr-2" />
-                Add to Campaign
-              </Button>
-            </CardHeader>
-            <CardContent>
-              {lead.campaigns && lead.campaigns.length > 0 ? (
-                <div className="space-y-4">
-                  {lead.campaigns.map((campaign: any) => (
-                    <div key={campaign.id} className="flex items-center justify-between p-4 border rounded-md">
-                      <div>
-                        <p>{campaign.name}</p>
-                      </div>
-                      <Button variant="ghost" size="sm" onClick={() => toast.info('Campaign actions will be implemented')}>
-                        <FileText className="h-4 w-4" />
-                      </Button>
-                    </div>
-                  ))}
-                </div>
-              ) : (
-                <p className="text-muted-foreground">Not part of any campaigns yet.</p>
-              )}
-            </CardContent>
-          </Card>
-        </TabsContent>
-        
-        {/* Insights Tab */}
-        <TabsContent value="insights" className="space-y-4">
-          <Card>
-            <CardHeader>
-              <CardTitle>Lead Insights</CardTitle>
-              <CardDescription>AI-powered insights about this lead</CardDescription>
-            </CardHeader>
-            <CardContent>
-              {USE_MOCK_DATA ? (
-                <div className="space-y-6">
-                  {/* Score Factors */}
-                  <div>
-                    <h3 className="text-lg font-medium mb-2">Score Factors</h3>
-                    <ul className="space-y-2">
-                      <li className="flex items-start">
-                        <span className="text-green-500 mr-2">+</span>
-                        <span>Engaged with 3 emails in the past week</span>
-                      </li>
-                      <li className="flex items-start">
-                        <span className="text-green-500 mr-2">+</span>
-                        <span>Visited pricing page multiple times</span>
-                      </li>
-                      <li className="flex items-start">
-                        <span className="text-red-500 mr-2">-</span>
-                        <span>No scheduled meetings yet</span>
-                      </li>
-                    </ul>
-                  </div>
-                  
-                  {/* Recommendations */}
-                  <div>
-                    <h3 className="text-lg font-medium mb-2">Recommendations</h3>
-                    <ul className="space-y-2">
-                      <li className="flex items-start">
-                        <span className="text-blue-500 mr-2">•</span>
-                        <span>Schedule a product demo call</span>
-                      </li>
-                      <li className="flex items-start">
-                        <span className="text-blue-500 mr-2">•</span>
-                        <span>Send case study for their industry</span>
-                      </li>
-                      <li className="flex items-start">
-                        <span className="text-blue-500 mr-2">•</span>
-                        <span>Follow up within 3 days</span>
-                      </li>
-                    </ul>
-                  </div>
-                  
-                  {/* Conversion Probability */}
-                  <div>
-                    <h3 className="text-lg font-medium mb-2">Conversion Probability</h3>
-                    <div className="w-full bg-gray-200 rounded-full h-4">
-                      <div 
-                        className="bg-primary h-4 rounded-full" 
-                        style={{ width: '65%' }}
-                      ></div>
-                    </div>
-                    <p className="mt-1 text-sm text-muted-foreground">
-                      This lead has a <span className="font-bold">65%</span> probability of converting
-                    </p>
-                  </div>
-                </div>
-              ) : (
-                <div>
-                  {apiInsights ? (
-                    <div className="space-y-6">
-                      {/* Score Factors */}
-                      {apiInsights.score_factors && (
-                        <div>
-                          <h3 className="text-lg font-medium mb-2">Score Factors</h3>
-                          <ul className="space-y-2">
-                            {apiInsights.score_factors.map((factor: any, index: number) => (
-                              <li key={index} className="flex items-start">
-                                <span className={factor.impact > 0 ? "text-green-500 mr-2" : "text-red-500 mr-2"}>
-                                  {factor.impact > 0 ? '+' : '-'}
-                                </span>
-                                <span>{factor.description}</span>
-                              </li>
-                            ))}
-                          </ul>
-                        </div>
-                      )}
-                      
-                      {/* Recommendations */}
-                      {apiInsights.recommendations && (
-                        <div>
-                          <h3 className="text-lg font-medium mb-2">Recommendations</h3>
-                          <ul className="space-y-2">
-                            {apiInsights.recommendations.map((recommendation: any, index: number) => (
-                              <li key={index} className="flex items-start">
-                                <span className="text-blue-500 mr-2">•</span>
-                                <span>{recommendation}</span>
-                              </li>
-                            ))}
-                          </ul>
-                        </div>
-                      )}
-                      
-                      {/* Conversion Probability */}
-                      {apiInsights.conversion_probability !== undefined && (
-                        <div>
-                          <h3 className="text-lg font-medium mb-2">Conversion Probability</h3>
-                          <div className="w-full bg-gray-200 rounded-full h-4">
-                            <div 
-                              className="bg-primary h-4 rounded-full" 
-                              style={{ width: `${Math.min(100, Math.max(0, apiInsights.conversion_probability * 100))}%` }}
-                            ></div>
-                          </div>
-                          <p className="mt-1 text-sm text-muted-foreground">
-                            This lead has a <span className="font-bold">{(apiInsights.conversion_probability * 100).toFixed(1)}%</span> probability of converting
-                          </p>
-                        </div>
-                      )}
+                      ))}
                     </div>
                   ) : (
-                    <p className="text-muted-foreground">No insights available</p>
+                    <div className="text-center py-8 text-muted-foreground">
+                      <Activity className="h-12 w-12 mx-auto mb-2 opacity-20" />
+                      <p>No activity recorded yet</p>
+                    </div>
                   )}
-                </div>
-              )}
-            </CardContent>
-          </Card>
-        </TabsContent>
-      </Tabs>
+                </CardContent>
+              </Card>
+            </TabsContent>
+            
+            {/* Tasks Tab */}
+            <TabsContent value="tasks" className="space-y-4">
+              <Card>
+                <CardHeader className="flex flex-row items-center justify-between">
+                  <CardTitle>Tasks</CardTitle>
+                  <Button size="sm" onClick={() => {
+                    setCurrentTask(null);
+                    setIsEditingTask(false);
+                    setShowTaskDialog(true);
+                  }}>
+                    <Plus className="h-4 w-4 mr-2" />
+                    Add Task
+                  </Button>
+                </CardHeader>
+                <CardContent>
+                  {lead.tasks && lead.tasks.length > 0 ? (
+                    <div className="space-y-4">
+                      {lead.tasks.map((task: any) => (
+                        <div key={task.id} className="flex items-center justify-between p-4 border rounded-md">
+                          <div className="flex items-center gap-3">
+                            <Button 
+                              variant="ghost" 
+                              size="sm" 
+                              className="p-0 h-auto"
+                              onClick={() => handleToggleTaskComplete(task.id, !task.completed)}
+                            >
+                              <CheckCircle 
+                                className={`h-5 w-5 ${task.completed ? 'text-green-500' : 'text-gray-400'}`} 
+                              />
+                            </Button>
+                            <div>
+                              <p className={task.completed ? 'line-through text-muted-foreground' : ''}>
+                                {task.title}
+                              </p>
+                              <div className="flex items-center gap-2 text-xs text-muted-foreground mt-1">
+                                <span className="flex items-center">
+                                  <Clock className="h-3 w-3 mr-1" />
+                                  Due: {formatDate(task.due_date)}
+                                </span>
+                                {task.priority && (
+                                  <span className={`flex items-center ${
+                                    task.priority === 'high' ? 'text-red-500' : 
+                                    task.priority === 'medium' ? 'text-amber-500' : 
+                                    'text-green-500'
+                                  }`}>
+                                    <Flag className="h-3 w-3 mr-1" />
+                                    {task.priority.charAt(0).toUpperCase() + task.priority.slice(1)}
+                                  </span>
+                                )}
+                                {task.assignee && (
+                                  <span className="flex items-center">
+                                    <UserIcon className="h-3 w-3 mr-1" />
+                                    {typeof task.assignee === 'string' ? task.assignee : task.assignee.name}
+                                  </span>
+                                )}
+                              </div>
+                            </div>
+                          </div>
+                          <TaskActionsMenu 
+                            task={task}
+                            onMarkComplete={handleToggleTaskComplete}
+                            onEdit={handleEditTask}
+                            onDelete={handleDeleteTask}
+                          />
+                        </div>
+                      ))}
+                    </div>
+                  ) : (
+                    <p className="text-muted-foreground">No tasks yet.</p>
+                  )}
+                </CardContent>
+              </Card>
+            </TabsContent>
+            
+            {/* Notes Tab */}
+            <TabsContent value="notes" className="space-y-4">
+              <Card>
+                <CardHeader className="flex flex-row items-center justify-between">
+                  <CardTitle>Notes</CardTitle>
+                  <Button size="sm" onClick={() => setShowNoteDialog(true)}>
+                    <Plus className="h-4 w-4 mr-2" />
+                    Add Note
+                  </Button>
+                </CardHeader>
+                <CardContent>
+                  {lead.notes && lead.notes.length > 0 ? (
+                    <div className="space-y-4">
+                      {lead.notes.map((note: any) => (
+                        <div key={note.id} className="p-4 border rounded-md">
+                          <p>{note.body || note.content}</p>
+                          <p className="text-sm text-muted-foreground mt-2">
+                            {new Date(note.created_at).toLocaleString()}
+                          </p>
+                        </div>
+                      ))}
+                    </div>
+                  ) : (
+                    <p className="text-muted-foreground">No notes yet.</p>
+                  )}
+                </CardContent>
+              </Card>
+            </TabsContent>
+            
+            {/* Campaigns Tab */}
+            <TabsContent value="campaigns" className="space-y-4">
+              <Card>
+                <CardHeader className="flex flex-row items-center justify-between">
+                  <CardTitle>Campaigns</CardTitle>
+                  <Button size="sm" onClick={() => setShowAddToCampaign(true)}>
+                    <Plus className="h-4 w-4 mr-2" />
+                    Add to Campaign
+                  </Button>
+                </CardHeader>
+                <CardContent>
+                  {lead.campaigns && lead.campaigns.length > 0 ? (
+                    <div className="space-y-4">
+                      {lead.campaigns.map((campaign: any) => (
+                        <div key={campaign.id} className="flex items-center justify-between p-4 border rounded-md">
+                          <div>
+                            <p>{campaign.name}</p>
+                          </div>
+                          <Button variant="ghost" size="sm" onClick={() => handleAddToCampaign(campaign.id)}>
+                            <FileText className="h-4 w-4" />
+                          </Button>
+                        </div>
+                      ))}
+                    </div>
+                  ) : (
+                    <p className="text-muted-foreground">Not part of any campaigns yet.</p>
+                  )}
+                </CardContent>
+              </Card>
+            </TabsContent>
+            
+            {/* Insights Tab */}
+            <TabsContent value="insights" className="space-y-4">
+              <Card>
+                <CardHeader>
+                  <CardTitle>Lead Insights</CardTitle>
+                  <CardDescription>AI-powered insights about this lead</CardDescription>
+                </CardHeader>
+                <CardContent>
+                  <div className="flex justify-between items-center">
+                    <h3 className="text-lg font-semibold">Lead Insights</h3>
+                    <Button 
+                      variant="outline" 
+                      size="sm"
+                      onClick={() => setShowInsightsEditor(true)}
+                    >
+                      <PencilIcon className="h-4 w-4 mr-2" />
+                      Edit Insights
+                    </Button>
+                  </div>
+                  
+                  {/* Modal for insights editor */}
+                  {showInsightsEditor && (
+                    <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4">
+                      <div className="bg-white rounded-lg shadow-lg w-full max-w-4xl">
+                        <InsightsEditor 
+                          leadId={lead.id} 
+                          onClose={() => setShowInsightsEditor(false)}
+                          onUpdate={() => {
+                            refreshInsights();
+                            setShowInsightsEditor(false);
+                          }}
+                        />
+                      </div>
+                    </div>
+                  )}
+                  
+                  {/* Rest of the insights tab content */}
+                  {USE_MOCK_DATA ? (
+                    <div className="space-y-6">
+                      {/* Score Factors */}
+                      <div>
+                        <h3 className="text-lg font-medium mb-2">Score Factors</h3>
+                        <ul className="space-y-2">
+                          <li className="flex items-start">
+                            <span className="text-green-500 mr-2">+</span>
+                            <span>Engaged with 3 emails in the past week</span>
+                          </li>
+                          <li className="flex items-start">
+                            <span className="text-green-500 mr-2">+</span>
+                            <span>Visited pricing page multiple times</span>
+                          </li>
+                          <li className="flex items-start">
+                            <span className="text-red-500 mr-2">-</span>
+                            <span>No scheduled meetings yet</span>
+                          </li>
+                        </ul>
+                      </div>
+                      
+                      {/* Recommendations */}
+                      <div>
+                        <h3 className="text-lg font-medium mb-2">Recommendations</h3>
+                        <ul className="space-y-2">
+                          <li className="flex items-start">
+                            <span className="text-blue-500 mr-2">•</span>
+                            <span>Schedule a product demo call</span>
+                          </li>
+                          <li className="flex items-start">
+                            <span className="text-blue-500 mr-2">•</span>
+                            <span>Send case study for their industry</span>
+                          </li>
+                          <li className="flex items-start">
+                            <span className="text-blue-500 mr-2">•</span>
+                            <span>Follow up within 3 days</span>
+                          </li>
+                        </ul>
+                      </div>
+                      
+                      {/* Conversion Probability */}
+                      <div>
+                        <h3 className="text-lg font-medium mb-2">Conversion Probability</h3>
+                        <div className="w-full bg-gray-200 rounded-full h-4">
+                          <div 
+                            className="bg-primary h-4 rounded-full" 
+                            style={{ width: '65%' }}
+                          ></div>
+                        </div>
+                        <p className="mt-1 text-sm text-muted-foreground">
+                          This lead has a <span className="font-bold">65%</span> probability of converting
+                        </p>
+                      </div>
+                    </div>
+                  ) : (
+                    <div>
+                      {insights ? (
+                        <div className="space-y-6">
+                          {/* Score Factors */}
+                          {insights.score_factors && (
+                            <div>
+                              <h3 className="text-lg font-medium mb-2">Score Factors</h3>
+                              <ul className="space-y-2">
+                                {insights.score_factors.map((factor: any, index: number) => (
+                                  <li key={index} className="flex items-start">
+                                    <span className={factor.impact > 0 ? "text-green-500 mr-2" : "text-red-500 mr-2"}>
+                                      {factor.impact > 0 ? '+' : '-'}
+                                    </span>
+                                    <span>{factor.description}</span>
+                                  </li>
+                                ))}
+                              </ul>
+                            </div>
+                          )}
+                          
+                          {/* Recommendations */}
+                          {insights.recommendations && (
+                            <div>
+                              <h3 className="text-lg font-medium mb-2">Recommendations</h3>
+                              <ul className="space-y-2">
+                                {insights.recommendations.map((recommendation: any, index: number) => (
+                                  <li key={index} className="flex items-start">
+                                    <span className="text-blue-500 mr-2">•</span>
+                                    <span>{recommendation.text || recommendation}</span>
+                                  </li>
+                                ))}
+                              </ul>
+                            </div>
+                          )}
+                          
+                          {/* Conversion Probability */}
+                          {insights.conversion_probability !== undefined && (
+                            <div>
+                              <h3 className="text-lg font-medium mb-2">Conversion Probability</h3>
+                              <div className="w-full bg-gray-200 rounded-full h-4">
+                                <div 
+                                  className="bg-primary h-4 rounded-full" 
+                                  style={{ width: `${Math.min(100, Math.max(0, insights.conversion_probability * 100))}%` }}
+                                ></div>
+                              </div>
+                              <p className="mt-1 text-sm text-muted-foreground">
+                                This lead has a <span className="font-bold">{(insights.conversion_probability * 100).toFixed(1)}%</span> probability of converting
+                              </p>
+                            </div>
+                          )}
+                        </div>
+                      ) : (
+                        <p className="text-muted-foreground">No insights available</p>
+                      )}
+                    </div>
+                  )}
+                </CardContent>
+              </Card>
+            </TabsContent>
+          </Tabs>
+          
+          {/* Dialog Components */}
+          {showEmailDialog && lead && (
+            <EmailDialog
+              open={showEmailDialog}
+              onOpenChange={setShowEmailDialog}
+              leadEmail={lead.email || ''}
+              leadName={lead.full_name || ''}
+              onSuccess={(emailData) => {
+                if (emailData) {
+                  handleSendEmail(emailData);
+                }
+              }}
+            />
+          )}
+          
+          {showCallDialog && lead && (
+            <PhoneDialog
+              open={showCallDialog}
+              onOpenChange={setShowCallDialog}
+              leadPhone={lead.phone || ''}
+              leadName={lead.full_name || ''}
+              onSuccess={handleCall}
+            />
+          )}
+          
+          {showNoteDialog && lead && (
+            <NoteDialog
+              open={showNoteDialog}
+              onOpenChange={setShowNoteDialog}
+              leadId={leadId}
+              leadName={lead.full_name || ''}
+              isMock={USE_MOCK_DATA}
+              onSuccess={(noteData) => {
+                if (noteData && noteData.content) {
+                  handleAddNote(noteData.content, noteData.is_private);
+                }
+              }}
+            />
+          )}
+          
+          {showTaskDialog && lead && (
+            <TaskDialog
+              open={showTaskDialog}
+              onOpenChange={setShowTaskDialog}
+              leadId={leadId}
+              leadName={lead.full_name || ''}
+              isMock={USE_MOCK_DATA}
+              onSuccess={(taskData) => {
+                if (isEditingTask && currentTask && taskData) {
+                  // Handle task update
+                  handleTaskUpdate({
+                    ...currentTask,
+                    ...taskData
+                  });
+                } else if (taskData) {
+                  // Handle task creation
+                  handleTaskCreate(taskData);
+                }
+              }}
+              task={isEditingTask ? currentTask : undefined}
+              isEditing={isEditingTask}
+            />
+          )}
+          
+          {showMeetingDialog && lead && (
+            <MeetingDialogNew
+              open={showMeetingDialog}
+              onOpenChange={setShowMeetingDialog}
+              lead={lead}
+              onSuccess={(meetingData) => {
+                if (meetingData) {
+                  handleScheduleMeeting(meetingData);
+                }
+              }}
+            />
+          )}
+          
+          {showEditDialog && lead && (
+            <LeadEditDialog
+              leadId={leadId.toString()}
+              open={showEditDialog}
+              onOpenChange={setShowEditDialog}
+              onSuccess={() => router.refresh()}
+            />
+          )}
+        </div>
+      )}
     </div>
   );
-} 
+}
+
+// Helper function to safely parse integers
+const safeParseInt = (value: string): number => {
+  try {
+    const parsed = parseInt(value);
+    return isNaN(parsed) ? -1 : parsed;
+  } catch (error) {
+    console.error(`Error parsing lead ID: ${value}`, error);
+    return -1;
+  }
+};
+
+// Helper function to get timeline action based on type
+const getTimelineAction = (type: string): string => {
+  switch (type) {
+    case 'note':
+      return 'Added note';
+    case 'email':
+      return 'Sent email';
+    case 'call':
+      return 'Made a call';
+    case 'status_change':
+      return 'Changed status';
+    case 'task_create':
+      return 'Created task';
+    case 'task_update':
+      return 'Updated task';
+    case 'task_delete':
+      return 'Deleted task';
+    case 'campaign':
+      return 'Added to campaign';
+    default:
+      return 'Unknown activity';
+  }
+}; 

@@ -71,7 +71,7 @@ const formSchema = z.object({
 
 type MeetingFormProps = {
   lead?: Lead;
-  onSuccess?: () => void;
+  onSuccess?: (meetingData?: any) => void;
   onCancel?: () => void;
 };
 
@@ -164,7 +164,7 @@ export function MeetingForm({ lead, onSuccess, onCancel }: MeetingFormProps) {
         });
         
         if (onSuccess) {
-          onSuccess();
+          onSuccess(meeting);
         }
       } catch (error: any) {
         toast({

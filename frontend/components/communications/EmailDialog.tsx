@@ -30,9 +30,10 @@ interface EmailDialogProps {
   onOpenChange: (open: boolean) => void;
   leadEmail: string;
   leadName: string;
+  onSuccess?: (emailData: { to: string; subject: string; body: string }) => void;
 }
 
-export function EmailDialog({ open, onOpenChange, leadEmail, leadName }: EmailDialogProps) {
+export function EmailDialog({ open, onOpenChange, leadEmail, leadName, onSuccess }: EmailDialogProps) {
   const { toast } = useToast();
   const [activeTab, setActiveTab] = useState('compose');
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -111,6 +112,15 @@ export function EmailDialog({ open, onOpenChange, leadEmail, leadName }: EmailDi
       
       // Switch to sent tab
       setActiveTab('sent');
+      
+      // Call the onSuccess callback
+      if (onSuccess) {
+        onSuccess({
+          to: data.to,
+          subject: data.subject,
+          body: data.content
+        });
+      }
     } catch (error) {
       console.error('Error sending email:', error);
       toast({

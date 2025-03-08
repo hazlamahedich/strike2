@@ -55,41 +55,53 @@ export function LeadForm({
   onSuccess,
   isSubmitting = false,
 }: LeadFormProps) {
+  // Normalize lead data to handle different field names from API vs Supabase
+  const normalizedLead = lead ? {
+    ...lead,
+    // Handle field name differences
+    company_name: lead.company_name || (lead as any).company || '',
+    job_title: lead.job_title || (lead as any).title || '',
+    // Ensure these fields exist
+    custom_fields: lead.custom_fields || {},
+  } : undefined;
+  
   // Initialize the form with default values or lead data
   const form = useForm<LeadFormValues>({
     resolver: zodResolver(formSchema),
     defaultValues: {
-      first_name: lead?.first_name || '',
-      last_name: lead?.last_name || '',
-      email: lead?.email || '',
-      phone: lead?.phone || '',
-      company_name: lead?.company_name || (lead as any)?.company || '', // Handle both field names with type assertion
-      job_title: lead?.job_title || (lead as any)?.title || '', // Handle both field names with type assertion
-      status: lead?.status || 'New',
-      source: lead?.source || 'Website',
-      notes: lead?.notes || '',
-      owner_id: lead?.owner_id?.toString() || '', // Convert number to string if needed
-      custom_fields: lead?.custom_fields || {},
-      linkedin_url: lead?.linkedin_url || '',
-      facebook_url: lead?.facebook_url || '',
-      twitter_url: lead?.twitter_url || '',
+      first_name: normalizedLead?.first_name || '',
+      last_name: normalizedLead?.last_name || '',
+      email: normalizedLead?.email || '',
+      phone: normalizedLead?.phone || '',
+      company_name: normalizedLead?.company_name || '',
+      job_title: normalizedLead?.job_title || '',
+      status: normalizedLead?.status || 'New',
+      source: normalizedLead?.source || 'Website',
+      notes: normalizedLead?.notes || '',
+      owner_id: normalizedLead?.owner_id?.toString() || '',
+      custom_fields: normalizedLead?.custom_fields || {},
+      linkedin_url: normalizedLead?.linkedin_url || '',
+      facebook_url: normalizedLead?.facebook_url || '',
+      twitter_url: normalizedLead?.twitter_url || '',
     },
   });
 
   // For debugging
   useEffect(() => {
     console.log('Lead data in form:', lead);
-  }, [lead]);
+    console.log('Normalized lead data:', normalizedLead);
+  }, [lead, normalizedLead]);
 
   // Handle form submission
   const handleSubmit = (data: LeadFormValues) => {
     if (onSubmit) {
-      // Map the form values to the expected field names if needed
+      // Map the form values to ensure compatibility with both API and Supabase
       const mappedData = {
         ...data,
-        // If the lead detail page uses 'company' instead of 'company_name'
+        // Include both field name versions for maximum compatibility
+        company_name: data.company_name,
         company: data.company_name,
-        // If the lead detail page uses 'title' instead of 'job_title'
+        job_title: data.job_title,
         title: data.job_title,
         // Ensure social media URLs are included
         linkedin_url: data.linkedin_url,
