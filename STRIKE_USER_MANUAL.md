@@ -243,7 +243,7 @@ All communications are automatically logged in:
 
 The STRIKE Chatbot Assistant is available throughout the platform:
 
-1. Click the chat icon in the bottom right corner
+1. Click the chat icon in the bottom right corner to open the chatbot
 2. Ask questions about:
    - Lead information
    - System features
@@ -260,6 +260,16 @@ The STRIKE Chatbot Assistant is available throughout the platform:
    - Reference this user manual to provide detailed instructions
    - Guide you through complex workflows step-by-step
    - Troubleshoot common issues by referencing documentation
+
+#### Chatbot Interface Controls
+
+The chatbot interface includes several controls for easy interaction:
+
+1. **Minimize Button**: Click the minimize button (−) in the top-right corner of the chatbot window to collapse it back to the chat icon. You can reopen it anytime by clicking the chat icon again.
+2. **Clear Conversation**: Click the trash icon to clear the current conversation history and start fresh.
+3. **Copy to Clipboard**: Each message has a copy icon that appears on hover, allowing you to copy specific responses.
+4. **Feedback Buttons**: After receiving a response, you can provide feedback using the thumbs up/down buttons.
+5. **Expand/Collapse**: Some responses, especially those with multiple steps or sections, can be expanded or collapsed for easier reading.
 
 #### Using the Chatbot for Help
 

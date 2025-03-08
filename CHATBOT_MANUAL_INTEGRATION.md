@@ -257,6 +257,8 @@ class ChatbotManualIntegration {
     this.chatWidget = document.getElementById('chat-widget');
     this.currentPage = window.location.pathname;
     this.currentSection = null;
+    this.isMinimized = false;
+    this.isAnimating = false;
     
     // Initialize event listeners
     this.initEventListeners();
@@ -362,7 +364,86 @@ class ChatbotManualIntegration {
       })
     });
   }
+  
+  // Handle minimize functionality
+  handleMinimize() {
+    // Start animation
+    this.isAnimating = true;
+    
+    // Add animation classes
+    this.chatWidget.classList.add('minimizing');
+    
+    // After animation completes, toggle visibility
+    setTimeout(() => {
+      this.isMinimized = true;
+      this.chatWidget.classList.add('minimized');
+      this.chatWidget.classList.remove('minimizing');
+      
+      // Show the chat icon
+      document.getElementById('chat-icon').style.display = 'block';
+      
+      // Hide the chat window
+      this.chatWidget.style.display = 'none';
+      
+      this.isAnimating = false;
+    }, 300); // Match animation duration
+  }
+  
+  // Handle maximize/restore functionality
+  handleMaximize() {
+    // Show the chat window
+    this.chatWidget.style.display = 'flex';
+    
+    // Hide the chat icon
+    document.getElementById('chat-icon').style.display = 'none';
+    
+    // Start animation
+    this.isAnimating = true;
+    this.chatWidget.classList.add('maximizing');
+    
+    // After animation completes, update state
+    setTimeout(() => {
+      this.isMinimized = false;
+      this.chatWidget.classList.remove('minimized');
+      this.chatWidget.classList.remove('maximizing');
+      this.isAnimating = false;
+    }, 300);
+  }
 }
+
+// CSS for animations
+/*
+.minimizing {
+  animation: fadeOut 0.3s ease-in-out;
+  opacity: 0;
+  transform: scale(0.8);
+}
+
+.maximizing {
+  animation: fadeIn 0.3s ease-in-out;
+  opacity: 1;
+  transform: scale(1);
+}
+
+@keyframes fadeOut {
+  from { opacity: 1; transform: scale(1); }
+  to { opacity: 0; transform: scale(0.8); }
+}
+
+@keyframes fadeIn {
+  from { opacity: 0; transform: scale(0.8); }
+  to { opacity: 1; transform: scale(1); }
+}
+
+#chat-icon {
+  animation: popIn 0.3s ease-in-out;
+}
+
+@keyframes popIn {
+  from { transform: scale(0.5); opacity: 0; }
+  to { transform: scale(1); opacity: 1; }
+}
+*/
 
 // Initialize the integration
 document.addEventListener('DOMContentLoaded', () => {

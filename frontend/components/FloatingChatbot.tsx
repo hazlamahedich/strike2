@@ -24,6 +24,7 @@ const FloatingChatbot: React.FC = () => {
   const [isDragging, setIsDragging] = useState(false);
   const [dragPosition, setDragPosition] = useState({ x: 0, y: 0 });
   const [dragOffset, setDragOffset] = useState({ x: 0, y: 0 });
+  const [isAnimating, setIsAnimating] = useState(false);
   const messagesEndRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -136,7 +137,21 @@ const FloatingChatbot: React.FC = () => {
   };
 
   const toggleMinimize = () => {
-    setIsMinimized(!isMinimized);
+    // Start animation
+    setIsAnimating(true);
+    
+    // When minimizing, close the chat window and show the icon after animation
+    if (!isMinimized) {
+      setTimeout(() => {
+        setIsOpen(false);
+        setIsAnimating(false);
+      }, 300); // Match the animation duration
+    } else {
+      setIsMinimized(false);
+      setTimeout(() => {
+        setIsAnimating(false);
+      }, 300);
+    }
   };
 
   const handleMouseDown = (e: React.MouseEvent<HTMLDivElement>) => {
@@ -189,6 +204,11 @@ const FloatingChatbot: React.FC = () => {
             width: 60,
             height: 60,
             boxShadow: 3,
+            animation: isAnimating ? 'popIn 0.3s ease-in-out' : 'none',
+            '@keyframes popIn': {
+              '0%': { transform: 'scale(0.5)', opacity: 0 },
+              '100%': { transform: 'scale(1)', opacity: 1 }
+            }
           }}
         >
           <QuestionAnswer />
@@ -200,7 +220,11 @@ const FloatingChatbot: React.FC = () => {
             left: `${dragPosition.x}px`,
             top: `${dragPosition.y}px`,
             zIndex: 1000,
-            cursor: isDragging ? 'grabbing' : 'auto'
+            cursor: isDragging ? 'grabbing' : 'auto',
+            animation: isAnimating ? 'fadeOut 0.3s ease-in-out' : 'none',
+            opacity: isAnimating ? 0 : 1,
+            transform: isAnimating ? 'scale(0.8)' : 'scale(1)',
+            transition: 'opacity 0.3s ease-in-out, transform 0.3s ease-in-out'
           }}
           onMouseDown={handleMouseDown}
         >
@@ -232,10 +256,20 @@ const FloatingChatbot: React.FC = () => {
             >
               <Typography variant="h6">CRM Assistant</Typography>
               <Box>
-                <IconButton size="small" onClick={toggleMinimize} sx={{ color: 'white', mr: 1 }}>
-                  {isMinimized ? <OpenInFull fontSize="small" /> : <Minimize fontSize="small" />}
+                <IconButton 
+                  size="small" 
+                  onClick={toggleMinimize} 
+                  sx={{ color: 'white', mr: 1 }}
+                  title="Minimize to chat icon"
+                >
+                  <Minimize fontSize="small" />
                 </IconButton>
-                <IconButton size="small" onClick={toggleChat} sx={{ color: 'white' }}>
+                <IconButton 
+                  size="small" 
+                  onClick={toggleChat} 
+                  sx={{ color: 'white' }}
+                  title="Close chat"
+                >
                   <Close fontSize="small" />
                 </IconButton>
               </Box>
