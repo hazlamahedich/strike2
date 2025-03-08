@@ -298,7 +298,9 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
             </DropdownMenuContent>
           </DropdownMenu>
         </header>
-        <main className="p-4 lg:p-6 max-w-7xl mx-auto">
+        
+        {/* Main content with children */}
+        <main className="max-w-7xl mx-auto">
           {children}
         </main>
       </div>

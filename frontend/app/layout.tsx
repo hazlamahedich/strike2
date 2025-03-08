@@ -5,6 +5,7 @@ import { ThemeProvider } from "@/components/shared/theme-provider";
 import { Toaster } from "sonner";
 import AuthProviderWrapper from "@/components/shared/auth-provider-wrapper";
 import { QueryClientProvider } from "@/components/shared/query-client-provider";
+import { BreadcrumbProvider } from "@/components/shared/breadcrumb-provider";
 
 const inter = Inter({ subsets: ["latin"] });
 
@@ -29,7 +30,12 @@ export default function RootLayout({
         >
           <AuthProviderWrapper>
             <QueryClientProvider>
-              {children}
+              <div className="flex flex-col min-h-screen">
+                <BreadcrumbProvider />
+                <div className="flex-1">
+                  {children}
+                </div>
+              </div>
               <Toaster position="top-right" />
             </QueryClientProvider>
           </AuthProviderWrapper>
