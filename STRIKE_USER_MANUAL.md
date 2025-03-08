@@ -8,6 +8,7 @@
    - [Account Creation](#account-creation)
    - [Logging In](#logging-in)
    - [Dashboard Overview](#dashboard-overview)
+   - [API Keys Setup](#api-keys-setup)
 3. [Lead Management](#lead-management)
    - [Viewing Leads](#viewing-leads)
    - [Adding New Leads](#adding-new-leads)
@@ -90,6 +91,151 @@ Upon logging in, you'll be greeted with your personalized dashboard featuring:
 - **Lead Pipeline**: Visual representation of your sales pipeline
 - **Calendar**: Upcoming meetings and events
 - **Navigation Menu**: Access to all STRIKE features
+
+### API Keys Setup
+
+STRIKE integrates with several third-party services that require API keys. Follow these instructions to obtain and configure each required API key:
+
+#### Supabase API Keys
+
+1. **Create a Supabase Account**:
+   - Go to [https://supabase.com](https://supabase.com) and sign up for an account
+   - Verify your email address
+
+2. **Create a New Project**:
+   - From the Supabase dashboard, click "New Project"
+   - Enter a name for your project
+   - Set a secure database password
+   - Choose a region closest to your users
+   - Click "Create new project"
+
+3. **Get API Keys**:
+   - Once your project is created, go to the project dashboard
+   - Navigate to "Settings" > "API" in the sidebar
+   - You'll find two keys: `anon public` and `service_role`
+   - Copy the `anon public` key for `SUPABASE_KEY` in your STRIKE configuration
+   - Copy the URL from the "Config" section for `SUPABASE_URL`
+
+4. **Configure Database**:
+   - Run the SQL scripts provided in the STRIKE installation package to set up the required tables and functions
+
+#### OpenAI API Keys
+
+1. **Create an OpenAI Account**:
+   - Go to [https://platform.openai.com/signup](https://platform.openai.com/signup)
+   - Complete the registration process
+
+2. **Get API Key**:
+   - Log in to your OpenAI account
+   - Navigate to "API Keys" in the left sidebar
+   - Click "Create new secret key"
+   - Give your key a name (e.g., "STRIKE CRM")
+   - Copy the generated key immediately (it won't be shown again)
+   - Use this key for `OPENAI_API_KEY` in your STRIKE configuration
+
+3. **Set Up Billing**:
+   - Go to "Billing" in the sidebar
+   - Add a payment method
+   - Set usage limits to control costs
+
+#### SendGrid API Keys (for Email Integration)
+
+1. **Create a SendGrid Account**:
+   - Go to [https://sendgrid.com](https://sendgrid.com) and sign up
+   - Complete the verification process
+
+2. **Create API Key**:
+   - From the SendGrid dashboard, go to "Settings" > "API Keys"
+   - Click "Create API Key"
+   - Name your key (e.g., "STRIKE CRM Integration")
+   - Select "Full Access" or customize permissions (at minimum, need "Mail Send" permissions)
+   - Click "Create & View"
+   - Copy the generated key for `SENDGRID_API_KEY` in your STRIKE configuration
+
+3. **Verify Sender Identity**:
+   - Go to "Settings" > "Sender Authentication"
+   - Follow the steps to verify your domain or at least a single sender email
+   - Use the verified email address for `SENDGRID_FROM_EMAIL` in your configuration
+
+#### Twilio API Keys (for SMS and Call Integration)
+
+1. **Create a Twilio Account**:
+   - Go to [https://www.twilio.com/try-twilio](https://www.twilio.com/try-twilio)
+   - Sign up and verify your email and phone number
+
+2. **Get Account SID and Auth Token**:
+   - From the Twilio dashboard, find your Account SID and Auth Token
+   - These will be used for `TWILIO_ACCOUNT_SID` and `TWILIO_AUTH_TOKEN` in your STRIKE configuration
+
+3. **Get a Twilio Phone Number**:
+   - In the Twilio dashboard, go to "Phone Numbers" > "Manage" > "Buy a Number"
+   - Search for a number with SMS and voice capabilities
+   - Purchase the number
+   - Use this number for `TWILIO_PHONE_NUMBER` in your configuration
+
+4. **Configure Webhooks** (for advanced functionality):
+   - Set up webhooks in the Twilio dashboard to point to your STRIKE instance
+   - For SMS: Configure the webhook URL to `https://your-strike-domain.com/api/twilio/sms`
+   - For Voice: Configure the webhook URL to `https://your-strike-domain.com/api/twilio/voice`
+
+#### Google Calendar API (for Calendar Integration)
+
+1. **Create a Google Cloud Project**:
+   - Go to [Google Cloud Console](https://console.cloud.google.com/)
+   - Create a new project
+
+2. **Enable the Google Calendar API**:
+   - In your project, go to "APIs & Services" > "Library"
+   - Search for "Google Calendar API" and enable it
+
+3. **Create OAuth Credentials**:
+   - Go to "APIs & Services" > "Credentials"
+   - Click "Create Credentials" > "OAuth client ID"
+   - Configure the OAuth consent screen
+   - For Application type, select "Web application"
+   - Add authorized redirect URIs (e.g., `https://your-strike-domain.com/api/auth/callback/google`)
+   - Copy the Client ID and Client Secret for your STRIKE configuration
+
+#### Configuring API Keys in STRIKE
+
+1. **Locate the .env File**:
+   - In your STRIKE installation directory, find the `.env` file in the backend directory
+
+2. **Update the .env File**:
+   - Replace the placeholder values with your actual API keys:
+   ```
+   # Supabase settings
+   SUPABASE_URL=your_supabase_url
+   SUPABASE_KEY=your_supabase_key
+   
+   # OpenAI settings
+   OPENAI_API_KEY=your_openai_api_key
+   
+   # SendGrid settings
+   SENDGRID_API_KEY=your_sendgrid_api_key
+   SENDGRID_FROM_EMAIL=your_verified_email
+   
+   # Twilio settings
+   TWILIO_ACCOUNT_SID=your_twilio_account_sid
+   TWILIO_AUTH_TOKEN=your_twilio_auth_token
+   TWILIO_PHONE_NUMBER=your_twilio_phone_number
+   
+   # Google Calendar settings (optional)
+   GOOGLE_CLIENT_ID=your_google_client_id
+   GOOGLE_CLIENT_SECRET=your_google_client_secret
+   ```
+
+3. **Restart the STRIKE Backend**:
+   - After updating the `.env` file, restart the backend server for changes to take effect
+
+#### API Key Security Best Practices
+
+1. **Never share your API keys** publicly or commit them to version control
+2. **Use environment variables** instead of hardcoding keys in your application
+3. **Set up usage limits** where possible to prevent unexpected charges
+4. **Rotate keys periodically** for enhanced security
+5. **Use the minimum required permissions** for each service
+6. **Monitor API usage** regularly to detect unusual activity
 
 ## Lead Management
 
@@ -250,6 +396,7 @@ The STRIKE Chatbot Assistant is available throughout the platform:
    - Data analysis
    - Recommendations
    - User manual and help documentation
+   - Database queries in natural language
 3. The chatbot can:
    - Retrieve lead details
    - Summarize communications
@@ -260,6 +407,50 @@ The STRIKE Chatbot Assistant is available throughout the platform:
    - Reference this user manual to provide detailed instructions
    - Guide you through complex workflows step-by-step
    - Troubleshoot common issues by referencing documentation
+   - Convert natural language questions into database queries
+
+#### Natural Language Database Queries
+
+One of the most powerful features of the STRIKE chatbot is its ability to translate natural language questions into SQL database queries. This allows you to retrieve information from your CRM database without needing to know SQL:
+
+1. **Ask Data Questions Naturally**: Simply ask questions like:
+   - "How many leads do we have from the technology sector?"
+   - "Show me all tasks assigned to Sarah that are due this week"
+   - "What's the average lead score for leads acquired in the last month?"
+   - "Which sales rep has the highest conversion rate this quarter?"
+
+2. **How It Works**:
+   - The chatbot analyzes your question to determine if it requires database access
+   - It automatically generates an appropriate SQL query
+   - The query is executed securely against your database
+   - Results are formatted and presented in a readable format
+   - The chatbot provides additional context and insights about the data
+
+3. **Security Measures**:
+   - All queries are limited to read-only operations (SELECT statements only)
+   - Queries are sanitized to prevent SQL injection
+   - Access is restricted based on user permissions
+   - All database interactions are logged for security auditing
+
+4. **Example Interactions**:
+
+   *User*: "How many high-priority tasks are overdue?"
+   
+   *Chatbot*: "There are 12 high-priority tasks currently overdue. Here's the breakdown by assignee:
+   - John Smith: 5 tasks
+   - Sarah Johnson: 4 tasks
+   - Michael Brown: 3 tasks
+   
+   Would you like to see the details of these tasks?"
+
+   *User*: "Show me leads from California with a score above 80"
+   
+   *Chatbot*: "I found 8 leads from California with a score above 80. Here are the top 3 by score:
+   1. Acme Corporation (Score: 95) - Last contacted: 2 days ago
+   2. TechSolutions Inc (Score: 92) - Last contacted: 1 week ago
+   3. Pacific Innovations (Score: 88) - Last contacted: 3 days ago
+   
+   Would you like to see the full list or get more details about any of these leads?"
 
 #### Chatbot Interface Controls
 
@@ -270,6 +461,7 @@ The chatbot interface includes several controls for easy interaction:
 3. **Copy to Clipboard**: Each message has a copy icon that appears on hover, allowing you to copy specific responses.
 4. **Feedback Buttons**: After receiving a response, you can provide feedback using the thumbs up/down buttons.
 5. **Expand/Collapse**: Some responses, especially those with multiple steps or sections, can be expanded or collapsed for easier reading.
+6. **Draggable Window**: The chatbot window can be moved anywhere on the screen by clicking and dragging the header bar. The chatbot will automatically position itself in a visible area when opened and will stay within the screen boundaries when dragged.
 
 #### Using the Chatbot for Help
 
@@ -448,6 +640,15 @@ Track key metrics including:
 - Clear browser cache
 - Check your internet connection
 - Try a different browser
+
+**API Key Issues**
+- **Invalid API Key Errors**: Verify you've copied the full key without any extra spaces
+- **OpenAI API Errors**: Check your OpenAI account has sufficient credits and billing is set up
+- **Supabase Connection Issues**: Ensure your IP is not restricted in Supabase settings
+- **SendGrid Email Not Sending**: Verify your sender email is properly authenticated
+- **Twilio SMS/Call Failures**: Check your Twilio account balance and number capabilities
+- **Rate Limit Exceeded**: Some APIs have usage limits; check your usage dashboard for the relevant service
+- **Permission Denied**: Ensure your API key has the necessary permissions for the operations you're performing
 
 ### Using the Chatbot for Troubleshooting
 

@@ -22,10 +22,11 @@ const FloatingChatbot: React.FC = () => {
   const [isOpen, setIsOpen] = useState(false);
   const [isMinimized, setIsMinimized] = useState(false);
   const [isDragging, setIsDragging] = useState(false);
-  const [dragPosition, setDragPosition] = useState({ x: 0, y: 0 });
+  const [dragPosition, setDragPosition] = useState({ x: window.innerWidth - 400, y: window.innerHeight - 550 });
   const [dragOffset, setDragOffset] = useState({ x: 0, y: 0 });
   const [isAnimating, setIsAnimating] = useState(false);
   const messagesEndRef = useRef<HTMLDivElement>(null);
+  const chatIconRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     // Generate a session ID if one doesn't exist
@@ -130,10 +131,15 @@ const FloatingChatbot: React.FC = () => {
   };
 
   const toggleChat = () => {
-    setIsOpen(!isOpen);
     if (!isOpen) {
+      const newPosition = {
+        x: window.innerWidth - 400,
+        y: window.innerHeight - 550
+      };
+      setDragPosition(newPosition);
       setIsMinimized(false);
     }
+    setIsOpen(!isOpen);
   };
 
   const toggleMinimize = () => {
@@ -166,9 +172,24 @@ const FloatingChatbot: React.FC = () => {
 
   const handleMouseMove = (e: React.MouseEvent<HTMLDivElement> | MouseEvent) => {
     if (isDragging) {
+      // Calculate new position
+      const newX = e.clientX - dragOffset.x;
+      const newY = e.clientY - dragOffset.y;
+      
+      // Ensure the chatbot stays within the viewport
+      const chatbotWidth = 350;
+      const chatbotHeight = 500;
+      const margin = 20;
+      
+      // Constrain X position
+      const constrainedX = Math.max(margin, Math.min(newX, window.innerWidth - chatbotWidth - margin));
+      
+      // Constrain Y position
+      const constrainedY = Math.max(margin, Math.min(newY, window.innerHeight - chatbotHeight - margin));
+      
       setDragPosition({
-        x: e.clientX - dragOffset.x,
-        y: e.clientY - dragOffset.y
+        x: constrainedX,
+        y: constrainedY
       });
     }
   };
@@ -191,6 +212,20 @@ const FloatingChatbot: React.FC = () => {
       document.removeEventListener('mouseup', handleMouseUp);
     };
   }, [isDragging, dragOffset]);
+
+  useEffect(() => {
+    const handleResize = () => {
+      if (dragPosition.x > window.innerWidth - 100) {
+        setDragPosition(prev => ({ ...prev, x: window.innerWidth - 400 }));
+      }
+      if (dragPosition.y > window.innerHeight - 100) {
+        setDragPosition(prev => ({ ...prev, y: window.innerHeight - 550 }));
+      }
+    };
+
+    window.addEventListener('resize', handleResize);
+    return () => window.removeEventListener('resize', handleResize);
+  }, [dragPosition]);
 
   return (
     <Box sx={{ position: 'fixed', bottom: 20, right: 20, zIndex: 1000 }}>

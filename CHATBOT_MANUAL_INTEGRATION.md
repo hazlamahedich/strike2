@@ -28,6 +28,7 @@ This document outlines the technical approach for integrating the STRIKE chatbot
 4. **Chatbot Backend**
    - LangGraph-based agent system
    - Tool calling for database queries
+   - Natural language to SQL conversion
    - Response generation with citations
 
 5. **User Interface**
@@ -201,7 +202,174 @@ def create_manual_integrated_agent(retriever):
     return agent_executor
 ```
 
-### 5. User Context Tracking
+### 5. Natural Language to SQL Implementation
+
+```python
+# Example code for converting natural language to SQL queries
+from langchain.chains import LLMChain
+from langchain.prompts import PromptTemplate
+from langchain.chat_models import ChatOpenAI
+from langchain.output_parsers import StrOutputParser
+from langchain.prompts import ChatPromptTemplate
+
+class NLToSQLConverter:
+    """Convert natural language questions to SQL queries."""
+    
+    def __init__(self, db_schema, openai_api_key):
+        """Initialize with database schema and API key."""
+        self.db_schema = db_schema
+        self.openai_api_key = openai_api_key
+        self.llm = ChatOpenAI(
+            api_key=openai_api_key,
+            model_name="gpt-4",
+            temperature=0,
+        )
+    
+    def create_schema_prompt(self):
+        """Create a prompt with the database schema."""
+        schema_description = ""
+        for table, columns in self.db_schema.items():
+            schema_description += f"- {table}: {', '.join(columns)}\n"
+        
+        return schema_description
+    
+    def convert_to_sql(self, natural_language_query):
+        """Convert natural language query to SQL."""
+        schema_prompt = self.create_schema_prompt()
+        
+        sql_generation_prompt = ChatPromptTemplate.from_messages([
+            ("system", f"""
+            You are a SQL expert. Generate a SQL query to answer the user's question.
+            
+            The database has the following tables and columns:
+            {schema_prompt}
+            
+            Generate ONLY a SQL SELECT query. Do not include any explanations or comments.
+            Only return the SQL query itself. Ensure the query is secure and follows best practices.
+            """),
+            ("human", natural_language_query),
+        ])
+        
+        chain = sql_generation_prompt | self.llm | StrOutputParser()
+        sql_query = chain.invoke({})
+        
+        return self.sanitize_query(sql_query)
+    
+    def sanitize_query(self, query):
+        """Sanitize the SQL query for security."""
+        # Check if query is SELECT only
+        if not query.strip().lower().startswith("select"):
+            return None
+        
+        # Check for dangerous operations
+        dangerous_keywords = ["insert", "update", "delete", "drop", "alter", "create", "truncate"]
+        if any(keyword in query.lower() for keyword in dangerous_keywords):
+            return None
+        
+        return query
+    
+    async def execute_query(self, query, db_connection):
+        """Execute the SQL query and return results."""
+        if not query:
+            return {"error": "Invalid query. Only SELECT statements are allowed."}
+        
+        try:
+            # Execute query using your database connection
+            # This is a placeholder - implement according to your DB system
+            results = await db_connection.execute(query)
+            return {"results": results}
+        except Exception as e:
+            return {"error": str(e)}
+```
+
+### 6. Database Query Tool Implementation
+
+```python
+from langchain.tools import BaseTool
+import json
+import logging
+
+logger = logging.getLogger(__name__)
+
+class DatabaseQueryTool(BaseTool):
+    """Tool for querying the database using natural language."""
+    name = "database_query"
+    description = "Query the database to retrieve information. Use this when you need to look up specific data."
+    
+    def __init__(self, nl_to_sql_converter, db_connection):
+        """Initialize with NL to SQL converter and DB connection."""
+        super().__init__()
+        self.converter = nl_to_sql_converter
+        self.db_connection = db_connection
+    
+    async def _arun(
+        self,
+        query: str,
+        run_manager = None,
+    ) -> str:
+        """Run the database query asynchronously."""
+        try:
+            # Convert natural language to SQL
+            sql_query = self.converter.convert_to_sql(query)
+            
+            if not sql_query:
+                return "I cannot perform this operation. Only data retrieval queries are allowed."
+            
+            # Execute the query
+            results = await self.converter.execute_query(sql_query, self.db_connection)
+            
+            if "error" in results:
+                return f"Error executing query: {results['error']}"
+            
+            # Format the results as a string
+            if not results["results"]:
+                return "No results found."
+            
+            # Convert results to a readable format
+            formatted_results = json.dumps(results["results"], indent=2, default=str)
+            return f"Query results:\n{formatted_results}"
+        except Exception as e:
+            logger.error(f"Database query error: {e}")
+            return f"Error executing query: {str(e)}"
+```
+
+### 7. Query Classification Implementation
+
+```python
+from enum import Enum
+
+class QueryType(Enum):
+    DATABASE_QUERY = "database_query"
+    MANUAL_REFERENCE = "manual_reference"
+    GENERAL_QUESTION = "general_question"
+    TASK_EXECUTION = "task_execution"
+
+async def classify_query(query_text, llm):
+    """Classify the type of query being asked."""
+    classification_prompt = ChatPromptTemplate.from_messages([
+        ("system", """
+        Classify the user's query into one of the following categories:
+        1. DATABASE_QUERY - Questions asking for specific data from the CRM database
+        2. MANUAL_REFERENCE - Questions about how to use the system or reference to the manual
+        3. GENERAL_QUESTION - General questions not requiring database access or manual reference
+        4. TASK_EXECUTION - Requests to perform a specific action in the system
+        
+        Respond with only the category name.
+        """),
+        ("human", query_text),
+    ])
+    
+    chain = classification_prompt | llm | StrOutputParser()
+    query_type = chain.invoke({})
+    
+    try:
+        return QueryType[query_type.strip()]
+    except (KeyError, ValueError):
+        # Default to general question if classification fails
+        return QueryType.GENERAL_QUESTION
+```
+
+### 8. User Context Tracking
 
 ```python
 # Example code for tracking user context
@@ -248,7 +416,7 @@ class UserContextTracker:
         return relevant_sections
 ```
 
-### 6. Frontend Integration
+### 9. Frontend Integration
 
 ```javascript
 // Example code for frontend integration
