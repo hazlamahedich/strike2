@@ -18,9 +18,11 @@ import {
 } from 'lucide-react';
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import DashboardLayout from '@/components/layout/DashboardLayout';
 import apiClient from '@/lib/api/client';
 import { DashboardCards } from '@/components/dashboard/DashboardCards';
+import CampaignAnalyticsOverview from '@/components/dashboard/CampaignAnalyticsOverview';
 import { toast } from '@/components/ui/use-toast';
 import { USE_MOCK_DATA } from '@/lib/config';
 
@@ -111,6 +113,7 @@ export default function Dashboard() {
   const [recentActivities, setRecentActivities] = useState<Activity[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [userName, setUserName] = useState<string>('');
+  const [activeTab, setActiveTab] = useState('overview');
 
   useEffect(() => {
     // Get user name from local storage if available
@@ -224,13 +227,17 @@ export default function Dashboard() {
             </p>
           </div>
           <div className="flex gap-2">
-            <Button>
-              <UserPlus className="mr-2 h-4 w-4" />
-              Add Lead
+            <Button asChild>
+              <Link href="/dashboard/leads/new">
+                <UserPlus className="mr-2 h-4 w-4" />
+                Add Lead
+              </Link>
             </Button>
-            <Button variant="outline">
-              <Calendar className="mr-2 h-4 w-4" />
-              Schedule Meeting
+            <Button variant="outline" asChild>
+              <Link href="/dashboard/campaigns/new">
+                <Megaphone className="mr-2 h-4 w-4" />
+                Create Campaign
+              </Link>
             </Button>
           </div>
         </div>
@@ -238,184 +245,208 @@ export default function Dashboard() {
         {/* Dashboard Cards */}
         <DashboardCards />
 
-        {/* Stats Overview */}
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
-          <Card className="hover-lift">
-            <CardHeader className="pb-2">
-              <CardTitle className="text-sm font-medium text-muted-foreground">Total Leads</CardTitle>
-            </CardHeader>
-            <CardContent>
-              <div className="text-2xl font-bold">{stats?.total_leads || '—'}</div>
-              <div className="text-xs text-muted-foreground mt-1 flex items-center">
-                <TrendingUp className="h-3 w-3 mr-1 text-green-500" />
-                <span className="text-green-500 font-medium">{stats?.new_leads_today || 0} new today</span>
-              </div>
-            </CardContent>
-          </Card>
+        {/* Dashboard Tabs */}
+        <Tabs value={activeTab} onValueChange={setActiveTab} className="space-y-4">
+          <TabsList className="grid w-full grid-cols-2">
+            <TabsTrigger value="overview">CRM Overview</TabsTrigger>
+            <TabsTrigger value="campaigns">Campaign Analytics</TabsTrigger>
+          </TabsList>
           
-          <Card className="hover-lift">
-            <CardHeader className="pb-2">
-              <CardTitle className="text-sm font-medium text-muted-foreground">Active Campaigns</CardTitle>
-            </CardHeader>
-            <CardContent>
-              <div className="text-2xl font-bold">{stats?.active_campaigns || '—'}</div>
-              <div className="text-xs text-muted-foreground mt-1">Running campaigns</div>
-            </CardContent>
-          </Card>
-          
-          <Card className="hover-lift">
-            <CardHeader className="pb-2">
-              <CardTitle className="text-sm font-medium text-muted-foreground">Pending Tasks</CardTitle>
-            </CardHeader>
-            <CardContent>
-              <div className="text-2xl font-bold">{stats?.pending_tasks || '—'}</div>
-              <div className="text-xs text-muted-foreground mt-1">Requiring attention</div>
-            </CardContent>
-          </Card>
-          
-          <Card className="hover-lift">
-            <CardHeader className="pb-2">
-              <CardTitle className="text-sm font-medium text-muted-foreground">Conversion Rate</CardTitle>
-            </CardHeader>
-            <CardContent>
-              <div className="text-2xl font-bold">{stats?.conversion_rate || '—'}%</div>
-              <div className="text-xs text-muted-foreground mt-1">Lead to customer</div>
-            </CardContent>
-          </Card>
-        </div>
-
-        {/* Main Dashboard Content */}
-        <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-          {/* Recent Activity */}
-          <Card className="lg:col-span-2 hover-lift">
-            <CardHeader>
-              <CardTitle>Recent Activity</CardTitle>
-              <CardDescription>Latest actions across your CRM</CardDescription>
-            </CardHeader>
-            <CardContent>
-              <div className="space-y-4">
-                {isLoading ? (
-                  <div className="flex items-center justify-center h-40">
-                    <div className="animate-pulse-subtle">Loading recent activities...</div>
+          <TabsContent value="overview" className="space-y-4">
+            {/* Stats Overview */}
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+              <Card className="hover-lift">
+                <CardHeader className="pb-2">
+                  <CardTitle className="text-sm font-medium text-muted-foreground">Total Leads</CardTitle>
+                </CardHeader>
+                <CardContent>
+                  <div className="text-2xl font-bold">{stats?.total_leads || '—'}</div>
+                  <div className="text-xs text-muted-foreground mt-1 flex items-center">
+                    <TrendingUp className="h-3 w-3 mr-1 text-green-500" />
+                    <span className="text-green-500 font-medium">{stats?.new_leads_today || 0} new today</span>
                   </div>
-                ) : (
-                  recentActivities.map((activity) => (
-                    <div key={activity.id} className="flex items-start gap-4 p-3 rounded-lg hover:bg-muted/50 transition-colors">
-                      <div className="h-8 w-8 rounded-full bg-primary/10 flex items-center justify-center text-primary">
-                        {getActivityIcon(activity.type)}
+                </CardContent>
+              </Card>
+              
+              <Card className="hover-lift">
+                <CardHeader className="pb-2">
+                  <CardTitle className="text-sm font-medium text-muted-foreground">Active Campaigns</CardTitle>
+                </CardHeader>
+                <CardContent>
+                  <div className="text-2xl font-bold">{stats?.active_campaigns || '—'}</div>
+                  <div className="text-xs text-muted-foreground mt-1">Running campaigns</div>
+                </CardContent>
+              </Card>
+              
+              <Card className="hover-lift">
+                <CardHeader className="pb-2">
+                  <CardTitle className="text-sm font-medium text-muted-foreground">Pending Tasks</CardTitle>
+                </CardHeader>
+                <CardContent>
+                  <div className="text-2xl font-bold">{stats?.pending_tasks || '—'}</div>
+                  <div className="text-xs text-muted-foreground mt-1">Requiring attention</div>
+                </CardContent>
+              </Card>
+              
+              <Card className="hover-lift">
+                <CardHeader className="pb-2">
+                  <CardTitle className="text-sm font-medium text-muted-foreground">Conversion Rate</CardTitle>
+                </CardHeader>
+                <CardContent>
+                  <div className="text-2xl font-bold">{stats?.conversion_rate || '—'}%</div>
+                  <div className="text-xs text-muted-foreground mt-1">Lead to customer</div>
+                </CardContent>
+              </Card>
+            </div>
+
+            {/* Main Dashboard Content */}
+            <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+              {/* Recent Activity */}
+              <Card className="lg:col-span-2 hover-lift">
+                <CardHeader>
+                  <CardTitle>Recent Activity</CardTitle>
+                  <CardDescription>Latest actions across your CRM</CardDescription>
+                </CardHeader>
+                <CardContent>
+                  <div className="space-y-4">
+                    {isLoading ? (
+                      <div className="flex items-center justify-center h-40">
+                        <div className="animate-pulse-subtle">Loading recent activities...</div>
                       </div>
-                      <div className="flex-1 space-y-1">
-                        <div className="flex items-center justify-between">
-                          <p className="text-sm font-medium">{activity.title}</p>
-                          <p className="text-xs text-muted-foreground">{formatDate(activity.timestamp)}</p>
+                    ) : (
+                      recentActivities.map((activity) => (
+                        <div key={activity.id} className="flex items-start gap-4 p-3 rounded-lg hover:bg-muted/50 transition-colors">
+                          <div className="h-8 w-8 rounded-full bg-primary/10 flex items-center justify-center text-primary">
+                            {getActivityIcon(activity.type)}
+                          </div>
+                          <div className="flex-1 space-y-1">
+                            <div className="flex items-center justify-between">
+                              <p className="text-sm font-medium">{activity.title}</p>
+                              <p className="text-xs text-muted-foreground">{formatDate(activity.timestamp)}</p>
+                            </div>
+                            <p className="text-sm text-muted-foreground">{activity.description}</p>
+                            <p className="text-xs">by {activity.user}</p>
+                          </div>
                         </div>
-                        <p className="text-sm text-muted-foreground">{activity.description}</p>
-                        <p className="text-xs">by {activity.user}</p>
+                      ))
+                    )}
+                  </div>
+                </CardContent>
+                <CardFooter>
+                  <Button variant="ghost" className="w-full" asChild>
+                    <Link href="/dashboard/activities">
+                      View All Activities
+                      <ArrowUpRight className="ml-2 h-4 w-4" />
+                    </Link>
+                  </Button>
+                </CardFooter>
+              </Card>
+
+              {/* Quick Actions */}
+              <div className="space-y-6">
+                <Card className="hover-lift">
+                  <CardHeader>
+                    <CardTitle>Quick Actions</CardTitle>
+                    <CardDescription>Common tasks and shortcuts</CardDescription>
+                  </CardHeader>
+                  <CardContent className="space-y-2">
+                    <Button variant="outline" className="w-full justify-start" asChild>
+                      <Link href="/dashboard/leads/new">
+                        <UserPlus className="mr-2 h-4 w-4" />
+                        Add New Lead
+                      </Link>
+                    </Button>
+                    <Button variant="outline" className="w-full justify-start" asChild>
+                      <Link href="/dashboard/tasks/new">
+                        <CheckSquare className="mr-2 h-4 w-4" />
+                        Create Task
+                      </Link>
+                    </Button>
+                    <Button variant="outline" className="w-full justify-start" asChild>
+                      <Link href="/dashboard/meetings/schedule">
+                        <Calendar className="mr-2 h-4 w-4" />
+                        Schedule Meeting
+                      </Link>
+                    </Button>
+                    <Button variant="outline" className="w-full justify-start" asChild>
+                      <Link href="/dashboard/communications/email">
+                        <Mail className="mr-2 h-4 w-4" />
+                        Send Email
+                      </Link>
+                    </Button>
+                    <Button variant="outline" className="w-full justify-start" asChild>
+                      <Link href="/dashboard/communications/call">
+                        <Phone className="mr-2 h-4 w-4" />
+                        Log Call
+                      </Link>
+                    </Button>
+                  </CardContent>
+                </Card>
+
+                <Card className="hover-lift">
+                  <CardHeader>
+                    <CardTitle>Upcoming Meetings</CardTitle>
+                    <CardDescription>Your schedule for today</CardDescription>
+                  </CardHeader>
+                  <CardContent>
+                    {isLoading ? (
+                      <div className="flex items-center justify-center h-20">
+                        <div className="animate-pulse-subtle">Loading meetings...</div>
                       </div>
-                    </div>
-                  ))
-                )}
+                    ) : stats?.upcoming_meetings ? (
+                      <div className="space-y-3">
+                        <div className="flex items-center gap-3 p-2 rounded-md hover:bg-muted/50">
+                          <div className="h-8 w-8 rounded-full bg-primary/10 flex items-center justify-center text-primary">
+                            <Calendar className="h-4 w-4" />
+                          </div>
+                          <div>
+                            <p className="text-sm font-medium">Product Demo</p>
+                            <p className="text-xs text-muted-foreground">2:00 PM with Acme Corp</p>
+                          </div>
+                        </div>
+                        <div className="flex items-center gap-3 p-2 rounded-md hover:bg-muted/50">
+                          <div className="h-8 w-8 rounded-full bg-primary/10 flex items-center justify-center text-primary">
+                            <Calendar className="h-4 w-4" />
+                          </div>
+                          <div>
+                            <p className="text-sm font-medium">Follow-up Call</p>
+                            <p className="text-xs text-muted-foreground">4:30 PM with TechSolutions</p>
+                          </div>
+                        </div>
+                      </div>
+                    ) : (
+                      <div className="text-center py-4 text-muted-foreground">
+                        No meetings scheduled for today
+                      </div>
+                    )}
+                  </CardContent>
+                  <CardFooter>
+                    <Button variant="ghost" className="w-full" asChild>
+                      <Link href="/dashboard/meetings">
+                        View Calendar
+                        <ArrowUpRight className="ml-2 h-4 w-4" />
+                      </Link>
+                    </Button>
+                  </CardFooter>
+                </Card>
               </div>
-            </CardContent>
-            <CardFooter>
-              <Button variant="ghost" className="w-full" asChild>
-                <Link href="/dashboard/activities">
-                  View All Activities
+            </div>
+          </TabsContent>
+          
+          <TabsContent value="campaigns" className="space-y-4">
+            <div className="flex items-center justify-between mb-4">
+              <h2 className="text-2xl font-bold">Campaign Analytics</h2>
+              <Button asChild>
+                <Link href="/dashboard/campaigns">
+                  View All Campaigns
                   <ArrowUpRight className="ml-2 h-4 w-4" />
                 </Link>
               </Button>
-            </CardFooter>
-          </Card>
-
-          {/* Quick Actions */}
-          <div className="space-y-6">
-            <Card className="hover-lift">
-              <CardHeader>
-                <CardTitle>Quick Actions</CardTitle>
-                <CardDescription>Common tasks and shortcuts</CardDescription>
-              </CardHeader>
-              <CardContent className="space-y-2">
-                <Button variant="outline" className="w-full justify-start" asChild>
-                  <Link href="/dashboard/leads/new">
-                    <UserPlus className="mr-2 h-4 w-4" />
-                    Add New Lead
-                  </Link>
-                </Button>
-                <Button variant="outline" className="w-full justify-start" asChild>
-                  <Link href="/dashboard/tasks/new">
-                    <CheckSquare className="mr-2 h-4 w-4" />
-                    Create Task
-                  </Link>
-                </Button>
-                <Button variant="outline" className="w-full justify-start" asChild>
-                  <Link href="/dashboard/meetings/schedule">
-                    <Calendar className="mr-2 h-4 w-4" />
-                    Schedule Meeting
-                  </Link>
-                </Button>
-                <Button variant="outline" className="w-full justify-start" asChild>
-                  <Link href="/dashboard/communications/email">
-                    <Mail className="mr-2 h-4 w-4" />
-                    Send Email
-                  </Link>
-                </Button>
-                <Button variant="outline" className="w-full justify-start" asChild>
-                  <Link href="/dashboard/communications/call">
-                    <Phone className="mr-2 h-4 w-4" />
-                    Log Call
-                  </Link>
-                </Button>
-              </CardContent>
-            </Card>
-
-            <Card className="hover-lift">
-              <CardHeader>
-                <CardTitle>Upcoming Meetings</CardTitle>
-                <CardDescription>Your schedule for today</CardDescription>
-              </CardHeader>
-              <CardContent>
-                {isLoading ? (
-                  <div className="flex items-center justify-center h-20">
-                    <div className="animate-pulse-subtle">Loading meetings...</div>
-                  </div>
-                ) : stats?.upcoming_meetings ? (
-                  <div className="space-y-3">
-                    <div className="flex items-center gap-3 p-2 rounded-md hover:bg-muted/50">
-                      <div className="h-8 w-8 rounded-full bg-primary/10 flex items-center justify-center text-primary">
-                        <Calendar className="h-4 w-4" />
-                      </div>
-                      <div>
-                        <p className="text-sm font-medium">Product Demo</p>
-                        <p className="text-xs text-muted-foreground">2:00 PM with Acme Corp</p>
-                      </div>
-                    </div>
-                    <div className="flex items-center gap-3 p-2 rounded-md hover:bg-muted/50">
-                      <div className="h-8 w-8 rounded-full bg-primary/10 flex items-center justify-center text-primary">
-                        <Calendar className="h-4 w-4" />
-                      </div>
-                      <div>
-                        <p className="text-sm font-medium">Follow-up Call</p>
-                        <p className="text-xs text-muted-foreground">4:30 PM with TechSolutions</p>
-                      </div>
-                    </div>
-                  </div>
-                ) : (
-                  <div className="text-center py-4 text-muted-foreground">
-                    No meetings scheduled for today
-                  </div>
-                )}
-              </CardContent>
-              <CardFooter>
-                <Button variant="ghost" className="w-full" asChild>
-                  <Link href="/dashboard/meetings">
-                    View Calendar
-                    <ArrowUpRight className="ml-2 h-4 w-4" />
-                  </Link>
-                </Button>
-              </CardFooter>
-            </Card>
-          </div>
-        </div>
+            </div>
+            
+            <CampaignAnalyticsOverview />
+          </TabsContent>
+        </Tabs>
       </div>
     </DashboardLayout>
   );

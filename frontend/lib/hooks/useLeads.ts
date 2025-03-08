@@ -8,6 +8,7 @@ import {
   LeadExport,
   LeadCampaignStatus
 } from '../types/lead';
+import { validateCampaignAction } from '../utils/campaignUtils';
 
 // Query keys
 export const leadKeys = {
@@ -113,7 +114,7 @@ export const useDeleteLead = () => {
   const queryClient = useQueryClient();
   
   return useMutation({
-    mutationFn: (leadId: number) => leadApi.deleteLead(leadId),
+    mutationFn: (leadId: number) => leadApi.deleteLead(String(leadId)),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: leadKeys.lists() });
     },
@@ -172,19 +173,28 @@ export const useAddLeadToCampaign = () => {
   const queryClient = useQueryClient();
   
   return useMutation({
-    mutationFn: ({ 
+    mutationFn: async ({ 
       leadId, 
       campaignId, 
       status, 
       notes, 
-      metadata 
+      metadata,
+      campaignStatus
     }: { 
       leadId: number; 
       campaignId: number; 
       status?: LeadCampaignStatus; 
       notes?: string; 
       metadata?: Record<string, any>;
-    }) => leadApi.addLeadToCampaign(leadId, campaignId, status, notes, metadata),
+      campaignStatus: string;
+    }) => {
+      // Validate campaign status before proceeding
+      if (!validateCampaignAction(campaignStatus as any, 'lead')) {
+        throw new Error(`Cannot add leads to a ${campaignStatus} campaign`);
+      }
+      
+      return leadApi.addLeadToCampaign(String(campaignId), String(leadId));
+    },
     onSuccess: (data, variables) => {
       queryClient.invalidateQueries({ queryKey: leadKeys.campaigns(variables.leadId) });
       queryClient.invalidateQueries({ queryKey: leadKeys.detail(variables.leadId) });
@@ -197,15 +207,24 @@ export const useRemoveLeadFromCampaign = () => {
   const queryClient = useQueryClient();
   
   return useMutation({
-    mutationFn: ({ 
+    mutationFn: async ({ 
       leadId, 
       campaignId, 
-      notes 
+      notes,
+      campaignStatus
     }: { 
       leadId: number; 
       campaignId: number; 
       notes?: string;
-    }) => leadApi.removeLeadFromCampaign(leadId, campaignId, notes),
+      campaignStatus: string;
+    }) => {
+      // Validate campaign status before proceeding
+      if (!validateCampaignAction(campaignStatus as any, 'lead')) {
+        throw new Error(`Cannot remove leads from a ${campaignStatus} campaign`);
+      }
+      
+      return leadApi.removeLeadFromCampaign(leadId, campaignId, notes);
+    },
     onSuccess: (data, variables) => {
       queryClient.invalidateQueries({ queryKey: leadKeys.campaigns(variables.leadId) });
       queryClient.invalidateQueries({ queryKey: leadKeys.detail(variables.leadId) });
@@ -218,19 +237,28 @@ export const useUpdateLeadCampaignStatus = () => {
   const queryClient = useQueryClient();
   
   return useMutation({
-    mutationFn: ({ 
+    mutationFn: async ({ 
       leadId, 
       campaignId, 
       status, 
       notes, 
-      metadata 
+      metadata,
+      campaignStatus
     }: { 
       leadId: number; 
       campaignId: number; 
       status: LeadCampaignStatus; 
       notes?: string; 
       metadata?: Record<string, any>;
-    }) => leadApi.updateLeadCampaignStatus(leadId, campaignId, status, notes, metadata),
+      campaignStatus: string;
+    }) => {
+      // Validate campaign status before proceeding
+      if (!validateCampaignAction(campaignStatus as any, 'lead')) {
+        throw new Error(`Cannot update leads in a ${campaignStatus} campaign`);
+      }
+      
+      return leadApi.updateLeadCampaignStatus(leadId, campaignId, status, notes, metadata);
+    },
     onSuccess: (data, variables) => {
       queryClient.invalidateQueries({ queryKey: leadKeys.campaigns(variables.leadId) });
       queryClient.invalidateQueries({ queryKey: leadKeys.detail(variables.leadId) });
@@ -243,17 +271,26 @@ export const useBulkAddLeadsToCampaign = () => {
   const queryClient = useQueryClient();
   
   return useMutation({
-    mutationFn: ({ 
+    mutationFn: async ({ 
       campaignId, 
       leadIds, 
       status, 
-      notes 
+      notes,
+      campaignStatus
     }: { 
       campaignId: number; 
       leadIds: number[]; 
       status?: LeadCampaignStatus; 
       notes?: string;
-    }) => leadApi.bulkAddLeadsToCampaign(campaignId, leadIds, status, notes),
+      campaignStatus: string;
+    }) => {
+      // Validate campaign status before proceeding
+      if (!validateCampaignAction(campaignStatus as any, 'lead')) {
+        throw new Error(`Cannot add leads to a ${campaignStatus} campaign`);
+      }
+      
+      return leadApi.bulkAddLeadsToCampaign(campaignId, leadIds, status, notes);
+    },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: leadKeys.lists() });
     },

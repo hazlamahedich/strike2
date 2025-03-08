@@ -97,10 +97,10 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
 
         // If no local user, try API
         const user = await apiClient.get<User>('auth/me');
-        if (user && user.email) {
-          setUserName(user.full_name || user.email.split('@')[0]);
+        if (user && user.data && user.data.email) {
+          setUserName(user.data.full_name || user.data.email.split('@')[0]);
           setUserInitials(
-            (user.full_name ? user.full_name.split(' ').map((n: string) => n[0]).join('') : user.email[0]).toUpperCase()
+            (user.data.full_name ? user.data.full_name.split(' ').map((n: string) => n[0]).join('') : user.data.email[0]).toUpperCase()
           );
         }
       } catch (error) {
@@ -111,8 +111,8 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
 
     const fetchNotifications = async () => {
       try {
-        const data = await apiClient.get<Notification[]>('notifications/unread');
-        setNotifications(data || []);
+        const response = await apiClient.get<Notification[]>('notifications/unread');
+        setNotifications(response.data || []);
       } catch (error) {
         console.error('Failed to fetch notifications', error);
         // Just use empty notifications array
@@ -138,7 +138,8 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
 
       // Otherwise use API logout
       await apiClient.post('auth/logout', {});
-      apiClient.clearAuthToken();
+      // Clear auth token
+      apiClient.setAuthToken(null);
       window.location.href = '/auth/login';
     } catch (error) {
       console.error('Logout failed', error);
