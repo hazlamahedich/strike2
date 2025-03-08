@@ -245,7 +245,7 @@ async def update_contact(
 async def delete_contact(
     contact_id: int = Path(..., gt=0),
     current_user: User = Depends(get_current_active_user)
-) -> Any:
+):
     """
     Delete a contact
     """

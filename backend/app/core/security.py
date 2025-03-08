@@ -1,19 +1,27 @@
 from typing import Any, Optional
 
 from fastapi import Depends, HTTPException, status
-from fastapi.security import OAuth2PasswordBearer
+from fastapi.security import OAuth2PasswordBearer, OAuth2PasswordRequestForm, OAuth2PasswordBearer as OAuth2PasswordBearerBase
 from typing import Optional
 from datetime import datetime, timedelta
 import jwt
 from pydantic import ValidationError
 import bcrypt
+from passlib.context import CryptContext
+from jose import JWTError
 
 from app.core.config import settings
 from app.models.user import User
 from app.services import auth as auth_service
 
+# Password hashing
+pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
+
 # OAuth2 password bearer token setup
 oauth2_scheme = OAuth2PasswordBearer(tokenUrl=f"{settings.API_V1_STR}/auth/login")
+
+# OAuth2 scheme for optional token authentication
+oauth2_scheme_optional = OAuth2PasswordBearer(tokenUrl=f"{settings.API_V1_STR}/auth/login", auto_error=False)
 
 def verify_password(plain_password: str, hashed_password: str) -> bool:
     """
@@ -31,7 +39,25 @@ async def get_current_user(token: str = Depends(oauth2_scheme)) -> User:
     """
     Get the current user from a Supabase token
     """
-    return await auth_service.get_current_user(token)
+    credentials_exception = HTTPException(
+        status_code=status.HTTP_401_UNAUTHORIZED,
+        detail="Could not validate credentials",
+        headers={"WWW-Authenticate": "Bearer"},
+    )
+    try:
+        payload = jwt.decode(token, settings.SECRET_KEY, algorithms=[settings.ALGORITHM])
+        user_id: str = payload.get("sub")
+        if user_id is None:
+            raise credentials_exception
+    except JWTError:
+        raise credentials_exception
+    
+    # Import UserService here to avoid circular import
+    from app.services.user import UserService
+    user = await UserService.get_user_by_id(user_id)
+    if user is None:
+        raise credentials_exception
+    return user
 
 async def get_current_active_user(current_user: User = Depends(get_current_user)) -> User:
     """
@@ -66,3 +92,27 @@ class RoleChecker:
                 detail=f"Role {current_user.role} not authorized to perform this action"
             )
         return current_user 
+
+def create_access_token(data: dict, expires_delta: Optional[timedelta] = None):
+    """Create a JWT access token."""
+    to_encode = data.copy()
+    if expires_delta:
+        expire = datetime.utcnow() + expires_delta
+    else:
+        expire = datetime.utcnow() + timedelta(minutes=settings.ACCESS_TOKEN_EXPIRE_MINUTES)
+    to_encode.update({"exp": expire})
+    encoded_jwt = jwt.encode(to_encode, settings.SECRET_KEY, algorithm=settings.ALGORITHM)
+    return encoded_jwt
+
+async def get_optional_user(token: str = Depends(oauth2_scheme_optional)) -> Optional[User]:
+    """
+    Get the current user if a valid token is provided, otherwise return None.
+    This is used for endpoints that can be accessed by both authenticated and anonymous users.
+    """
+    if not token:
+        return None
+    
+    try:
+        return await get_current_active_user(token)
+    except HTTPException:
+        return None 

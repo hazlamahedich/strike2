@@ -1,0 +1,8 @@
+"""
+AI-Powered CRM Application
+"""
+
+__version__ = "0.1.0"
+
+# Import all modules to make them available
+from app import routers, models, services, core, agents 

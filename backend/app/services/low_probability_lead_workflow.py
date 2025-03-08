@@ -23,7 +23,7 @@ from app.services import campaign as campaign_service
 from app.services import ai as ai_service
 from app.services import communication as communication_service
 from app.agents.lead_scoring_agent import LeadScoringAgent
-from app.agents.communication_assistant import CommunicationAssistant
+from app.agents.communication_assistant import CommunicationAssistantAgent
 from app.agents.task_orchestrator import TaskOrchestratorAgent
 
 # Configure logger
@@ -51,7 +51,7 @@ class LowProbabilityWorkflow:
     
     def __init__(self):
         self.lead_scoring_agent = LeadScoringAgent()
-        self.communication_assistant = CommunicationAssistant()
+        self.communication_assistant = CommunicationAssistantAgent()
         self.task_orchestrator = TaskOrchestratorAgent()
     
     async def setup_campaign(self, name: str = "Low Probability Lead Nurturing", 
