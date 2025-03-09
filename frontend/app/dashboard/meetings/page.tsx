@@ -2,6 +2,9 @@
 
 import { useState, useEffect } from 'react';
 import { MeetingView } from '@/components/meetings/MeetingView';
+import { Button } from '@/components/ui/button';
+import { Calendar, ExternalLink } from 'lucide-react';
+import Link from 'next/link';
 
 export default function MeetingsPage() {
   const [error, setError] = useState<string | null>(null);
@@ -40,6 +43,13 @@ export default function MeetingsPage() {
       
       <div className="flex items-center justify-between">
         <h2 className="text-3xl font-bold tracking-tight">Meetings</h2>
+        <Link href="/dashboard/calendar-integrations">
+          <Button variant="outline" className="flex items-center gap-2">
+            <Calendar className="h-4 w-4" />
+            Calendar Integrations
+            <ExternalLink className="h-4 w-4" />
+          </Button>
+        </Link>
       </div>
       
       <div className="w-full">

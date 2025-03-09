@@ -62,6 +62,7 @@ const navItems: NavItem[] = [
   { title: 'Tasks', href: '/dashboard/tasks', icon: <CheckSquare className="h-5 w-5" /> },
   { title: 'Communications', href: '/communications', icon: <MessageSquare className="h-5 w-5" /> },
   { title: 'Meetings', href: '/dashboard/meetings', icon: <Calendar className="h-5 w-5" /> },
+  { title: 'Calendar Integrations', href: '/dashboard/calendar-integrations', icon: <Calendar className="h-5 w-5" /> },
   { title: 'Analytics', href: '/dashboard/analytics', icon: <BarChart3 className="h-5 w-5" /> },
   { title: 'Settings', href: '/dashboard/settings', icon: <Settings className="h-5 w-5" /> },
 ];
