@@ -7,6 +7,7 @@ import AuthProviderWrapper from "@/components/shared/auth-provider-wrapper";
 import { QueryClientProvider } from "@/components/shared/query-client-provider";
 import { BreadcrumbProvider } from "@/components/shared/breadcrumb-provider";
 import { ChatbotProvider } from "@/components/shared/chatbot-provider";
+import { DialogProvider } from "@/lib/contexts/DialogContext";
 
 const inter = Inter({ subsets: ["latin"] });
 
@@ -32,13 +33,15 @@ export default function RootLayout({
           <AuthProviderWrapper>
             <QueryClientProvider>
               <ChatbotProvider>
-                <div className="flex flex-col min-h-screen">
-                  <BreadcrumbProvider />
-                  <div className="flex-1">
-                    {children}
+                <DialogProvider>
+                  <div className="flex flex-col min-h-screen">
+                    <BreadcrumbProvider />
+                    <div className="flex-1">
+                      {children}
+                    </div>
                   </div>
-                </div>
-                <Toaster position="top-right" />
+                  <Toaster position="top-right" />
+                </DialogProvider>
               </ChatbotProvider>
             </QueryClientProvider>
           </AuthProviderWrapper>
