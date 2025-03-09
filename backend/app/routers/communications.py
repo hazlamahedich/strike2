@@ -3,8 +3,10 @@ Communications router module for handling email, SMS, and call API endpoints.
 """
 from typing import Any, Dict, List, Optional
 import logging
+import json
+from datetime import datetime
 
-from fastapi import APIRouter, Depends, HTTPException, status, Query, Path, Body
+from fastapi import APIRouter, Depends, HTTPException, status, Query, Path, Body, Request
 from fastapi.responses import JSONResponse
 
 from app.models.communication import (
@@ -29,6 +31,8 @@ from app.models.communication import (
 from app.services.communication import CommunicationService
 from app.core.security import get_current_active_user
 from app.models.user import User
+from app.services.ai import AIService
+from app.db.supabase import update_row, fetch_one, insert_row, insert_related_activity, get_call_activity_id
 
 # Configure logger for this module
 logger = logging.getLogger(__name__)
@@ -325,7 +329,7 @@ async def handle_dialpad_request(
 
 @router.post("/recording-status-callback")
 async def recording_status_callback(
-    status: Dict[str, Any]
+    status: Dict[str, Any] = Body(...)
 ) -> JSONResponse:
     """
     Webhook for Twilio recording status updates
@@ -333,9 +337,74 @@ async def recording_status_callback(
     This endpoint is called by Twilio when a recording status changes.
     It's a webhook and doesn't require authentication.
     """
-    # In a real implementation, this would update the recording status in the database
-    # and potentially trigger transcription
+    logger.info(f"Received recording status callback: {status}")
     
+    try:
+        # Check if the recording is completed
+        if status.get("Status") == "completed":
+            recording_sid = status.get("RecordingSid")
+            call_sid = status.get("CallSid")
+            recording_url = status.get("RecordingUrl")
+            
+            if recording_sid and call_sid and recording_url:
+                logger.info(f"Recording {recording_sid} for call {call_sid} is completed")
+                
+                # Get call information to log activity
+                call_info = await communication_service.get_call_log_by_sid(call_sid)
+                
+                # Log activity in the timeline if lead_id is available
+                if call_info and call_info.get("lead_id"):
+                    lead_id = call_info.get("lead_id")
+                    
+                    # Create metadata for the activity
+                    metadata = {
+                        "call_sid": call_sid,
+                        "recording_sid": recording_sid,
+                        "recording_url": recording_url,
+                        "status": status.get("Status"),
+                        "duration": status.get("Duration"),
+                        "timestamp": datetime.now().isoformat()
+                    }
+                    
+                    # Create activity data
+                    activity_data = {
+                        "lead_id": lead_id,
+                        "user_id": call_info.get("user_id"),
+                        "activity_type": "call_recording",
+                        "description": f"Call recording available",
+                        "metadata": metadata
+                    }
+                    
+                    # Get the original call activity ID
+                    call_activity_id = await get_call_activity_id(call_sid)
+                    
+                    # Insert activity into the timeline with relationship to the call activity
+                    await insert_related_activity(
+                        activity_data=activity_data,
+                        parent_activity_id=call_activity_id,
+                        group_id=f"call_{call_sid}"
+                    )
+                
+                # Trigger transcription with Whisper
+                # Run in background to avoid blocking the response
+                import asyncio
+                asyncio.create_task(
+                    communication_service.transcribe_recording_with_whisper(recording_url, call_sid)
+                )
+                
+                return JSONResponse(
+                    status_code=status.HTTP_200_OK,
+                    content={
+                        "message": "Recording status updated and transcription initiated",
+                        "recording_sid": recording_sid,
+                        "call_sid": call_sid
+                    }
+                )
+    
+    except Exception as e:
+        logger.error(f"Error processing recording status callback: {str(e)}")
+    
+    # Default response
     return JSONResponse(
         status_code=status.HTTP_200_OK,
         content={"message": "Recording status updated"}
@@ -374,4 +443,114 @@ async def analyze_sentiment(
         )
         
     result = await communication_service.analyze_sentiment(text["text"])
-    return result 
+    return result
+
+# SendGrid webhook endpoint
+@router.post("/webhook/sendgrid", status_code=status.HTTP_200_OK)
+async def sendgrid_webhook(request: Request) -> Any:
+    """
+    Webhook for SendGrid email events (opens, clicks, etc.)
+    
+    This endpoint receives event data from SendGrid when emails are opened, clicked, etc.
+    It updates the email status and triggers lead scoring updates.
+    
+    It's a webhook and doesn't require authentication.
+    """
+    try:
+        payload = await request.json()
+        logger.info(f"Received SendGrid webhook with {len(payload)} events")
+        
+        # Initialize services
+        communication_service = CommunicationService()
+        ai_service = AIService()
+        
+        for event in payload:
+            event_type = event.get("event")
+            email_id = event.get("custom_args", {}).get("email_id")
+            lead_id = event.get("custom_args", {}).get("lead_id")
+            
+            if not email_id:
+                logger.warning(f"Received event without email_id: {event}")
+                continue
+                
+            # Convert email_id to int if it's a string
+            try:
+                email_id = int(email_id)
+            except (ValueError, TypeError):
+                logger.error(f"Invalid email_id format: {email_id}")
+                continue
+                
+            # Convert lead_id to int if it's a string and not None
+            if lead_id:
+                try:
+                    lead_id = int(lead_id)
+                except (ValueError, TypeError):
+                    logger.error(f"Invalid lead_id format: {lead_id}")
+                    lead_id = None
+            
+            metadata = {
+                "event": event_type,
+                "timestamp": event.get("timestamp"),
+                "sg_event_id": event.get("sg_event_id"),
+                "sg_message_id": event.get("sg_message_id")
+            }
+            
+            if event_type == "open":
+                # Update email open stats
+                await communication_service._update_email_status(email_id, "opened", metadata)
+                
+                # Log activity if lead_id is available
+                if lead_id:
+                    activity_data = {
+                        "lead_id": lead_id,
+                        "type": "email_opened",
+                        "description": f"Email was opened",
+                        "metadata": metadata
+                    }
+                    await insert_row("activities", activity_data)
+                    
+                    # Update lead score
+                    await ai_service.calculate_lead_score(lead_id, force_recalculate=True)
+            
+            elif event_type == "click":
+                # Add click URL to metadata
+                metadata["url"] = event.get("url")
+                
+                # Update email click stats
+                await communication_service._update_email_status(email_id, "clicked", metadata)
+                
+                # Log activity if lead_id is available
+                if lead_id:
+                    activity_data = {
+                        "lead_id": lead_id,
+                        "type": "email_clicked",
+                        "description": f"Email link was clicked: {event.get('url')}",
+                        "metadata": metadata
+                    }
+                    await insert_row("activities", activity_data)
+                    
+                    # Update lead score
+                    await ai_service.calculate_lead_score(lead_id, force_recalculate=True)
+            
+            elif event_type in ["bounce", "dropped", "deferred", "delivered", "spamreport", "unsubscribe"]:
+                # Update email status for other event types
+                await communication_service._update_email_status(email_id, event_type, metadata)
+                
+                # Log activity for important events
+                if lead_id and event_type in ["bounce", "spamreport", "unsubscribe"]:
+                    activity_data = {
+                        "lead_id": lead_id,
+                        "type": f"email_{event_type}",
+                        "description": f"Email {event_type}: {event.get('reason', '')}",
+                        "metadata": metadata
+                    }
+                    await insert_row("activities", activity_data)
+        
+        return {"status": "success", "message": f"Processed {len(payload)} events"}
+    
+    except Exception as e:
+        logger.error(f"Error processing SendGrid webhook: {str(e)}")
+        return JSONResponse(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            content={"status": "error", "message": str(e)}
+        ) 

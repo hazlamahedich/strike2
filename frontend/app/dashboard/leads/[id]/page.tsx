@@ -29,7 +29,9 @@ import {
   Trash2,
   Users,
   PencilIcon,
-  XCircle
+  XCircle,
+  Mic,
+  Eye
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
@@ -1181,7 +1183,14 @@ export default function LeadDetailPage() {
       case 'email':
         return <Mail className="h-5 w-5 text-green-500" />;
       case 'call':
+      case 'calls':
         return <Phone className="h-5 w-5 text-purple-500" />;
+      case 'call_recording':
+        return <Mic className="h-5 w-5 text-red-500" />;
+      case 'call_transcription':
+        return <FileText className="h-5 w-5 text-orange-500" />;
+      case 'transcript_viewed':
+        return <Eye className="h-5 w-5 text-teal-500" />;
       case 'status_change':
         return <RefreshCw className="h-5 w-5 text-amber-500" />;
       case 'task_create':
@@ -1507,35 +1516,100 @@ export default function LeadDetailPage() {
                 <CardContent>
                   {timeline && timeline.length > 0 ? (
                     <div className="space-y-4">
-                      {timeline.map((item: {
-                        id: number;
-                        type: string;
-                        content: string;
-                        created_at: string;
-                        user?: { name: string };
-                      }) => (
-                        <div key={item.id} className="flex gap-4 pb-4 border-b border-border">
-                          <div className="mt-1">
-                            {getTimelineIcon(item.type)}
-                          </div>
-                          <div className="flex-1">
-                            <div className="flex justify-between items-start">
-                              <div>
-                                <p className="text-sm text-muted-foreground">
-                                  {item.user ? `${item.user.name} ` : ''}
-                                  <span className="text-foreground font-medium">
-                                    {getTimelineAction(item.type)}
-                                  </span>
-                                </p>
-                                <p className="mt-1">{item.content}</p>
+                      {/* Group activities by parent_activity_id or group_id */}
+                      {(() => {
+                        // Process timeline to group related activities
+                        const groupedTimeline: { [key: string]: any[] } = {};
+                        
+                        // First pass: organize items by their group
+                        timeline.forEach((item: any) => {
+                          // Create a unique key for grouping
+                          const groupKey = item.parent_activity_id 
+                            ? `parent_${item.parent_activity_id}` 
+                            : (item.group_id ? `group_${item.group_id}` : `item_${item.id}`);
+                          
+                          if (!groupedTimeline[groupKey]) {
+                            groupedTimeline[groupKey] = [];
+                          }
+                          
+                          groupedTimeline[groupKey].push(item);
+                        });
+                        
+                        // Sort groups by the most recent activity in each group
+                        const sortedGroups = Object.values(groupedTimeline).sort((a, b) => {
+                          const aDate = new Date(a[0].created_at);
+                          const bDate = new Date(b[0].created_at);
+                          return bDate.getTime() - aDate.getTime();
+                        });
+                        
+                        // Render each group
+                        return sortedGroups.map((group, groupIndex) => {
+                          // Sort items within the group by created_at
+                          const sortedItems = [...group].sort((a, b) => {
+                            return new Date(a.created_at).getTime() - new Date(b.created_at).getTime();
+                          });
+                          
+                          // The parent activity (or first item if no parent)
+                          const mainItem = sortedItems[0];
+                          // Child activities (if any)
+                          const childItems = sortedItems.slice(1);
+                          
+                          return (
+                            <div key={`group-${groupIndex}`} className="border rounded-lg p-4 bg-card">
+                              {/* Main activity */}
+                              <div className="flex gap-4 pb-4 border-b border-border">
+                                <div className="mt-1">
+                                  {getTimelineIcon(mainItem.type)}
+                                </div>
+                                <div className="flex-1">
+                                  <div className="flex justify-between items-start">
+                                    <div>
+                                      <p className="text-sm text-muted-foreground">
+                                        {mainItem.user ? `${mainItem.user.name} ` : ''}
+                                        <span className="text-foreground font-medium">
+                                          {getTimelineAction(mainItem.type)}
+                                        </span>
+                                      </p>
+                                      <p className="mt-1">{mainItem.content}</p>
+                                    </div>
+                                    <div className="text-xs text-muted-foreground">
+                                      {formatDistanceToNow(new Date(mainItem.created_at), { addSuffix: true })}
+                                    </div>
+                                  </div>
+                                </div>
                               </div>
-                              <div className="text-xs text-muted-foreground">
-                                {formatDistanceToNow(new Date(item.created_at), { addSuffix: true })}
-                              </div>
+                              
+                              {/* Child activities */}
+                              {childItems.length > 0 && (
+                                <div className="mt-2 pl-8 space-y-3">
+                                  {childItems.map((item, index) => (
+                                    <div key={`child-${index}`} className="flex gap-3 pt-2">
+                                      <div className="mt-1">
+                                        {getTimelineIcon(item.type)}
+                                      </div>
+                                      <div className="flex-1">
+                                        <div className="flex justify-between items-start">
+                                          <div>
+                                            <p className="text-sm text-muted-foreground">
+                                              <span className="text-foreground font-medium">
+                                                {getTimelineAction(item.type)}
+                                              </span>
+                                            </p>
+                                            <p className="mt-1 text-sm">{item.content}</p>
+                                          </div>
+                                          <div className="text-xs text-muted-foreground">
+                                            {formatDistanceToNow(new Date(item.created_at), { addSuffix: true })}
+                                          </div>
+                                        </div>
+                                      </div>
+                                    </div>
+                                  ))}
+                                </div>
+                              )}
                             </div>
-                          </div>
-                        </div>
-                      ))}
+                          );
+                        });
+                      })()}
                     </div>
                   ) : (
                     <div className="text-center py-8 text-muted-foreground">
@@ -1944,7 +2018,14 @@ const getTimelineAction = (type: string): string => {
     case 'email':
       return 'Sent email';
     case 'call':
+    case 'calls':
       return 'Made a call';
+    case 'call_recording':
+      return 'Recording available';
+    case 'call_transcription':
+      return 'Transcription completed';
+    case 'transcript_viewed':
+      return 'Viewed transcript';
     case 'status_change':
       return 'Changed status';
     case 'task_create':

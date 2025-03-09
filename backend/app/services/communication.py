@@ -7,11 +7,12 @@ import logging
 from datetime import datetime
 from typing import Any, Dict, List, Optional, Tuple, Union
 import os
+import asyncio
 
 from fastapi import HTTPException, status
 from pydantic import EmailStr
 from sendgrid import SendGridAPIClient
-from sendgrid.helpers.mail import Mail, Attachment, FileContent, FileName, FileType, Disposition
+from sendgrid.helpers.mail import Mail, Attachment, FileContent, FileName, FileType, Disposition, TrackingSettings, ClickTracking, OpenTracking
 import base64
 from twilio.rest import Client
 from twilio.base.exceptions import TwilioRestException
@@ -59,6 +60,42 @@ class CommunicationService:
 
     # Email functionality
     
+    async def _update_email_status(self, email_id: int, status: str, metadata: Dict[str, Any] = None) -> None:
+        """
+        Update email status and related fields in the database
+        
+        Args:
+            email_id: ID of the email to update
+            status: New status value
+            metadata: Optional additional data to update
+        """
+        from app.db.supabase import update_row
+        
+        update_data = {"status": status}
+        
+        # Add timestamp based on status
+        now = datetime.now()
+        if status == "sent":
+            update_data["sent_at"] = now
+        elif status == "opened":
+            update_data["opened_at"] = now
+            update_data["open_count"] = update_data.get("open_count", 0) + 1
+        elif status == "clicked":
+            update_data["clicked_at"] = now
+            update_data["click_count"] = update_data.get("click_count", 0) + 1
+        
+        # Add any additional metadata
+        if metadata:
+            current_metadata = {}  # We would fetch this from DB in a real implementation
+            current_metadata.update(metadata)
+            update_data["metadata"] = current_metadata
+            
+        try:
+            await update_row("emails", email_id, update_data)
+            logger.info(f"Updated email {email_id} status to {status}")
+        except Exception as e:
+            logger.error(f"Failed to update email status: {str(e)}")
+    
     async def send_email(self, email: EmailMessage) -> Dict[str, Any]:
         """
         Send an email using SendGrid API
@@ -85,6 +122,15 @@ class CommunicationService:
             html_content=email.body
         )
         
+        # Enable tracking settings
+        tracking_settings = TrackingSettings()
+        tracking_settings.click_tracking = ClickTracking(enable=True, enable_text=True)
+        tracking_settings.open_tracking = OpenTracking(enable=True)
+        message.tracking_settings = tracking_settings
+        
+        # Add custom arguments to identify this email in webhooks
+        message.custom_args = {"email_id": str(email.id), "lead_id": str(email.lead_id) if email.lead_id else None}
+        
         # Add attachments if any
         if email.attachments:
             for attachment_data in email.attachments:
@@ -97,6 +143,11 @@ class CommunicationService:
         
         try:
             response = self.sendgrid_client.send(message)
+            
+            # Update email status to sent
+            if email.id:
+                await self._update_email_status(email.id, "sent")
+                
             return {
                 "status": "success",
                 "status_code": response.status_code,
@@ -259,6 +310,53 @@ class CommunicationService:
             )
             
         try:
+            # First, check if we have a Whisper transcription in our database
+            call_log = await self.get_call_log_by_sid(call_sid)
+            
+            if call_log and call_log.get("transcription"):
+                # We have a transcription in our database
+                transcript = CallTranscript(
+                    call_sid=call_sid,
+                    recording_sid=call_log.get("recording_sid", ""),
+                    transcription_sid="whisper_transcription",  # Placeholder for Whisper
+                    recording_url=call_log.get("recording_url", ""),
+                    transcription_text=call_log.get("transcription", ""),
+                    duration=call_log.get("duration", 0),
+                    created_at=datetime.fromisoformat(call_log.get("created_at")) if call_log.get("created_at") else datetime.now(),
+                    transcription_method=call_log.get("transcription_method", "whisper")
+                )
+                
+                # Log activity for transcript view if lead_id is available
+                if call_log.get("lead_id"):
+                    from app.db.supabase import insert_row, insert_related_activity, get_call_activity_id
+                    
+                    # Create activity data
+                    activity_data = {
+                        "lead_id": call_log.get("lead_id"),
+                        "user_id": call_log.get("user_id"),
+                        "activity_type": "transcript_viewed",
+                        "description": f"Call transcript viewed",
+                        "metadata": {
+                            "call_sid": call_sid,
+                            "recording_url": call_log.get("recording_url", ""),
+                            "transcription_method": call_log.get("transcription_method", "whisper"),
+                            "timestamp": datetime.now().isoformat()
+                        }
+                    }
+                    
+                    # Get the original call activity ID
+                    call_activity_id = await get_call_activity_id(call_sid)
+                    
+                    # Insert activity into the timeline with relationship to the call activity
+                    await insert_related_activity(
+                        activity_data=activity_data,
+                        parent_activity_id=call_activity_id,
+                        group_id=f"call_{call_sid}"
+                    )
+                
+                return transcript
+            
+            # If no transcription in our database, try to get it from Twilio
             # Get recording for the call
             recordings = self.twilio_client.recordings.list(call_sid=call_sid)
             
@@ -271,18 +369,53 @@ class CommunicationService:
             # Get the latest recording
             recording = recordings[0]
             
-            # Get transcriptions for the recording
+            # Check if we have a recording URL but no transcription yet
+            if call_log and recording.uri and not call_log.get("transcription"):
+                # We have a recording but no transcription, trigger Whisper transcription
+                logger.info(f"Triggering Whisper transcription for call {call_sid}")
+                # Run in background to avoid blocking the response
+                asyncio.create_task(
+                    self.transcribe_recording_with_whisper(recording.uri, call_sid)
+                )
+                
+                # Return a placeholder response
+                return CallTranscript(
+                    call_sid=call_sid,
+                    recording_sid=recording.sid,
+                    transcription_sid="transcription_in_progress",
+                    recording_url=recording.uri,
+                    transcription_text="Transcription in progress...",
+                    duration=recording.duration,
+                    created_at=recording.date_created,
+                    transcription_method="whisper_in_progress"
+                )
+            
+            # Try to get transcriptions from Twilio
             transcriptions = self.twilio_client.transcriptions.list(
                 recording_sid=recording.sid
             )
             
             if not transcriptions:
-                raise HTTPException(
-                    status_code=status.HTTP_404_NOT_FOUND,
-                    detail=f"No transcription found for recording {recording.sid}"
+                # No Twilio transcription, trigger Whisper transcription
+                logger.info(f"No Twilio transcription found, triggering Whisper transcription for call {call_sid}")
+                # Run in background to avoid blocking the response
+                asyncio.create_task(
+                    self.transcribe_recording_with_whisper(recording.uri, call_sid)
+                )
+                
+                # Return a placeholder response
+                return CallTranscript(
+                    call_sid=call_sid,
+                    recording_sid=recording.sid,
+                    transcription_sid="transcription_in_progress",
+                    recording_url=recording.uri,
+                    transcription_text="Transcription in progress...",
+                    duration=recording.duration,
+                    created_at=recording.date_created,
+                    transcription_method="whisper_in_progress"
                 )
             
-            # Get the latest transcription
+            # Get the latest transcription from Twilio
             transcription = transcriptions[0]
             
             # Construct the transcript object
@@ -293,12 +426,43 @@ class CommunicationService:
                 recording_url=recording.uri,
                 transcription_text=transcription.transcription_text,
                 duration=recording.duration,
-                created_at=recording.date_created
+                created_at=recording.date_created,
+                transcription_method="twilio"
             )
+            
+            # Log activity for Twilio transcript if lead_id is available
+            if call_log and call_log.get("lead_id"):
+                from app.db.supabase import insert_row, insert_related_activity, get_call_activity_id
+                
+                # Create activity data
+                activity_data = {
+                    "lead_id": call_log.get("lead_id"),
+                    "user_id": call_log.get("user_id"),
+                    "activity_type": "transcript_viewed",
+                    "description": f"Call transcript viewed (Twilio)",
+                    "metadata": {
+                        "call_sid": call_sid,
+                        "recording_sid": recording.sid,
+                        "transcription_sid": transcription.sid,
+                        "recording_url": recording.uri,
+                        "transcription_method": "twilio",
+                        "timestamp": datetime.now().isoformat()
+                    }
+                }
+                
+                # Get the original call activity ID
+                call_activity_id = await get_call_activity_id(call_sid)
+                
+                # Insert activity into the timeline with relationship to the call activity
+                await insert_related_activity(
+                    activity_data=activity_data,
+                    parent_activity_id=call_activity_id,
+                    group_id=f"call_{call_sid}"
+                )
             
             return transcript
             
-        except TwilioRestException as e:
+        except Exception as e:
             logger.error(f"Failed to get call transcript: {str(e)}")
             raise HTTPException(
                 status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
@@ -928,13 +1092,12 @@ class CommunicationService:
             # If the call is completed, try to get a transcript
             if status == "completed" and recording_url:
                 try:
-                    # This would be an async call to a transcription service
-                    # For now, we'll just log that we would transcribe it
-                    logger.info(f"Would transcribe recording at {recording_url}")
-                    # In a real implementation, you would call a transcription service
-                    # and update the call log with the transcription
+                    # Transcribe the recording with Whisper
+                    logger.info(f"Transcribing recording at {recording_url} with Whisper")
+                    # Run transcription in the background to avoid blocking the response
+                    asyncio.create_task(self.transcribe_recording_with_whisper(recording_url, call_sid))
                 except Exception as e:
-                    logger.error(f"Failed to transcribe call: {str(e)}")
+                    logger.error(f"Failed to initiate transcription: {str(e)}")
             
             # Update the call log in the database
             from supabase import create_client, Client
@@ -1000,8 +1163,6 @@ class CommunicationService:
             Call log dict or None if not found
         """
         try:
-            from supabase import create_client, Client
-            
             # Get Supabase client
             supabase_url = os.getenv("SUPABASE_URL")
             supabase_key = os.getenv("SUPABASE_KEY")
@@ -1011,16 +1172,193 @@ class CommunicationService:
                 supabase_url = os.getenv("SUPABASE_LOCAL_URL", "http://localhost:8080")
                 supabase_key = os.getenv("SUPABASE_LOCAL_KEY", "postgres")
             
-            supabase = create_client(supabase_url, supabase_key)
+            supabase: Client = create_client(supabase_url, supabase_key)
             
-            # Query the call log
-            result = supabase.table("lead_calls").select("*").eq("call_sid", call_sid).execute()
+            # Query the calls table
+            response = supabase.table("calls").select("*").eq("call_sid", call_sid).execute()
             
-            if result.data and len(result.data) > 0:
-                return result.data[0]
+            if response.data and len(response.data) > 0:
+                return response.data[0]
             
             return None
             
         except Exception as e:
             logger.error(f"Failed to get call log by SID: {str(e)}")
-            return None 
+            return None
+            
+    async def transcribe_recording_with_whisper(self, recording_url: str, call_sid: str) -> str:
+        """
+        Transcribe a call recording using OpenAI's Whisper model
+        
+        Args:
+            recording_url: URL to the recording file
+            call_sid: The Twilio Call SID
+            
+        Returns:
+            The transcription text
+        """
+        import tempfile
+        import requests
+        from openai import AsyncOpenAI
+        from app.db.supabase import insert_row, insert_related_activity, get_call_activity_id
+        
+        try:
+            # Check if OpenAI API key is configured
+            openai_api_key = os.getenv("OPENAI_API_KEY")
+            if not openai_api_key:
+                raise ValueError("OpenAI API key is not configured")
+            
+            # Initialize OpenAI client
+            client = AsyncOpenAI(api_key=openai_api_key)
+            
+            # Download the recording from Twilio
+            # Twilio recording URLs require authentication
+            auth = (settings.TWILIO_ACCOUNT_SID, settings.TWILIO_AUTH_TOKEN)
+            response = requests.get(recording_url, auth=auth)
+            
+            if response.status_code != 200:
+                raise ValueError(f"Failed to download recording: HTTP {response.status_code}")
+            
+            # Save to a temporary file
+            with tempfile.NamedTemporaryFile(suffix=".wav", delete=False) as temp_file:
+                temp_file.write(response.content)
+                temp_file_path = temp_file.name
+            
+            logger.info(f"Downloaded recording to {temp_file_path}")
+            
+            # Transcribe with OpenAI Whisper
+            with open(temp_file_path, "rb") as audio_file:
+                transcript_response = await client.audio.transcriptions.create(
+                    model="whisper-1",
+                    file=audio_file
+                )
+            
+            # Clean up the temporary file
+            os.unlink(temp_file_path)
+            
+            transcription_text = transcript_response.text
+            
+            # Update the call log with the transcription
+            await self._update_call_log_transcription(call_sid, transcription_text)
+            
+            # Get call information to log activity
+            call_info = await self.get_call_log_by_sid(call_sid)
+            
+            # Log activity in the timeline if lead_id is available
+            if call_info and call_info.get("lead_id"):
+                lead_id = call_info.get("lead_id")
+                
+                # Create metadata for the activity
+                metadata = {
+                    "call_sid": call_sid,
+                    "recording_url": recording_url,
+                    "transcription_method": "whisper",
+                    "transcription_timestamp": datetime.now().isoformat(),
+                    "duration": call_info.get("duration", 0),
+                    "caller": call_info.get("caller", ""),
+                    "recipient": call_info.get("recipient", "")
+                }
+                
+                # Create activity data
+                activity_data = {
+                    "lead_id": lead_id,
+                    "user_id": call_info.get("user_id"),
+                    "activity_type": "call_transcription",
+                    "description": f"Call transcribed with Whisper",
+                    "metadata": metadata
+                }
+                
+                # Get the original call activity ID
+                call_activity_id = await get_call_activity_id(call_sid)
+                
+                # Insert activity into the timeline with relationship to the call activity
+                transcription_activity_id = await insert_related_activity(
+                    activity_data=activity_data,
+                    parent_activity_id=call_activity_id,
+                    group_id=f"call_{call_sid}"
+                )
+                
+                # Also log a separate activity for the recording if it's not already logged
+                recording_activity_data = {
+                    "lead_id": lead_id,
+                    "user_id": call_info.get("user_id"),
+                    "activity_type": "call_recording",
+                    "description": f"Call recording available",
+                    "metadata": {
+                        "call_sid": call_sid,
+                        "recording_url": recording_url,
+                        "duration": call_info.get("duration", 0),
+                        "caller": call_info.get("caller", ""),
+                        "recipient": call_info.get("recipient", "")
+                    }
+                }
+                
+                # Insert recording activity with relationship to the call activity
+                await insert_related_activity(
+                    activity_data=recording_activity_data,
+                    parent_activity_id=call_activity_id,
+                    group_id=f"call_{call_sid}"
+                )
+                
+                # Update lead score to reflect the new activity
+                from app.services.ai import AIService
+                ai_service = AIService()
+                await ai_service.calculate_lead_score(lead_id, force_recalculate=True)
+            
+            logger.info(f"Successfully transcribed recording for call {call_sid}")
+            return transcription_text
+        
+        except Exception as e:
+            logger.error(f"Failed to transcribe recording with Whisper: {str(e)}")
+            # Clean up temp file if it exists
+            try:
+                if 'temp_file_path' in locals():
+                    os.unlink(temp_file_path)
+            except:
+                pass
+            raise
+    
+    async def _update_call_log_transcription(self, call_sid: str, transcription: str) -> None:
+        """
+        Update the call log with the transcription
+        
+        Args:
+            call_sid: The Twilio Call SID
+            transcription: The transcription text
+        """
+        try:
+            # Get Supabase client
+            supabase_url = os.getenv("SUPABASE_URL")
+            supabase_key = os.getenv("SUPABASE_KEY")
+            
+            if not supabase_url or not supabase_key:
+                # Try local Supabase
+                supabase_url = os.getenv("SUPABASE_LOCAL_URL", "http://localhost:8080")
+                supabase_key = os.getenv("SUPABASE_LOCAL_KEY", "postgres")
+            
+            supabase: Client = create_client(supabase_url, supabase_key)
+            
+            # Get the call log ID
+            response = supabase.table("calls").select("id").eq("call_sid", call_sid).execute()
+            
+            if not response.data or len(response.data) == 0:
+                logger.warning(f"Call log not found for SID: {call_sid}")
+                return
+            
+            call_log_id = response.data[0]["id"]
+            
+            # Update the call log with the transcription
+            update_data = {
+                "transcription": transcription,
+                "transcription_method": "whisper",
+                "transcription_timestamp": datetime.now().isoformat(),
+                "updated_at": datetime.now().isoformat()
+            }
+            
+            supabase.table("calls").update(update_data).eq("id", call_log_id).execute()
+            
+            logger.info(f"Updated call log {call_log_id} with Whisper transcription")
+            
+        except Exception as e:
+            logger.error(f"Failed to update call log transcription: {str(e)}")
+            raise 

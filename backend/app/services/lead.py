@@ -365,7 +365,10 @@ async def get_lead_timeline(
                 "user_id": user_id,
                 "user": users.get(user_id),
                 "full_content": activity["metadata"],
-                "has_expanded_view": False
+                "has_expanded_view": False,
+                "id": activity["id"],
+                "parent_activity_id": activity.get("parent_activity_id"),
+                "group_id": activity.get("group_id")
             })
     
     # Add emails

@@ -958,31 +958,30 @@ Gain insights into email campaign effectiveness:
    - Click-through rates
    - Reply rates
    - Conversion rates
-   - Bounce and unsubscribe rates
+   
+3. **Individual Email Tracking**:
+   - Track when each lead opens your emails
+   - See which links they click and when
+   - View multiple opens from the same recipient
+   - Analyze engagement patterns over time
 
-3. **Content Performance**:
-   - Most effective subject lines
-   - Highest performing email templates
-   - Optimal email length and structure
-   - Best performing calls-to-action
+4. **Lead Scoring Integration**:
+   - Email engagement automatically factors into lead scores
+   - Higher engagement leads to higher scores
+   - Recent engagement has stronger impact on scores
+   - View email engagement contribution in lead score breakdown
 
-4. **Timing Analysis**:
-   - Best days and times to send emails
-   - Response time patterns
-   - Optimal follow-up timing
-   - Frequency optimization
+5. **Activity Timeline Integration**:
+   - Email opens and clicks appear in lead activity timeline
+   - Filter timeline to show only email interactions
+   - See complete history of email engagement for each lead
+   - Identify patterns in email engagement behavior
 
-5. **Recipient Behavior**:
-   - Device and email client usage
-   - Reading time analysis
-   - Forward and share tracking
-   - Multiple opens tracking
-
-6. **A/B Test Results**:
-   - Comparative performance of test variants
-   - Statistical significance indicators
-   - Recommended optimizations
-   - Historical test results
+6. **Privacy Controls**:
+   - Enable/disable tracking at the email or campaign level
+   - Transparent tracking disclosure options
+   - Compliance with email marketing regulations
+   - Data retention settings for tracking information
 
 ## User Settings
 

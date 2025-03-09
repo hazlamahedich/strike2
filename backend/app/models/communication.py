@@ -360,9 +360,15 @@ class EmailSequenceUpdate(BaseModel):
 
 # Add alias for CallTranscript which might be missing
 class CallTranscript(BaseModel):
-    call_id: int
-    transcript: str
+    """Model for call transcripts"""
+    call_sid: str
+    recording_sid: str
+    transcription_sid: str
+    recording_url: str
+    transcription_text: str
+    duration: int = 0
     created_at: datetime = Field(default_factory=datetime.now)
+    transcription_method: str = "twilio"  # Can be "twilio", "whisper", or "whisper_in_progress"
     
     class Config:
         from_attributes = True

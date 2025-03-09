@@ -158,11 +158,60 @@ async def calculate_lead_score(lead_id: int, force_recalculate: bool = False) ->
             }
         }
         
+        # Add email engagement metrics
+        email_engagement = {
+            "sent_count": 0,
+            "open_count": 0,
+            "click_count": 0,
+            "open_rate": 0.0,
+            "click_rate": 0.0,
+            "click_to_open_rate": 0.0,
+            "last_opened": None,
+            "last_clicked": None
+        }
+        
+        if emails:
+            # Count emails by status
+            sent_emails = [e for e in emails if e.get("status") in ["sent", "delivered", "opened", "clicked"]]
+            opened_emails = [e for e in emails if e.get("status") in ["opened", "clicked"] or e.get("open_count", 0) > 0]
+            clicked_emails = [e for e in emails if e.get("status") == "clicked" or e.get("click_count", 0) > 0]
+            
+            # Calculate metrics
+            email_engagement["sent_count"] = len(sent_emails)
+            email_engagement["open_count"] = len(opened_emails)
+            email_engagement["click_count"] = len(clicked_emails)
+            
+            # Calculate rates
+            if email_engagement["sent_count"] > 0:
+                email_engagement["open_rate"] = email_engagement["open_count"] / email_engagement["sent_count"]
+                email_engagement["click_rate"] = email_engagement["click_count"] / email_engagement["sent_count"]
+            
+            if email_engagement["open_count"] > 0:
+                email_engagement["click_to_open_rate"] = email_engagement["click_count"] / email_engagement["open_count"]
+            
+            # Get latest open/click timestamps
+            if opened_emails:
+                latest_open = max(opened_emails, key=lambda e: e.get("opened_at") or datetime.min)
+                email_engagement["last_opened"] = latest_open.get("opened_at")
+            
+            if clicked_emails:
+                latest_click = max(clicked_emails, key=lambda e: e.get("clicked_at") or datetime.min)
+                email_engagement["last_clicked"] = latest_click.get("clicked_at")
+        
+        # Add email engagement to lead data
+        lead_data["email_engagement"] = email_engagement
+        
         # Calculate lead score using LLM
         prompt = f"""
         Analyze the following lead data and calculate a lead score based on multiple factors.
         
         Lead Data: {json.dumps(lead_data)}
+        
+        Pay special attention to email engagement metrics:
+        - High open rates (>40%) indicate strong interest
+        - High click rates (>10%) indicate very strong interest
+        - Recent opens/clicks (within last 7 days) should significantly boost the score
+        - Multiple opens of the same email indicate high engagement
         
         Provide a JSON response with:
         1. overall_score: A float between 0.0 and 1.0 representing the lead's quality
@@ -173,6 +222,11 @@ async def calculate_lead_score(lead_id: int, force_recalculate: bool = False) ->
            - score: A float between 0.0 and 1.0 for that factor
            - explanation: A string explaining the score
         4. next_best_actions: An array of recommended actions
+        
+        For the EMAIL_ENGAGEMENT factor, consider:
+        - Open rates, click rates, and recency of engagement
+        - Assign higher weights to email engagement for leads who have received multiple emails
+        - For leads with high open rates but low click rates, suggest content improvements
         
         JSON format only.
         """
