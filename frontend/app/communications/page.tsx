@@ -596,8 +596,6 @@ export default function CommunicationsPage() {
         onOpenChange={setTemplateDialogOpen}
         onSelectTemplate={handleSelectTemplate}
       />
-      
-      <Toaster />
     </div>
   );
 } 
