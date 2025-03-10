@@ -2,12 +2,11 @@ import type { Metadata } from "next";
 import { Inter } from "next/font/google";
 import "./globals.css";
 import { ThemeProvider } from "@/components/shared/theme-provider";
-import { Toaster } from "sonner";
-import AuthProviderWrapper from "@/components/shared/auth-provider-wrapper";
 import { QueryClientProvider } from "@/components/shared/query-client-provider";
 import { BreadcrumbProvider } from "@/components/shared/breadcrumb-provider";
 import { ChatbotProvider } from "@/components/shared/chatbot-provider";
 import { DialogProvider } from "@/lib/contexts/DialogContext";
+import { Providers } from "./providers";
 
 const inter = Inter({ subsets: ["latin"] });
 
@@ -30,7 +29,7 @@ export default function RootLayout({
           enableSystem
           disableTransitionOnChange
         >
-          <AuthProviderWrapper>
+          <Providers>
             <QueryClientProvider>
               <ChatbotProvider>
                 <DialogProvider>
@@ -40,11 +39,10 @@ export default function RootLayout({
                       {children}
                     </div>
                   </div>
-                  <Toaster position="top-right" />
                 </DialogProvider>
               </ChatbotProvider>
             </QueryClientProvider>
-          </AuthProviderWrapper>
+          </Providers>
         </ThemeProvider>
       </body>
     </html>
