@@ -28,7 +28,14 @@ export default function SettingsPage() {
     updateNotificationSettings,
   } = useUserSettings();
   
-  const { isEnabled: isMockFeaturesEnabled, toggleMockData: toggleMockFeatures } = useMockData();
+  const { 
+    isEnabled: isMockFeaturesEnabled, 
+    toggleMockData: toggleMockFeatures,
+    useCompanyAnalysisMockData,
+    autoTriggerAnalysis,
+    toggleCompanyAnalysisMockData,
+    toggleAutoTriggerAnalysis
+  } = useMockData();
   
   // Local state for form values
   const [formValues, setFormValues] = useState({
@@ -577,50 +584,86 @@ export default function SettingsPage() {
             <CardHeader>
               <CardTitle>Developer Settings</CardTitle>
               <CardDescription>
-                Advanced settings for developers and testing.
+                Settings for development and testing purposes.
               </CardDescription>
             </CardHeader>
             <CardContent className="space-y-6">
               <div className="space-y-4">
-                <h3 className="text-lg font-medium">Feature Flags</h3>
-                <div className="space-y-3">
+                <div className="flex items-center justify-between">
+                  <div>
+                    <h3 className="font-medium">Mock Data</h3>
+                    <p className="text-sm text-muted-foreground">
+                      Enable mock data for testing and development.
+                    </p>
+                  </div>
+                  <Switch
+                    checked={isMockFeaturesEnabled}
+                    onCheckedChange={handleToggleMockFeatures}
+                  />
+                </div>
+                <Separator />
+                
+                {/* Company Analysis Settings */}
+                <div className="space-y-4">
+                  <h3 className="font-medium">Company Analysis Features</h3>
+                  
                   <div className="flex items-center justify-between">
                     <div>
-                      <Label htmlFor="mock-features" className="font-medium">Enable Mock Features</Label>
+                      <p className="text-sm font-medium">Use Mock Company Analysis Data</p>
                       <p className="text-sm text-muted-foreground">
-                        Enable mock features and sample data for testing and demonstration purposes.
-                        This setting affects all mock data across the application.
+                        Show mock data for company analysis instead of real API data.
                       </p>
                     </div>
-                    <Switch 
-                      id="mock-features" 
-                      checked={isMockFeaturesEnabled}
-                      onCheckedChange={handleToggleMockFeatures}
+                    <Switch
+                      checked={useCompanyAnalysisMockData}
+                      onCheckedChange={toggleCompanyAnalysisMockData}
+                      disabled={!isMockFeaturesEnabled}
                     />
                   </div>
                   
-                  {isMockFeaturesEnabled && (
-                    <Alert>
-                      <AlertTriangle className="h-4 w-4" />
-                      <AlertTitle>Mock Features Enabled</AlertTitle>
-                      <AlertDescription>
-                        You are currently using mock features. All data is simulated and not connected to the real database.
-                        This affects all components that use mock data, including leads, communications, meetings, and analytics.
-                      </AlertDescription>
-                    </Alert>
-                  )}
-
-                  {!isMockFeaturesEnabled && (
-                    <Alert>
-                      <AlertTitle>Live Data Mode</AlertTitle>
-                      <AlertDescription>
-                        You are using live data from Supabase. All actions will affect real data in the database.
-                      </AlertDescription>
-                    </Alert>
-                  )}
+                  <div className="flex items-center justify-between">
+                    <div>
+                      <p className="text-sm font-medium">Auto-Trigger Analysis</p>
+                      <p className="text-sm text-muted-foreground">
+                        Automatically trigger company analysis when viewing lead details.
+                      </p>
+                    </div>
+                    <Switch
+                      checked={autoTriggerAnalysis}
+                      onCheckedChange={toggleAutoTriggerAnalysis}
+                      disabled={!isMockFeaturesEnabled}
+                    />
+                  </div>
+                </div>
+                <Separator />
+              </div>
+              
+              {/* Other developer settings */}
+              <div className="space-y-2">
+                <h3 className="font-medium">API Settings</h3>
+                <div className="grid gap-2">
+                  <Label htmlFor="api-url">API URL</Label>
+                  <Input
+                    id="api-url"
+                    placeholder="https://api.example.com"
+                    defaultValue="/api"
+                    disabled
+                  />
                 </div>
               </div>
             </CardContent>
+            <CardFooter>
+              <Button
+                onClick={() => {
+                  toast({
+                    title: "Developer settings saved",
+                    description: "Your developer settings have been updated.",
+                  });
+                }}
+              >
+                Save Changes
+              </Button>
+            </CardFooter>
           </Card>
         </TabsContent>
       </Tabs>

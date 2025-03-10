@@ -6,12 +6,13 @@ STRIKE is an intelligent, modular CRM system built with modern AI capabilities, 
 
 - **User Authentication & Management**: Secure login, role-based access control, team collaboration, and user profiles.
 - **Lead Management**: Import/export with AI parsing, customizable fields, segmentation, and pipeline stages.
-- **Communication Suite**: Email, SMS, and call integration with tracking and sentiment analysis.
+- **Communication Suite**: Email, SMS, and call integration with tracking and sentiment analysis. Support for phone extensions for business contacts.
 - **Campaign Management**: Create, manage, and track marketing campaigns with different statuses (draft, active, paused, completed).
 - **Calendar & Meeting Management**: Calendar integration, scheduling, and meeting management.
 - **Task Management**: Task creation, assignment, and tracking with reminders.
 - **Interaction History**: Comprehensive activity timeline and searchable communication history.
 - **AI-Powered Insights**: Sentiment analysis, lead scoring, conversion prediction, and content suggestions.
+- **Company Analysis**: Automated web scraping and AI analysis of company websites to provide strategic insights and enhance lead scoring.
 - **Analytics & Reporting**: Real-time dashboards, custom reports, and sales forecasting.
 - **AI Chatbot Assistant**: Integrated chatbot for user assistance and natural language database queries.
 
@@ -23,7 +24,8 @@ STRIKE is an intelligent, modular CRM system built with modern AI capabilities, 
 - Supabase for database and authentication
 - OpenAI API for AI capabilities
 - SendGrid for email functionality
-- Twilio for SMS and call functionality
+- Twilio for SMS and call functionality (including DTMF extension dialing)
+- BeautifulSoup and aiohttp for web scraping
 
 ### Frontend
 - Next.js 15 with React
@@ -143,8 +145,11 @@ STRIKE is an intelligent, modular CRM system built with modern AI capabilities, 
 │   │   ├── core/           # Core functionality
 │   │   ├── data/           # Data handling utilities
 │   │   ├── models/         # Pydantic models
+│   │   │   └── company_analysis.py  # Company analysis models
 │   │   ├── routers/        # API routes
+│   │   │   └── company_analysis.py  # Company analysis endpoints
 │   │   └── services/       # Business logic
+│   │       └── web_scraping.py  # Web scraping service
 │   ├── main.py             # Application entry point
 │   ├── supabase_schema.sql # Database schema definition
 │   ├── supabase_seed.sql   # Initial seed data
@@ -157,8 +162,11 @@ STRIKE is an intelligent, modular CRM system built with modern AI capabilities, 
 │   │   ├── communications/ # Communication pages
 │   │   └── leads/          # Lead management pages
 │   ├── components/         # Reusable UI components
+│   │   └── leads/          # Lead-related components
+│   │       └── CompanyAnalysis.tsx  # Company analysis component
 │   ├── context/            # React context providers
 │   ├── hooks/              # Custom React hooks
+│   │   └── useMockData.ts  # Mock data management hook
 │   ├── lib/                # Utility functions and API clients
 │   ├── public/             # Static assets
 │   └── styles/             # Global styles
@@ -175,6 +183,7 @@ STRIKE is an intelligent, modular CRM system built with modern AI capabilities, 
 - **Smart Recommendations**: Suggest next best actions and optimal contact times.
 - **Conversation Assistance**: Real-time suggestions and summarization.
 - **Automated Follow-ups**: Smart scheduling and content generation.
+- **Company Analysis**: Automated web scraping and AI analysis of company websites to provide strategic insights for lead conversion.
 - **Chatbot Assistant**: Integrated with the user manual for contextual help and natural language database queries.
 
 ## Campaign Management
@@ -207,6 +216,7 @@ The CRM system uses a Supabase PostgreSQL database with the following main table
 - **campaigns**: Marketing campaign management
 - **campaign_leads**: Junction table for leads in campaigns
 - **lead_scores**: AI-generated lead scoring
+- **company_analyses**: Company website analysis and insights
 - **recordings**: Call and meeting recordings
 - **profiles**: User profiles and preferences
 

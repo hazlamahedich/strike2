@@ -15,6 +15,7 @@
    - [Importing Leads](#importing-leads)
    - [Lead Details](#lead-details)
    - [Lead Pipeline Management](#lead-pipeline-management)
+   - [Company Analysis](#company-analysis)
 4. [Communication Tools](#communication-tools)
    - [Email Integration](#email-integration)
    - [SMS Messaging](#sms-messaging)
@@ -39,6 +40,7 @@
    - [Chatbot Assistant](#chatbot-assistant)
    - [Chatbot-Manual Integration](#chatbot-manual-integration)
    - [Lead Scoring](#lead-scoring)
+   - [Company Website Analysis](#company-website-analysis)
    - [Automated Workflows for Low Probability Clients](#automated-workflows-for-low-probability-clients)
    - [Sentiment Analysis](#sentiment-analysis)
    - [Smart Recommendations](#smart-recommendations)
@@ -52,6 +54,7 @@
     - [Profile Management](#profile-management)
     - [Notification Settings](#notification-settings)
     - [Team Collaboration](#team-collaboration)
+    - [Developer Settings](#developer-settings)
 11. [System Administration](#system-administration)
     - [Role-Based Access Control](#role-based-access-control)
     - [Audit Logs](#audit-logs)
@@ -264,14 +267,31 @@ STRIKE integrates with several third-party services that require API keys. Follo
 
 ### Adding New Leads
 
-1. From the Leads page, click "Add Lead" button
-2. Fill in the lead information form:
-   - Contact Information (Name, Email, Phone)
-   - Company Details
-   - Lead Source
-   - Initial Status
+1. Click "Leads" in the main navigation
+2. Select "Add Lead"
+3. Fill in the lead information:
+   - First Name
+   - Last Name
+   - Email
+   - Phone Number
+   - Phone Extension (if applicable, for business contacts with extensions)
+   - Company
+   - Title
+   - Source
+   - Status
+   - Owner
    - Custom Fields
-3. Click "Save" to add the lead to your database
+4. Click "Save" to create the lead
+5. Optionally, add the lead to one or more campaigns
+
+#### Phone Extensions
+
+When adding contact information for leads at large organizations:
+
+1. Enter the main phone number in the "Phone" field (e.g., "444-6666")
+2. Enter the extension in the "Extension" field (e.g., "5678")
+3. The system will store these separately but display them together as "444-6666 ext. 5678"
+4. When making calls, the system will automatically handle dialing both the main number and extension
 
 ### Importing Leads
 
@@ -287,16 +307,99 @@ STRIKE integrates with several third-party services that require API keys. Follo
 ### Lead Details
 
 1. Click on any lead name to view their detailed profile
-2. The lead profile includes:
-   - Contact Information
+2. The lead detail page shows:
+   - Contact Information (including phone with extension if applicable)
+   - Company Details
+   - Lead Status and Source
    - Activity Timeline
    - Communication History
-   - Notes
    - Tasks
-   - Documents
+   - Notes
    - Custom Fields
+   - Company Analysis
 3. Edit any information by clicking the "Edit" button
 4. Add notes, tasks, or schedule meetings directly from this page
+
+#### Editing Phone Information
+
+To update a lead's phone information:
+
+1. From the lead detail page, click the "Edit" button
+2. Update the main phone number in the "Phone" field
+3. Update or add an extension in the "Extension" field
+4. Click "Save" to update the information
+5. When making calls, the system will automatically use both the main number and extension
+
+### Company Analysis
+
+The Company Analysis feature automatically analyzes a lead's company website to provide strategic insights and enhance lead scoring.
+
+#### Viewing Company Analysis
+
+1. Navigate to a lead's detail page
+2. Click on the "Company Analysis" tab
+3. If analysis has been performed, you'll see:
+   - Company summary
+   - Industry and company size estimate
+   - Products and services
+   - Target audience and value proposition
+   - Company strengths and opportunities
+   - Conversion strategy recommendations
+   - Key topics to discuss
+   - Potential pain points
+   - Lead score factors
+
+#### Triggering Company Analysis
+
+1. If no analysis has been performed yet, click the "Analyze Company" button
+2. The system will:
+   - Extract the company website from the lead data
+   - Scrape the website content
+   - Analyze the content using AI
+   - Generate insights and recommendations
+   - Update the lead score based on the analysis
+3. A progress bar will show the status of the analysis
+4. Analysis typically takes 1-3 minutes to complete
+
+#### Understanding Analysis Results
+
+The company analysis provides several key insights:
+
+1. **Company Summary**: A concise overview of what the company does
+2. **Industry & Size**: The industry sector and estimated company size
+3. **Products & Services**: Main offerings of the company
+4. **Target Audience**: Who the company sells to
+5. **Value Proposition**: The company's main selling points
+6. **Strengths**: Key strengths of the company
+7. **Opportunities**: Potential areas for engagement
+8. **Conversion Strategy**: Recommended approach for converting this lead
+9. **Key Topics**: Important topics to discuss with this lead
+10. **Pain Points**: Potential challenges the company might be facing
+11. **Lead Score Factors**: Factors that influence the lead score
+
+#### Impact on Lead Scoring
+
+Company analysis affects lead scoring in several ways:
+
+1. **Positive Factors**:
+   - Comprehensive website with detailed information
+   - Clear alignment with your products/services
+   - Identifiable pain points that you can address
+   - Recent growth indicators
+
+2. **Negative Factors**:
+   - No company website or invalid URL
+   - Website with minimal or no relevant content
+   - Misalignment with your target market
+
+#### Refreshing Analysis
+
+To update the company analysis:
+
+1. Navigate to the Company Analysis tab
+2. Click the "Refresh Analysis" button
+3. The system will perform a new analysis with the latest website content
+4. Lead scores will be updated based on the new analysis
 
 ### Lead Pipeline Management
 
@@ -333,6 +436,24 @@ STRIKE integrates with several third-party services that require API keys. Follo
 3. Record call notes during or after the call
 4. Set follow-up tasks based on call outcomes
 5. Review call history and recordings
+
+#### Using Phone Extensions
+
+STRIKE supports calling phone numbers with extensions, which is especially useful for reaching contacts at large organizations:
+
+1. When adding or editing a lead, you can enter both the main phone number and extension separately:
+   - Enter the main phone number in the "Phone" field
+   - Enter the extension in the "Extension" field
+
+2. When making a call to a lead with an extension:
+   - The system will first dial the main number
+   - After a short pause (to allow the call to connect), it will automatically dial the extension
+   - This happens seamlessly - you just need to click "Call" and the system handles both the main number and extension
+
+3. Phone numbers with extensions are displayed in a user-friendly format:
+   - For example: "444-6666 ext. 5678"
+
+4. When viewing call history, both the main number and extension are recorded for future reference
 
 ### Communication History
 
@@ -756,7 +877,7 @@ STRIKE uses a sophisticated AI-powered lead scoring system to help you prioritiz
      - Time spent on high-intent pages
      - Repeated visits to key conversion pages
      - Engagement with bottom-funnel content
-   
+    
    - **Communication Sentiment** (10% weight):
      - Positive language in communications
      - Response time to your outreach
@@ -873,6 +994,53 @@ AI-powered recommendations appear throughout the platform:
 3. Email content recommendations
 4. Next best offers
 5. Personalization suggestions
+
+### Company Website Analysis
+
+STRIKE's Company Website Analysis feature uses AI to automatically analyze lead company websites and extract valuable insights.
+
+#### How It Works
+
+1. **Web Scraping**: The system automatically scrapes the company website and relevant subpages
+2. **Content Analysis**: AI analyzes the content to understand:
+   - Company business model
+   - Products and services
+   - Target audience
+   - Value proposition
+   - Company strengths
+3. **Strategic Insights**: The AI generates actionable insights:
+   - Conversion strategy recommendations
+   - Key topics to discuss
+   - Potential pain points
+   - Alignment with your offerings
+4. **Lead Scoring Integration**: Analysis results directly impact lead scoring
+
+#### Benefits of Company Analysis
+
+1. **Time Savings**: Eliminates manual research of prospect companies
+2. **Strategic Preparation**: Provides talking points and strategies before contacting leads
+3. **Improved Targeting**: Helps identify the best-fit leads for your products/services
+4. **Enhanced Lead Scoring**: More accurate lead scoring based on company fit
+5. **Conversation Starters**: Provides relevant topics to discuss with prospects
+
+#### Batch Processing
+
+For bulk lead imports, company analysis runs automatically in batches:
+
+1. When importing leads with company websites, analysis is queued
+2. Processing occurs in the background without slowing down the system
+3. Leads are analyzed in batches to optimize performance
+4. Lead scores are updated as analyses complete
+5. You can view the status of batch processing in the system logs
+
+#### Mock Data Mode
+
+For testing and demonstration purposes, you can enable mock data for company analysis:
+
+1. Go to "Settings" > "Developer"
+2. In the "Company Analysis Features" section:
+   - Toggle "Use Mock Company Analysis Data" to use pre-generated analysis data
+   - Toggle "Auto-Trigger Analysis" to automatically start analysis when viewing leads
 
 ## Analytics & Reporting
 
@@ -1013,6 +1181,31 @@ Gain insights into email campaign effectiveness:
 4. Create teams and departments
 5. Set up approval workflows
 6. Configure data sharing rules
+
+### Developer Settings
+
+The Developer Settings section provides options for testing and development purposes.
+
+#### Mock Data Settings
+
+1. Navigate to "Settings" > "Developer"
+2. Toggle "Mock Data" to enable/disable mock data across the application
+3. When enabled, the system will use pre-generated data instead of making real API calls
+
+#### Company Analysis Settings
+
+In the Developer Settings, you can configure company analysis behavior:
+
+1. **Use Mock Company Analysis Data**: When enabled, the system will use pre-generated analysis data instead of performing real web scraping and analysis
+2. **Auto-Trigger Analysis**: When enabled, company analysis will automatically start when viewing a lead that hasn't been analyzed yet
+
+#### API Settings
+
+The Developer Settings also include API configuration options:
+
+1. **API URL**: The base URL for API requests
+2. **API Keys**: View and manage API keys (admin only)
+3. **Rate Limits**: Configure API rate limits (admin only)
 
 ## System Administration
 
@@ -1202,10 +1395,27 @@ STRIKE includes a built-in ticketing system for internal support and issue track
 - Clear browser cache and cookies
 
 **Data Import Issues**
-- Verify your CSV file format matches the template
+- Verify your CSV or Excel file follows the required format
 - Check for special characters that might cause parsing errors
-- Ensure required fields are populated
-- Try importing smaller batches
+- Ensure required fields are included
+- For large imports, try splitting into smaller batches
+
+**Phone Extension Dialing Issues**
+- If extensions aren't being dialed correctly:
+  - Ensure the extension contains only numeric characters
+  - Check that there's sufficient pause time (default is 2 seconds)
+  - Verify the main phone number is in a valid format
+  - Try adding additional pauses by including commas in the extension (each comma adds a 1-second pause)
+- If you're unable to save an extension:
+  - Ensure you're using the dedicated extension field, not adding it to the main phone field
+  - Extensions should be limited to 20 characters maximum
+  - Only numeric characters, commas, and the # symbol are supported in extensions
+
+**Email Delivery Problems**
+- Verify your email server settings are correct
+- Check for email server issues or outages
+- Ensure the email address is valid and not blocked
+- Try resending the email
 
 **Performance Slowdowns**
 - Close unnecessary browser tabs

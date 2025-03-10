@@ -32,6 +32,7 @@ import { LeadDetail as LeadDetailType, LeadSource, LeadStatus } from '../../lib/
 import { useLead, useLeadTimeline, useLeadInsights } from '../../lib/hooks/useLeads';
 import { EmailDialog } from '../communications/EmailDialog';
 import { PhoneDialog } from '../communications/PhoneDialog';
+import CompanyAnalysis from './CompanyAnalysis';
 
 interface LeadDetailProps {
   leadId: number;
@@ -405,12 +406,13 @@ const LeadDetail: React.FC<LeadDetailProps> = ({
       </div>
       
       <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
-        <TabsList className="grid grid-cols-5 w-full">
+        <TabsList className="grid grid-cols-6 w-full">
           <TabsTrigger value="overview">Overview</TabsTrigger>
           <TabsTrigger value="timeline">Timeline</TabsTrigger>
           <TabsTrigger value="tasks">Tasks</TabsTrigger>
           <TabsTrigger value="campaigns">Campaigns</TabsTrigger>
           <TabsTrigger value="insights">Insights</TabsTrigger>
+          <TabsTrigger value="company-analysis">Company Analysis</TabsTrigger>
         </TabsList>
         
         <TabsContent value="overview" className="space-y-4">
@@ -941,6 +943,10 @@ const LeadDetail: React.FC<LeadDetailProps> = ({
               )}
             </CardContent>
           </Card>
+        </TabsContent>
+        
+        <TabsContent value="company-analysis" className="space-y-4">
+          <CompanyAnalysis leadId={leadId} />
         </TabsContent>
       </Tabs>
       

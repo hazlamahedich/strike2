@@ -182,6 +182,9 @@ const mockInsightsData = {
   conversion_probability: 0.75
 };
 
+// Add import for CompanyAnalysis
+import CompanyAnalysis from '@/components/leads/CompanyAnalysis';
+
 export default function LeadDetailPage() {
   const router = useRouter();
   const params = useParams();
@@ -1499,12 +1502,13 @@ export default function LeadDetailPage() {
           
           {/* Tabs for different sections */}
           <Tabs defaultValue="timeline" className="w-full">
-            <TabsList className="grid grid-cols-5 mb-4">
-              <TabsTrigger value="timeline">Timeline</TabsTrigger>
+            <TabsList className="grid grid-cols-6 mb-4">
+              <TabsTrigger value="overview">Overview</TabsTrigger>
               <TabsTrigger value="tasks">Tasks</TabsTrigger>
               <TabsTrigger value="notes">Notes</TabsTrigger>
+              <TabsTrigger value="timeline">Timeline</TabsTrigger>
               <TabsTrigger value="campaigns">Campaigns</TabsTrigger>
-              <TabsTrigger value="insights">Insights</TabsTrigger>
+              <TabsTrigger value="company-analysis">Company Analysis</TabsTrigger>
             </TabsList>
             
             {/* Timeline Tab */}
@@ -1905,6 +1909,11 @@ export default function LeadDetailPage() {
                   )}
                 </CardContent>
               </Card>
+            </TabsContent>
+            
+            {/* Company Analysis Tab */}
+            <TabsContent value="company-analysis" className="space-y-4">
+              <CompanyAnalysis leadId={parseInt(params.id as string)} />
             </TabsContent>
           </Tabs>
           
