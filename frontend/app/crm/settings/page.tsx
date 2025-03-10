@@ -1,6 +1,7 @@
 'use client';
 
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
+import { useSession } from 'next-auth/react';
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -12,75 +13,156 @@ import { Separator } from "@/components/ui/separator";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
 import { toast } from "@/components/ui/use-toast";
+import { Loader2, AlertTriangle } from "lucide-react";
+import { useUserSettings } from "@/hooks/useUserSettings";
+import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 
 export default function SettingsPage() {
-  // User profile state
-  const [profile, setProfile] = useState({
-    name: 'Alex Johnson',
-    email: 'alex.johnson@example.com',
-    phone: '+1 (555) 123-4567',
-    role: 'Sales Manager',
+  const { data: session } = useSession();
+  const { 
+    profile, 
+    isLoading, 
+    error, 
+    updatePreferences, 
+    updateNotificationSettings,
+    toggleMockFeatures,
+    isMockFeaturesEnabled
+  } = useUserSettings();
+  
+  // Local state for form values
+  const [formValues, setFormValues] = useState({
+    name: '',
+    email: '',
+    phone: '',
+    role: '',
     avatar: '',
-    bio: 'Sales professional with 8+ years of experience in SaaS and enterprise solutions.',
+    bio: '',
     timezone: 'America/New_York',
     language: 'en',
   });
   
   // Notification preferences state
   const [notifications, setNotifications] = useState({
-    emailNotifications: true,
-    pushNotifications: true,
-    taskReminders: true,
-    dealUpdates: true,
-    weeklyReports: true,
-    marketingEmails: false,
-    systemAnnouncements: true,
+    email: true,
+    push: true,
+    task_reminders: true,
+    deal_updates: true,
+    weekly_reports: true,
+    marketing_emails: false,
+    system_announcements: true,
   });
   
   // General settings state
   const [settings, setSettings] = useState({
     theme: 'system',
-    compactMode: false,
-    autoSave: true,
-    showKPI: true,
-    defaultView: 'kanban',
+    compact_mode: false,
+    auto_save: true,
+    show_kpi: true,
+    default_view: 'kanban',
     currency: 'USD',
-    dateFormat: 'MM/DD/YYYY',
+    date_format: 'MM/DD/YYYY',
   });
+
+  // Update local state when profile data is loaded
+  useEffect(() => {
+    if (profile) {
+      // Update form values
+      setFormValues({
+        name: profile.preferences?.full_name || '',
+        email: session?.user?.email || '',
+        phone: '',
+        role: session?.user?.role || 'user',
+        avatar: profile.avatar_url || '',
+        bio: '',
+        timezone: 'America/New_York',
+        language: profile.preferences?.language || 'en',
+      });
+      
+      // Update notification settings
+      if (profile.notification_settings) {
+        setNotifications({
+          email: profile.notification_settings.email || true,
+          push: profile.notification_settings.push || false,
+          task_reminders: profile.notification_settings.task_reminders || true,
+          deal_updates: profile.notification_settings.deal_updates || true,
+          weekly_reports: profile.notification_settings.weekly_reports || true,
+          marketing_emails: profile.notification_settings.marketing_emails || false,
+          system_announcements: profile.notification_settings.system_announcements || true,
+        });
+      }
+      
+      // Update general settings
+      if (profile.preferences) {
+        setSettings({
+          theme: profile.preferences.theme || 'system',
+          compact_mode: profile.preferences.compact_mode || false,
+          auto_save: true,
+          show_kpi: true,
+          default_view: profile.preferences.default_view || 'kanban',
+          currency: profile.preferences.currency || 'USD',
+          date_format: profile.preferences.date_format || 'MM/DD/YYYY',
+        });
+      }
+    }
+  }, [profile, session]);
   
   // Handle profile update
-  const handleProfileUpdate = (e: React.FormEvent) => {
+  const handleProfileUpdate = async (e: React.FormEvent) => {
     e.preventDefault();
-    toast({
-      title: "Profile updated",
-      description: "Your profile has been updated successfully.",
+    
+    const success = await updatePreferences({
+      full_name: formValues.name,
+      language: formValues.language,
     });
+    
+    if (success) {
+      toast({
+        title: "Profile updated",
+        description: "Your profile has been updated successfully.",
+      });
+    }
   };
   
   // Handle notification toggle
-  const handleNotificationToggle = (key: keyof typeof notifications) => {
-    setNotifications({
+  const handleNotificationToggle = async (key: keyof typeof notifications) => {
+    const updatedNotifications = {
       ...notifications,
       [key]: !notifications[key],
+    };
+    
+    setNotifications(updatedNotifications);
+    
+    const success = await updateNotificationSettings({
+      [key]: !notifications[key]
     });
     
-    toast({
-      title: "Preferences updated",
-      description: "Your notification preferences have been saved.",
-    });
+    if (success) {
+      toast({
+        title: "Preferences updated",
+        description: "Your notification preferences have been saved.",
+      });
+    }
   };
   
   // Handle settings change
-  const handleSettingsChange = (key: keyof typeof settings, value: any) => {
-    setSettings({
+  const handleSettingsChange = async (key: keyof typeof settings, value: any) => {
+    const updatedSettings = {
       ...settings,
       [key]: value,
+    };
+    
+    setSettings(updatedSettings);
+    
+    const success = await updatePreferences({
+      [key]: value
     });
     
-    toast({
-      title: "Settings updated",
-      description: "Your settings have been saved.",
-    });
+    if (success) {
+      toast({
+        title: "Settings updated",
+        description: "Your settings have been saved.",
+      });
+    }
   };
   
   // Get initials for avatar fallback
@@ -93,6 +175,41 @@ export default function SettingsPage() {
       .substring(0, 2);
   };
   
+  // Handle mock features toggle
+  const handleToggleMockFeatures = async () => {
+    const success = await toggleMockFeatures();
+    
+    if (success) {
+      toast({
+        title: "Mock Features " + (isMockFeaturesEnabled ? "Disabled" : "Enabled"),
+        description: "Your settings have been updated.",
+      });
+    }
+  };
+  
+  if (isLoading) {
+    return (
+      <div className="flex items-center justify-center h-[60vh]">
+        <Loader2 className="h-8 w-8 animate-spin text-primary" />
+        <span className="ml-2">Loading settings...</span>
+      </div>
+    );
+  }
+  
+  if (error) {
+    return (
+      <div className="p-6">
+        <Alert variant="destructive">
+          <AlertTriangle className="h-4 w-4" />
+          <AlertTitle>Error</AlertTitle>
+          <AlertDescription>
+            Failed to load settings: {error}
+          </AlertDescription>
+        </Alert>
+      </div>
+    );
+  }
+  
   return (
     <div className="space-y-6 p-2 md:p-6">
       <div>
@@ -103,10 +220,11 @@ export default function SettingsPage() {
       </div>
       
       <Tabs defaultValue="profile" className="w-full">
-        <TabsList className="grid w-full grid-cols-3 md:w-auto">
+        <TabsList className="grid w-full grid-cols-4 md:w-auto">
           <TabsTrigger value="profile">Profile</TabsTrigger>
           <TabsTrigger value="notifications">Notifications</TabsTrigger>
           <TabsTrigger value="general">General</TabsTrigger>
+          <TabsTrigger value="developer">Developer</TabsTrigger>
         </TabsList>
         
         {/* Profile Tab */}
@@ -123,10 +241,10 @@ export default function SettingsPage() {
                 <div className="flex flex-col md:flex-row gap-6">
                   <div className="flex flex-col items-center space-y-2">
                     <Avatar className="h-24 w-24">
-                      <AvatarImage src={profile.avatar} alt={profile.name} />
-                      <AvatarFallback className="text-2xl">{getInitials(profile.name)}</AvatarFallback>
+                      <AvatarImage src={formValues.avatar} alt={formValues.name} />
+                      <AvatarFallback className="text-2xl">{getInitials(formValues.name || 'User')}</AvatarFallback>
                     </Avatar>
-                    <Button variant="outline" size="sm">
+                    <Button variant="outline" size="sm" type="button">
                       Change Avatar
                     </Button>
                   </div>
@@ -137,8 +255,8 @@ export default function SettingsPage() {
                         <Label htmlFor="name">Full Name</Label>
                         <Input 
                           id="name" 
-                          value={profile.name}
-                          onChange={(e) => setProfile({...profile, name: e.target.value})}
+                          value={formValues.name}
+                          onChange={(e) => setFormValues({...formValues, name: e.target.value})}
                         />
                       </div>
                       <div className="space-y-2">
@@ -146,24 +264,23 @@ export default function SettingsPage() {
                         <Input 
                           id="email" 
                           type="email" 
-                          value={profile.email}
-                          onChange={(e) => setProfile({...profile, email: e.target.value})}
+                          value={formValues.email}
+                          disabled
                         />
                       </div>
                       <div className="space-y-2">
                         <Label htmlFor="phone">Phone</Label>
                         <Input 
                           id="phone" 
-                          value={profile.phone}
-                          onChange={(e) => setProfile({...profile, phone: e.target.value})}
+                          value={formValues.phone}
+                          onChange={(e) => setFormValues({...formValues, phone: e.target.value})}
                         />
                       </div>
                       <div className="space-y-2">
                         <Label htmlFor="role">Role</Label>
                         <Input 
                           id="role" 
-                          value={profile.role}
-                          onChange={(e) => setProfile({...profile, role: e.target.value})}
+                          value={formValues.role}
                           disabled
                         />
                       </div>
@@ -173,8 +290,8 @@ export default function SettingsPage() {
                       <Label htmlFor="bio">Bio</Label>
                       <Textarea 
                         id="bio" 
-                        value={profile.bio}
-                        onChange={(e) => setProfile({...profile, bio: e.target.value})}
+                        value={formValues.bio}
+                        onChange={(e) => setFormValues({...formValues, bio: e.target.value})}
                         rows={3}
                       />
                     </div>
@@ -187,8 +304,8 @@ export default function SettingsPage() {
                   <div className="space-y-2">
                     <Label htmlFor="timezone">Timezone</Label>
                     <Select 
-                      value={profile.timezone}
-                      onValueChange={(value) => setProfile({...profile, timezone: value})}
+                      value={formValues.timezone}
+                      onValueChange={(value) => setFormValues({...formValues, timezone: value})}
                     >
                       <SelectTrigger id="timezone">
                         <SelectValue placeholder="Select timezone" />
@@ -207,8 +324,8 @@ export default function SettingsPage() {
                   <div className="space-y-2">
                     <Label htmlFor="language">Language</Label>
                     <Select 
-                      value={profile.language}
-                      onValueChange={(value) => setProfile({...profile, language: value})}
+                      value={formValues.language}
+                      onValueChange={(value) => setFormValues({...formValues, language: value})}
                     >
                       <SelectTrigger id="language">
                         <SelectValue placeholder="Select language" />
@@ -229,35 +346,6 @@ export default function SettingsPage() {
               <Button onClick={handleProfileUpdate}>Save Changes</Button>
             </CardFooter>
           </Card>
-          
-          <Card>
-            <CardHeader>
-              <CardTitle>Security</CardTitle>
-              <CardDescription>
-                Manage your password and security settings.
-              </CardDescription>
-            </CardHeader>
-            <CardContent className="space-y-4">
-              <div className="space-y-2">
-                <Label htmlFor="current-password">Current Password</Label>
-                <Input id="current-password" type="password" />
-              </div>
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                <div className="space-y-2">
-                  <Label htmlFor="new-password">New Password</Label>
-                  <Input id="new-password" type="password" />
-                </div>
-                <div className="space-y-2">
-                  <Label htmlFor="confirm-password">Confirm New Password</Label>
-                  <Input id="confirm-password" type="password" />
-                </div>
-              </div>
-            </CardContent>
-            <CardFooter className="flex justify-between">
-              <Button variant="outline">Enable Two-Factor Auth</Button>
-              <Button>Update Password</Button>
-            </CardFooter>
-          </Card>
         </TabsContent>
         
         {/* Notifications Tab */}
@@ -266,96 +354,81 @@ export default function SettingsPage() {
             <CardHeader>
               <CardTitle>Notification Preferences</CardTitle>
               <CardDescription>
-                Choose how and when you want to be notified.
+                Choose what notifications you receive and how they are delivered.
               </CardDescription>
             </CardHeader>
-            <CardContent className="space-y-6">
-              <div className="space-y-4">
-                <h3 className="text-lg font-medium">Communication</h3>
-                <div className="space-y-3">
+            <CardContent>
+              <div className="space-y-6">
+                <div className="space-y-4">
                   <div className="flex items-center justify-between">
                     <div>
                       <Label htmlFor="email-notifications" className="font-medium">Email Notifications</Label>
-                      <p className="text-sm text-muted-foreground">Receive email notifications for important updates.</p>
+                      <p className="text-sm text-muted-foreground">Receive notifications via email.</p>
                     </div>
                     <Switch 
                       id="email-notifications" 
-                      checked={notifications.emailNotifications}
-                      onCheckedChange={() => handleNotificationToggle('emailNotifications')}
+                      checked={notifications.email}
+                      onCheckedChange={() => handleNotificationToggle('email')}
                     />
                   </div>
                   
                   <div className="flex items-center justify-between">
                     <div>
                       <Label htmlFor="push-notifications" className="font-medium">Push Notifications</Label>
-                      <p className="text-sm text-muted-foreground">Receive push notifications in your browser.</p>
+                      <p className="text-sm text-muted-foreground">Receive notifications in your browser.</p>
                     </div>
                     <Switch 
                       id="push-notifications" 
-                      checked={notifications.pushNotifications}
-                      onCheckedChange={() => handleNotificationToggle('pushNotifications')}
+                      checked={notifications.push}
+                      onCheckedChange={() => handleNotificationToggle('push')}
                     />
                   </div>
-                </div>
-              </div>
-              
-              <Separator />
-              
-              <div className="space-y-4">
-                <h3 className="text-lg font-medium">Activity Notifications</h3>
-                <div className="space-y-3">
+                  
                   <div className="flex items-center justify-between">
                     <div>
                       <Label htmlFor="task-reminders" className="font-medium">Task Reminders</Label>
-                      <p className="text-sm text-muted-foreground">Get notified about upcoming and overdue tasks.</p>
+                      <p className="text-sm text-muted-foreground">Get reminders about upcoming and overdue tasks.</p>
                     </div>
                     <Switch 
                       id="task-reminders" 
-                      checked={notifications.taskReminders}
-                      onCheckedChange={() => handleNotificationToggle('taskReminders')}
+                      checked={notifications.task_reminders}
+                      onCheckedChange={() => handleNotificationToggle('task_reminders')}
                     />
                   </div>
                   
                   <div className="flex items-center justify-between">
                     <div>
                       <Label htmlFor="deal-updates" className="font-medium">Deal Updates</Label>
-                      <p className="text-sm text-muted-foreground">Get notified when deals are updated or change stages.</p>
+                      <p className="text-sm text-muted-foreground">Get notified when deals are updated or change status.</p>
                     </div>
                     <Switch 
                       id="deal-updates" 
-                      checked={notifications.dealUpdates}
-                      onCheckedChange={() => handleNotificationToggle('dealUpdates')}
+                      checked={notifications.deal_updates}
+                      onCheckedChange={() => handleNotificationToggle('deal_updates')}
                     />
                   </div>
-                </div>
-              </div>
-              
-              <Separator />
-              
-              <div className="space-y-4">
-                <h3 className="text-lg font-medium">Other Notifications</h3>
-                <div className="space-y-3">
+                  
                   <div className="flex items-center justify-between">
                     <div>
                       <Label htmlFor="weekly-reports" className="font-medium">Weekly Reports</Label>
-                      <p className="text-sm text-muted-foreground">Receive weekly performance and activity reports.</p>
+                      <p className="text-sm text-muted-foreground">Receive weekly summary reports of your activity.</p>
                     </div>
                     <Switch 
                       id="weekly-reports" 
-                      checked={notifications.weeklyReports}
-                      onCheckedChange={() => handleNotificationToggle('weeklyReports')}
+                      checked={notifications.weekly_reports}
+                      onCheckedChange={() => handleNotificationToggle('weekly_reports')}
                     />
                   </div>
                   
                   <div className="flex items-center justify-between">
                     <div>
                       <Label htmlFor="marketing-emails" className="font-medium">Marketing Emails</Label>
-                      <p className="text-sm text-muted-foreground">Receive marketing emails about new features and offers.</p>
+                      <p className="text-sm text-muted-foreground">Receive marketing and promotional emails.</p>
                     </div>
                     <Switch 
                       id="marketing-emails" 
-                      checked={notifications.marketingEmails}
-                      onCheckedChange={() => handleNotificationToggle('marketingEmails')}
+                      checked={notifications.marketing_emails}
+                      onCheckedChange={() => handleNotificationToggle('marketing_emails')}
                     />
                   </div>
                   
@@ -366,8 +439,8 @@ export default function SettingsPage() {
                     </div>
                     <Switch 
                       id="system-announcements" 
-                      checked={notifications.systemAnnouncements}
-                      onCheckedChange={() => handleNotificationToggle('systemAnnouncements')}
+                      checked={notifications.system_announcements}
+                      onCheckedChange={() => handleNotificationToggle('system_announcements')}
                     />
                   </div>
                 </div>
@@ -413,8 +486,8 @@ export default function SettingsPage() {
                     </div>
                     <Switch 
                       id="compact-mode" 
-                      checked={settings.compactMode}
-                      onCheckedChange={(value) => handleSettingsChange('compactMode', value)}
+                      checked={settings.compact_mode}
+                      onCheckedChange={(value) => handleSettingsChange('compact_mode', value)}
                     />
                   </div>
                 </div>
@@ -432,8 +505,8 @@ export default function SettingsPage() {
                     </div>
                     <Switch 
                       id="auto-save" 
-                      checked={settings.autoSave}
-                      onCheckedChange={(value) => handleSettingsChange('autoSave', value)}
+                      checked={settings.auto_save}
+                      onCheckedChange={(value) => handleSettingsChange('auto_save', value)}
                     />
                   </div>
                   
@@ -444,26 +517,9 @@ export default function SettingsPage() {
                     </div>
                     <Switch 
                       id="show-kpi" 
-                      checked={settings.showKPI}
-                      onCheckedChange={(value) => handleSettingsChange('showKPI', value)}
+                      checked={settings.show_kpi}
+                      onCheckedChange={(value) => handleSettingsChange('show_kpi', value)}
                     />
-                  </div>
-                  
-                  <div className="space-y-2">
-                    <Label htmlFor="default-view">Default Deal View</Label>
-                    <Select 
-                      value={settings.defaultView}
-                      onValueChange={(value) => handleSettingsChange('defaultView', value)}
-                    >
-                      <SelectTrigger id="default-view">
-                        <SelectValue placeholder="Select default view" />
-                      </SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="kanban">Kanban</SelectItem>
-                        <SelectItem value="list">List</SelectItem>
-                        <SelectItem value="table">Table</SelectItem>
-                      </SelectContent>
-                    </Select>
                   </div>
                 </div>
               </div>
@@ -495,8 +551,8 @@ export default function SettingsPage() {
                   <div className="space-y-2">
                     <Label htmlFor="date-format">Date Format</Label>
                     <Select 
-                      value={settings.dateFormat}
-                      onValueChange={(value) => handleSettingsChange('dateFormat', value)}
+                      value={settings.date_format}
+                      onValueChange={(value) => handleSettingsChange('date_format', value)}
                     >
                       <SelectTrigger id="date-format">
                         <SelectValue placeholder="Select date format" />
@@ -511,31 +567,46 @@ export default function SettingsPage() {
                 </div>
               </div>
             </CardContent>
-            <CardFooter className="flex justify-between">
-              <Button variant="outline">Reset to Defaults</Button>
-              <Button>Save Settings</Button>
-            </CardFooter>
           </Card>
-          
+        </TabsContent>
+        
+        {/* Developer Tab */}
+        <TabsContent value="developer" className="space-y-4">
           <Card>
             <CardHeader>
-              <CardTitle>Data Management</CardTitle>
+              <CardTitle>Developer Settings</CardTitle>
               <CardDescription>
-                Manage your data and export options.
+                Advanced settings for developers and testing.
               </CardDescription>
             </CardHeader>
-            <CardContent className="space-y-4">
-              <div className="space-y-2">
-                <h3 className="text-lg font-medium">Export Data</h3>
-                <p className="text-sm text-muted-foreground">
-                  Export your CRM data for backup or analysis.
-                </p>
-              </div>
-              <div className="flex flex-wrap gap-2">
-                <Button variant="outline">Export Contacts</Button>
-                <Button variant="outline">Export Deals</Button>
-                <Button variant="outline">Export Tasks</Button>
-                <Button variant="outline">Full Data Export</Button>
+            <CardContent className="space-y-6">
+              <div className="space-y-4">
+                <h3 className="text-lg font-medium">Feature Flags</h3>
+                <div className="space-y-3">
+                  <div className="flex items-center justify-between">
+                    <div>
+                      <Label htmlFor="mock-features" className="font-medium">Enable Mock Features</Label>
+                      <p className="text-sm text-muted-foreground">
+                        Enable mock features and sample data for testing and demonstration purposes.
+                      </p>
+                    </div>
+                    <Switch 
+                      id="mock-features" 
+                      checked={isMockFeaturesEnabled}
+                      onCheckedChange={handleToggleMockFeatures}
+                    />
+                  </div>
+                  
+                  {isMockFeaturesEnabled && (
+                    <Alert>
+                      <AlertTriangle className="h-4 w-4" />
+                      <AlertTitle>Mock Features Enabled</AlertTitle>
+                      <AlertDescription>
+                        You are currently using mock features. Some functionality may be simulated.
+                      </AlertDescription>
+                    </Alert>
+                  )}
+                </div>
               </div>
             </CardContent>
           </Card>

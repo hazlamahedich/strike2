@@ -1,6 +1,8 @@
 'use client';
 
 import { Settings } from 'lucide-react';
+import Link from 'next/link';
+import { Button } from '@/components/ui/button';
 
 export default function SettingsPage() {
   return (
@@ -12,9 +14,14 @@ export default function SettingsPage() {
       <div className="flex flex-col items-center justify-center h-[60vh] text-center">
         <Settings className="h-16 w-16 text-muted-foreground mb-4" />
         <h3 className="text-2xl font-semibold mb-2">Settings Module</h3>
-        <p className="text-muted-foreground max-w-md">
+        <p className="text-muted-foreground max-w-md mb-6">
           This feature is coming soon. You'll be able to customize your account settings, manage users, and configure application preferences.
         </p>
+        <Button asChild>
+          <Link href="/crm/settings">
+            Go to CRM Settings
+          </Link>
+        </Button>
       </div>
     </div>
   );

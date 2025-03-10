@@ -17,6 +17,7 @@ import { Button } from '../ui/button';
 import { Avatar } from '../ui/avatar';
 import { Input } from '../ui/input';
 import { Badge } from '../ui/badge';
+import Link from 'next/link';
 
 interface CrmLayoutProps {
   children: React.ReactNode;
@@ -186,41 +187,61 @@ interface NavItemProps {
 }
 
 function NavItem({ icon, label, collapsed, active, badge }: NavItemProps) {
+  // Define the path based on the label
+  const getPath = () => {
+    switch (label) {
+      case 'Dashboard':
+        return '/crm/dashboard';
+      case 'Contacts':
+        return '/crm/contacts';
+      case 'Calendar':
+        return '/crm/calendar';
+      case 'Messages':
+        return '/crm/messages';
+      case 'Settings':
+        return '/crm/settings';
+      default:
+        return '#';
+    }
+  };
+
   return (
-    <motion.div
-      className={`flex items-center px-4 py-2 cursor-pointer transition-colors ${
-        active 
-          ? 'bg-primary/10 text-primary' 
-          : 'text-muted-foreground hover:bg-muted hover:text-foreground'
-      }`}
-      animate={{ justifyContent: collapsed ? 'center' : 'flex-start' }}
-    >
-      <div className="relative">
-        {icon}
-        {badge && !collapsed && (
-          <Badge 
-            variant="destructive" 
-            className="absolute -top-2 -right-2 h-5 w-5 flex items-center justify-center p-0 text-[10px]"
-          >
-            {badge}
-          </Badge>
-        )}
-        {badge && collapsed && (
-          <Badge 
-            variant="destructive" 
-            className="absolute -top-2 -right-2 h-5 w-5 flex items-center justify-center p-0 text-[10px]"
-          >
-            {badge}
-          </Badge>
-        )}
-      </div>
-      <motion.span 
-        className="ml-3 text-sm font-medium"
-        animate={{ opacity: collapsed ? 0 : 1, display: collapsed ? 'none' : 'block' }}
-        transition={{ duration: 0.2 }}
+    <Link href={getPath()}>
+      <motion.div
+        className={`flex items-center px-4 py-2 cursor-pointer transition-colors ${
+          active 
+            ? 'bg-primary/10 text-primary' 
+            : 'text-muted-foreground hover:bg-muted hover:text-foreground'
+        }`}
+        animate={{ justifyContent: collapsed ? 'center' : 'flex-start' }}
       >
-        {label}
-      </motion.span>
-    </motion.div>
+        <div className="relative">
+          {icon}
+          {badge && !collapsed && (
+            <Badge 
+              variant="destructive" 
+              className="absolute -top-2 -right-2 h-5 w-5 flex items-center justify-center p-0 text-[10px]"
+            >
+              {badge}
+            </Badge>
+          )}
+          {badge && collapsed && (
+            <Badge 
+              variant="destructive" 
+              className="absolute -top-2 -right-2 h-5 w-5 flex items-center justify-center p-0 text-[10px]"
+            >
+              {badge}
+            </Badge>
+          )}
+        </div>
+        <motion.span 
+          className="ml-3 text-sm font-medium"
+          animate={{ opacity: collapsed ? 0 : 1, display: collapsed ? 'none' : 'block' }}
+          transition={{ duration: 0.2 }}
+        >
+          {label}
+        </motion.span>
+      </motion.div>
+    </Link>
   );
 } 

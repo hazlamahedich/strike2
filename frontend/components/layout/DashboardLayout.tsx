@@ -19,7 +19,12 @@ import {
   Moon,
   Sun,
   ChevronLeft,
-  ChevronRight
+  ChevronRight,
+  Search,
+  PanelLeft,
+  Home,
+  Layers,
+  Activity
 } from 'lucide-react';
 import { useTheme } from 'next-themes';
 import { Avatar, AvatarFallback, AvatarImage } from '../ui/avatar';
@@ -35,11 +40,15 @@ import {
 import { Toaster } from 'sonner';
 import apiClient from '@/lib/api/client';
 import { AnalyticsProvider } from '@/context/AnalyticsContext';
+import { motion, AnimatePresence } from 'framer-motion';
+import { Input } from '../ui/input';
+import { cn } from '@/lib/utils';
 
 type NavItem = {
   title: string;
   href: string;
   icon: React.ReactNode;
+  badge?: number;
 };
 
 type User = {
@@ -58,14 +67,13 @@ type Notification = {
 };
 
 const navItems: NavItem[] = [
-  { title: 'Dashboard', href: '/dashboard', icon: <LayoutGrid className="h-5 w-5" /> },
-  { title: 'Leads', href: '/dashboard/leads', icon: <Users className="h-5 w-5" /> },
+  { title: 'Dashboard', href: '/dashboard', icon: <Home className="h-5 w-5" /> },
+  { title: 'Leads', href: '/dashboard/leads', icon: <Users className="h-5 w-5" />, badge: 5 },
   { title: 'Campaigns', href: '/dashboard/campaigns', icon: <Megaphone className="h-5 w-5" /> },
-  { title: 'Tasks', href: '/dashboard/tasks', icon: <CheckSquare className="h-5 w-5" /> },
+  { title: 'Tasks', href: '/dashboard/tasks', icon: <CheckSquare className="h-5 w-5" />, badge: 3 },
   { title: 'Communications', href: '/communications', icon: <MessageSquare className="h-5 w-5" /> },
   { title: 'Meetings', href: '/dashboard/meetings', icon: <Calendar className="h-5 w-5" /> },
-  { title: 'Calendar Integrations', href: '/dashboard/calendar-integrations', icon: <Calendar className="h-5 w-5" /> },
-  { title: 'Analytics', href: '/dashboard/analytics', icon: <BarChart3 className="h-5 w-5" /> },
+  { title: 'Analytics', href: '/dashboard/analytics', icon: <Activity className="h-5 w-5" /> },
   { title: 'Settings', href: '/dashboard/settings', icon: <Settings className="h-5 w-5" /> },
 ];
 
@@ -77,6 +85,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
   const [notifications, setNotifications] = useState<Notification[]>([]);
   const pathname = usePathname();
   const { theme, setTheme } = useTheme();
+  const [searchQuery, setSearchQuery] = useState('');
 
   // Toggle theme between light and dark
   const toggleTheme = () => {
@@ -212,91 +221,188 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
         </div>
         
         {/* Sidebar for desktop */}
-        <div 
-          className={`fixed top-0 left-0 bottom-0 z-40 ${sidebarCollapsed ? 'w-16' : 'w-64'} border-r bg-card transition-all duration-300 ease-in-out ${
-            sidebarOpen ? 'translate-x-0' : '-translate-x-full lg:translate-x-0'
-          }`}
-        >
-          <div className="h-16 border-b flex items-center px-6 sticky top-0 bg-card/95 backdrop-blur supports-[backdrop-filter]:bg-card/60 z-10">
-            <Link href="/dashboard" className="flex items-center gap-2">
-              <div className="w-8 h-8 rounded-full bg-primary flex items-center justify-center">
-                <span className="text-primary-foreground font-semibold">AI</span>
-              </div>
-              {!sidebarCollapsed && <span className="font-semibold text-xl">AI CRM</span>}
-            </Link>
-          </div>
-          <div className="p-4">
-            <nav className="space-y-1">
-              {navItems.map((item) => (
-                <Link 
-                  key={item.href} 
-                  href={item.href}
-                  className={`flex items-center ${sidebarCollapsed ? 'justify-center' : 'gap-3 px-3'} py-2 text-sm rounded-md transition-colors ${
-                    pathname === item.href || pathname?.startsWith(`${item.href}/`) 
-                      ? 'bg-primary text-primary-foreground' 
-                      : 'text-muted-foreground hover:bg-secondary hover:text-foreground'
-                  }`}
-                  title={sidebarCollapsed ? item.title : undefined}
-                >
-                  {item.icon}
-                  {!sidebarCollapsed && item.title}
-                </Link>
-              ))}
-            </nav>
-          </div>
-          <div className="absolute bottom-0 left-0 right-0 border-t p-4">
-            {!sidebarCollapsed ? (
-              <div className="flex items-center gap-3">
-                <Avatar>
-                  <AvatarImage src="" />
-                  <AvatarFallback>{userInitials}</AvatarFallback>
-                </Avatar>
-                <div className="flex-1 min-w-0">
-                  <p className="text-sm font-medium truncate">{userName}</p>
-                  <p className="text-xs text-muted-foreground truncate">Logged in</p>
-                </div>
-                <Button variant="ghost" size="icon" onClick={handleLogout} title="Logout">
-                  <LogOut className="h-4 w-4" />
-                </Button>
-              </div>
-            ) : (
-              <div className="flex flex-col items-center gap-2">
-                <Avatar className="h-8 w-8">
-                  <AvatarImage src="" />
-                  <AvatarFallback className="text-xs">{userInitials}</AvatarFallback>
-                </Avatar>
-                <Button variant="ghost" size="icon" onClick={handleLogout} title="Logout">
-                  <LogOut className="h-4 w-4" />
-                </Button>
-              </div>
-            )}
-          </div>
-          
-          {/* Sidebar collapse toggle button */}
-          <button
-            onClick={toggleSidebar}
-            className="absolute top-1/2 -right-3 transform -translate-y-1/2 bg-primary text-primary-foreground rounded-full p-1 shadow-md hover:bg-primary/90 transition-colors"
-            title={sidebarCollapsed ? "Expand sidebar" : "Collapse sidebar"}
+        <AnimatePresence>
+          <motion.div 
+            className={`fixed top-0 left-0 bottom-0 z-40 border-r bg-card ${
+              sidebarOpen ? 'translate-x-0' : '-translate-x-full lg:translate-x-0'
+            }`}
+            initial={{ width: sidebarCollapsed ? 80 : 240 }}
+            animate={{ width: sidebarCollapsed ? 80 : 240 }}
+            transition={{ duration: 0.3, ease: "easeInOut" }}
           >
-            {sidebarCollapsed ? 
-              <ChevronRight className="h-4 w-4" /> : 
-              <ChevronLeft className="h-4 w-4" />
-            }
-          </button>
-        </div>
+            <div className="h-16 border-b flex items-center px-6 sticky top-0 bg-card/95 backdrop-blur supports-[backdrop-filter]:bg-card/60 z-10">
+              <Link href="/dashboard" className="flex items-center gap-2">
+                <div className="w-8 h-8 rounded-full bg-gradient-to-r from-blue-500 to-indigo-600 flex items-center justify-center">
+                  <span className="text-white font-semibold">AI</span>
+                </div>
+                <AnimatePresence>
+                  {!sidebarCollapsed && (
+                    <motion.span 
+                      className="font-semibold text-xl bg-gradient-to-r from-blue-600 to-indigo-600 bg-clip-text text-transparent"
+                      initial={{ opacity: 0, x: -10 }}
+                      animate={{ opacity: 1, x: 0 }}
+                      exit={{ opacity: 0, x: -10 }}
+                      transition={{ duration: 0.2 }}
+                    >
+                      STRIKE CRM
+                    </motion.span>
+                  )}
+                </AnimatePresence>
+              </Link>
+            </div>
+            
+            <div className="p-4">
+              <nav className="space-y-1">
+                {navItems.map((item) => (
+                  <Link 
+                    key={item.href} 
+                    href={item.href}
+                  >
+                    <motion.div
+                      className={cn(
+                        "flex items-center rounded-md transition-all duration-200 relative group",
+                        sidebarCollapsed ? "justify-center p-2" : "px-3 py-2 gap-3",
+                        pathname === item.href || pathname?.startsWith(`${item.href}/`) 
+                          ? "bg-primary text-primary-foreground" 
+                          : "text-muted-foreground hover:bg-accent hover:text-foreground"
+                      )}
+                      whileHover={{ scale: 1.02 }}
+                      whileTap={{ scale: 0.98 }}
+                      title={sidebarCollapsed ? item.title : undefined}
+                    >
+                      <span className="relative">
+                        {item.icon}
+                        {item.badge && (
+                          <span className="absolute -top-1 -right-1 bg-destructive text-destructive-foreground text-xs rounded-full h-4 w-4 flex items-center justify-center">
+                            {item.badge}
+                          </span>
+                        )}
+                      </span>
+                      
+                      <AnimatePresence>
+                        {!sidebarCollapsed && (
+                          <motion.span 
+                            className="text-sm font-medium"
+                            initial={{ opacity: 0, x: -10 }}
+                            animate={{ opacity: 1, x: 0 }}
+                            exit={{ opacity: 0, x: -10 }}
+                            transition={{ duration: 0.2 }}
+                          >
+                            {item.title}
+                          </motion.span>
+                        )}
+                      </AnimatePresence>
+                      
+                      {/* Active indicator */}
+                      {(pathname === item.href || pathname?.startsWith(`${item.href}/`)) && (
+                        <motion.div 
+                          className="absolute left-0 top-0 bottom-0 w-1 bg-primary-foreground rounded-full"
+                          layoutId="activeNavIndicator"
+                          transition={{ type: "spring", stiffness: 300, damping: 30 }}
+                        />
+                      )}
+                    </motion.div>
+                  </Link>
+                ))}
+              </nav>
+            </div>
+            
+            <div className="absolute bottom-0 left-0 right-0 border-t p-4">
+              <AnimatePresence mode="wait">
+                {!sidebarCollapsed ? (
+                  <motion.div 
+                    className="flex items-center gap-3"
+                    initial={{ opacity: 0 }}
+                    animate={{ opacity: 1 }}
+                    exit={{ opacity: 0 }}
+                    key="expanded"
+                  >
+                    <Avatar className="border-2 border-primary/20">
+                      <AvatarImage src="" />
+                      <AvatarFallback className="bg-gradient-to-br from-blue-500 to-indigo-600 text-white">
+                        {userInitials}
+                      </AvatarFallback>
+                    </Avatar>
+                    <div className="flex-1 min-w-0">
+                      <p className="text-sm font-medium truncate">{userName}</p>
+                      <p className="text-xs text-muted-foreground truncate">Logged in</p>
+                    </div>
+                    <Button variant="ghost" size="icon" onClick={handleLogout} title="Logout">
+                      <LogOut className="h-4 w-4" />
+                    </Button>
+                  </motion.div>
+                ) : (
+                  <motion.div 
+                    className="flex flex-col items-center gap-2"
+                    initial={{ opacity: 0 }}
+                    animate={{ opacity: 1 }}
+                    exit={{ opacity: 0 }}
+                    key="collapsed"
+                  >
+                    <Avatar className="h-8 w-8 border-2 border-primary/20">
+                      <AvatarImage src="" />
+                      <AvatarFallback className="text-xs bg-gradient-to-br from-blue-500 to-indigo-600 text-white">
+                        {userInitials}
+                      </AvatarFallback>
+                    </Avatar>
+                    <Button variant="ghost" size="icon" onClick={handleLogout} title="Logout">
+                      <LogOut className="h-4 w-4" />
+                    </Button>
+                  </motion.div>
+                )}
+              </AnimatePresence>
+            </div>
+            
+            {/* Sidebar collapse toggle button */}
+            <motion.button
+              onClick={toggleSidebar}
+              className="absolute top-1/2 -right-3 transform -translate-y-1/2 bg-gradient-to-r from-blue-500 to-indigo-600 text-white rounded-full p-1 shadow-md hover:shadow-lg transition-all"
+              whileHover={{ scale: 1.1 }}
+              whileTap={{ scale: 0.9 }}
+              title={sidebarCollapsed ? "Expand sidebar" : "Collapse sidebar"}
+            >
+              {sidebarCollapsed ? 
+                <ChevronRight className="h-4 w-4" /> : 
+                <ChevronLeft className="h-4 w-4" />
+              }
+            </motion.button>
+          </motion.div>
+        </AnimatePresence>
         
         {/* Backdrop for mobile sidebar */}
-        {sidebarOpen && (
-          <div 
-            className="fixed inset-0 z-30 bg-background/80 backdrop-blur lg:hidden"
-            onClick={() => setSidebarOpen(false)}
-          />
-        )}
+        <AnimatePresence>
+          {sidebarOpen && (
+            <motion.div 
+              className="fixed inset-0 z-30 bg-background/80 backdrop-blur lg:hidden"
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              onClick={() => setSidebarOpen(false)}
+            />
+          )}
+        </AnimatePresence>
         
         {/* Main content */}
-        <div className={`transition-all duration-300 ${sidebarCollapsed ? 'lg:pl-16' : 'lg:pl-64'} pt-16 lg:pt-0 min-h-screen`}>
+        <motion.div 
+          className="min-h-screen transition-all duration-300"
+          initial={{ paddingLeft: sidebarCollapsed ? 80 : 240 }}
+          animate={{ paddingLeft: sidebarCollapsed ? 80 : 240 }}
+          transition={{ duration: 0.3, ease: "easeInOut" }}
+          style={{ paddingLeft: 0 }} // Mobile default
+        >
           <header className="hidden lg:flex h-16 border-b items-center gap-4 px-6 sticky top-0 bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60 z-30">
+            <div className="relative w-full max-w-md">
+              <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-muted-foreground h-4 w-4" />
+              <Input 
+                placeholder="Search..." 
+                className="pl-10 bg-background/50 focus:bg-background transition-colors"
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+              />
+            </div>
+            
             <div className="flex-1" />
+            
             <Button variant="ghost" size="icon" onClick={toggleTheme} className="mr-2">
               {theme === 'light' ? <Moon className="h-[1.2rem] w-[1.2rem]" /> : <Sun className="h-[1.2rem] w-[1.2rem]" />}
             </Button>
@@ -306,7 +412,12 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
                 <Button variant="ghost" size="icon" className="relative">
                   <BellRing className="h-[1.2rem] w-[1.2rem]" />
                   {notifications.length > 0 && (
-                    <span className="absolute top-1 right-1 w-2 h-2 bg-destructive rounded-full" />
+                    <motion.span 
+                      className="absolute top-1 right-1 w-2 h-2 bg-destructive rounded-full"
+                      initial={{ scale: 0 }}
+                      animate={{ scale: 1 }}
+                      transition={{ type: "spring", stiffness: 500, damping: 30 }}
+                    />
                   )}
                 </Button>
               </DropdownMenuTrigger>
@@ -333,15 +444,47 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
                 </DropdownMenuItem>
               </DropdownMenuContent>
             </DropdownMenu>
+            
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <Button variant="ghost" className="relative flex items-center gap-2" size="sm">
+                  <Avatar className="h-8 w-8 border-2 border-primary/20">
+                    <AvatarImage src="" />
+                    <AvatarFallback className="bg-gradient-to-br from-blue-500 to-indigo-600 text-white">
+                      {userInitials}
+                    </AvatarFallback>
+                  </Avatar>
+                  <span className="font-medium text-sm hidden md:inline-block">{userName}</span>
+                </Button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="end" className="w-56">
+                <DropdownMenuLabel>My Account</DropdownMenuLabel>
+                <DropdownMenuSeparator />
+                <DropdownMenuItem asChild>
+                  <Link href="/dashboard/profile" className="cursor-pointer">
+                    Profile
+                  </Link>
+                </DropdownMenuItem>
+                <DropdownMenuItem asChild>
+                  <Link href="/dashboard/settings" className="cursor-pointer">
+                    Settings
+                  </Link>
+                </DropdownMenuItem>
+                <DropdownMenuSeparator />
+                <DropdownMenuItem onClick={handleLogout} className="cursor-pointer text-destructive focus:text-destructive">
+                  Logout
+                </DropdownMenuItem>
+              </DropdownMenuContent>
+            </DropdownMenu>
           </header>
           
           {/* Main content with children */}
-          <main className="max-w-full px-4 sm:px-6 lg:px-8 py-6 overflow-x-auto">
+          <main className="max-w-full px-4 sm:px-6 lg:px-8 py-6 overflow-x-auto pt-16 lg:pt-6">
             <div className="max-w-7xl mx-auto">
               {children}
             </div>
           </main>
-        </div>
+        </motion.div>
         
         {/* Toast notifications */}
         <Toaster position="top-right" />
