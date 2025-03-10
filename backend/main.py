@@ -8,6 +8,7 @@ from app.routers.low_probability_workflow import router as low_probability_workf
 from app.core.config import settings
 from app.core.security import get_current_active_user
 from app.core.scheduler import setup_scheduler, shutdown_scheduler
+from app.core.middleware import add_rbac_middleware
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
@@ -41,6 +42,9 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+# Add RBAC middleware
+add_rbac_middleware(app)
 
 # Include routers
 app.include_router(auth.router, prefix="/api/auth", tags=["Authentication"])

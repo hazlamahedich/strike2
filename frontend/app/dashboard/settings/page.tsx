@@ -13,11 +13,16 @@ import { Separator } from "@/components/ui/separator";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
 import { toast } from "@/components/ui/use-toast";
-import { Loader2, AlertTriangle, Users, Settings, Sliders } from "lucide-react";
+import { Loader2, AlertTriangle, Users, Settings, Sliders, ShieldCheck, UserPlus } from "lucide-react";
 import { useUserSettings } from "@/hooks/useUserSettings";
 import { useMockData } from "@/hooks/useMockData";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
+import RoleManagementDialog from "@/components/settings/RoleManagementDialog";
+import PermissionManagementDialog from "@/components/settings/PermissionManagementDialog";
+import UserRoleManagementDialog from "@/components/settings/UserRoleManagementDialog";
+import { useRBAC } from "@/hooks/useRBAC";
+import PermissionGuard from "@/components/PermissionGuard";
 
 export default function SettingsPage() {
   const { data: session } = useSession();
@@ -30,6 +35,7 @@ export default function SettingsPage() {
   } = useUserSettings();
   
   const { isEnabled: isMockFeaturesEnabled, toggleMockData: toggleMockFeatures } = useMockData();
+  const { userRoles, fetchUserRolesAndPermissions } = useRBAC();
   
   // Local state for form values
   const [formValues, setFormValues] = useState({
@@ -63,6 +69,11 @@ export default function SettingsPage() {
     default_view: 'kanban',
     enable_mock_features: true,
   });
+
+  // RBAC dialog states
+  const [roleDialogOpen, setRoleDialogOpen] = useState(false);
+  const [permissionDialogOpen, setPermissionDialogOpen] = useState(false);
+  const [userRoleDialogOpen, setUserRoleDialogOpen] = useState(false);
 
   // Mock users for the user management tab
   const [users, setUsers] = useState([
@@ -98,6 +109,13 @@ export default function SettingsPage() {
       });
     }
   }, [profile, session, isMockFeaturesEnabled]);
+
+  // Fetch user roles and permissions
+  useEffect(() => {
+    if (session?.user?.id) {
+      fetchUserRolesAndPermissions();
+    }
+  }, [session, fetchUserRolesAndPermissions]);
 
   // Handle profile form submission
   const handleProfileUpdate = async (e: React.FormEvent) => {
@@ -257,6 +275,10 @@ export default function SettingsPage() {
           <TabsTrigger value="preferences" className="flex items-center gap-2">
             <Sliders className="h-4 w-4" />
             <span>Preferences</span>
+          </TabsTrigger>
+          <TabsTrigger value="rbac" className="flex items-center gap-2">
+            <ShieldCheck className="h-4 w-4" />
+            <span>Access Control</span>
           </TabsTrigger>
         </TabsList>
         
@@ -729,7 +751,109 @@ export default function SettingsPage() {
             </CardContent>
           </Card>
         </TabsContent>
+        
+        {/* RBAC Tab */}
+        <TabsContent value="rbac" className="space-y-4">
+          <PermissionGuard 
+            permissionName="manage_roles" 
+            resource="roles"
+            fallback={
+              <Alert>
+                <AlertTitle>Access Restricted</AlertTitle>
+                <AlertDescription>
+                  You don't have permission to manage roles and permissions. Please contact your administrator.
+                </AlertDescription>
+              </Alert>
+            }
+          >
+            <Card>
+              <CardHeader>
+                <CardTitle>Role-Based Access Control</CardTitle>
+                <CardDescription>
+                  Manage roles and permissions for users in the system.
+                </CardDescription>
+              </CardHeader>
+              <CardContent className="space-y-4">
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  <div>
+                    <h3 className="text-lg font-medium mb-2">Your Roles</h3>
+                    {userRoles.length > 0 ? (
+                      <div className="space-y-2">
+                        {userRoles.map(role => (
+                          <div key={role.id} className="p-3 border rounded-md">
+                            <div className="font-medium">{role.name}</div>
+                            {role.description && (
+                              <div className="text-sm text-muted-foreground">
+                                {role.description}
+                              </div>
+                            )}
+                          </div>
+                        ))}
+                      </div>
+                    ) : (
+                      <div className="text-muted-foreground">
+                        You don't have any assigned roles.
+                      </div>
+                    )}
+                  </div>
+                  
+                  <div>
+                    <h3 className="text-lg font-medium mb-2">Management</h3>
+                    <div className="space-y-2">
+                      <Button 
+                        variant="outline" 
+                        className="w-full justify-start"
+                        onClick={() => setRoleDialogOpen(true)}
+                      >
+                        <Users className="h-4 w-4 mr-2" />
+                        Manage Roles
+                      </Button>
+                      <Button 
+                        variant="outline" 
+                        className="w-full justify-start"
+                        onClick={() => setPermissionDialogOpen(true)}
+                      >
+                        <ShieldCheck className="h-4 w-4 mr-2" />
+                        Manage Permissions
+                      </Button>
+                      <Button 
+                        variant="outline" 
+                        className="w-full justify-start"
+                        onClick={() => setUserRoleDialogOpen(true)}
+                      >
+                        <UserPlus className="h-4 w-4 mr-2" />
+                        Manage User Roles
+                      </Button>
+                    </div>
+                  </div>
+                </div>
+                
+                <Alert>
+                  <AlertTitle>Access Control</AlertTitle>
+                  <AlertDescription>
+                    Role-based access control allows you to define what users can do in the system based on their assigned roles.
+                    Each role can have multiple permissions, and users can have multiple roles.
+                  </AlertDescription>
+                </Alert>
+              </CardContent>
+            </Card>
+          </PermissionGuard>
+        </TabsContent>
       </Tabs>
+      
+      {/* RBAC Dialogs */}
+      <RoleManagementDialog 
+        open={roleDialogOpen} 
+        onOpenChange={setRoleDialogOpen} 
+      />
+      <PermissionManagementDialog 
+        open={permissionDialogOpen} 
+        onOpenChange={setPermissionDialogOpen} 
+      />
+      <UserRoleManagementDialog 
+        open={userRoleDialogOpen} 
+        onOpenChange={setUserRoleDialogOpen} 
+      />
     </div>
   );
 }
