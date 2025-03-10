@@ -25,7 +25,11 @@ export default function LoginPage() {
   // If user is already logged in, redirect to dashboard
   useEffect(() => {
     if (session) {
-      router.push(callbackUrl);
+      console.log('Session detected in login page, redirecting to:', callbackUrl);
+      // Add a small delay to ensure state is updated
+      setTimeout(() => {
+        router.replace(callbackUrl);
+      }, 300);
     }
   }, [session, router, callbackUrl]);
 
@@ -39,9 +43,12 @@ export default function LoginPage() {
     }
     
     try {
+      console.log('Attempting login with:', email);
       await signInWithCredentials(email, password);
+      console.log('Login successful, waiting for session update');
       // Successful login will trigger the useEffect above
     } catch (error: any) {
+      console.error('Login error:', error.message);
       if (error.message.includes('Invalid credentials')) {
         setErrorMessage('Invalid email or password. Please try again.');
       } else if (error.message.includes('Email not confirmed')) {

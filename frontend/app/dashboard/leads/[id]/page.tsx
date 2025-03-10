@@ -105,7 +105,7 @@ const mockLeadDetails: Record<string, any> = {
       address: '123 Main St, San Francisco, CA 94105'
     },
     lead_score: 8.5,
-    conversion_probability: 0.65,
+    conversion_probability: 0.75,
     created_at: '2023-05-15T10:30:00Z',
     updated_at: '2023-05-15T10:30:00Z',
     tasks: [

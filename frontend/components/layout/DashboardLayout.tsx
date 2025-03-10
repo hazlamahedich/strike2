@@ -17,7 +17,9 @@ import {
   X,
   LogOut,
   Moon,
-  Sun
+  Sun,
+  ChevronLeft,
+  ChevronRight
 } from 'lucide-react';
 import { useTheme } from 'next-themes';
 import { Avatar, AvatarFallback, AvatarImage } from '../ui/avatar';
@@ -69,6 +71,7 @@ const navItems: NavItem[] = [
 
 export default function DashboardLayout({ children }: { children: React.ReactNode }) {
   const [sidebarOpen, setSidebarOpen] = useState(false);
+  const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
   const [userName, setUserName] = useState('User');
   const [userInitials, setUserInitials] = useState('U');
   const [notifications, setNotifications] = useState<Notification[]>([]);
@@ -78,6 +81,11 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
   // Toggle theme between light and dark
   const toggleTheme = () => {
     setTheme(theme === 'light' ? 'dark' : 'light');
+  };
+
+  // Toggle sidebar collapse state
+  const toggleSidebar = () => {
+    setSidebarCollapsed(!sidebarCollapsed);
   };
 
   // Get user info from API
@@ -98,54 +106,53 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
         }
 
         // If no local user, try API
-        const user = await apiClient.get<User>('auth/me');
-        if (user && user.data && user.data.email) {
-          setUserName(user.data.full_name || user.data.email.split('@')[0]);
+        const response = await apiClient.get<User>('/auth/me');
+        if (response && response.data) {
+          const user = response.data;
+          setUserName(user.full_name || user.email.split('@')[0]);
           setUserInitials(
-            (user.data.full_name ? user.data.full_name.split(' ').map((n: string) => n[0]).join('') : user.data.email[0]).toUpperCase()
+            (user.full_name ? user.full_name.split(' ').map((n: string) => n[0]).join('') : user.email[0]).toUpperCase()
           );
         }
       } catch (error) {
-        console.error('Failed to fetch user info', error);
-        // No need to redirect - we'll just use default values
-      }
-    };
-
-    const fetchNotifications = async () => {
-      try {
-        const response = await apiClient.get<Notification[]>('notifications/unread');
-        setNotifications(response.data || []);
-      } catch (error) {
-        console.error('Failed to fetch notifications', error);
-        // Just use empty notifications array
+        console.error('Error fetching user info:', error);
       }
     };
 
     fetchUserInfo();
-    // Only try to fetch notifications if we're not in development mode with temporary auth
-    if (process.env.NODE_ENV !== 'development' || !localStorage.getItem('strike_app_user')) {
-      fetchNotifications();
-    }
+  }, []);
+
+  // Get notifications from API
+  useEffect(() => {
+    const fetchNotifications = async () => {
+      try {
+        const response = await apiClient.get<Notification[]>('/notifications/unread');
+        if (response && response.data) {
+          setNotifications(response.data.slice(0, 5));
+        }
+      } catch (error) {
+        console.error('Error fetching notifications:', error);
+        // For demo purposes, set some mock notifications
+        setNotifications([
+          { id: '1', title: 'New lead assigned', content: 'A new lead has been assigned to you.', created_at: new Date().toISOString(), is_read: false },
+          { id: '2', title: 'Meeting reminder', content: 'You have a meeting in 30 minutes.', created_at: new Date().toISOString(), is_read: true },
+        ]);
+      }
+    };
+
+    fetchNotifications();
   }, []);
 
   // Handle logout
   const handleLogout = async () => {
     try {
-      // Check if we're using local storage auth
-      if (typeof window !== 'undefined' && localStorage.getItem('strike_app_user')) {
+      await apiClient.post('/auth/logout', {});
+      if (typeof window !== 'undefined') {
         localStorage.removeItem('strike_app_user');
         window.location.href = '/auth/login';
-        return;
       }
-
-      // Otherwise use API logout
-      await apiClient.post('auth/logout', {});
-      // Clear auth token
-      apiClient.setAuthToken(null);
-      window.location.href = '/auth/login';
     } catch (error) {
-      console.error('Logout failed', error);
-      // Fallback: just clear local storage and redirect
+      console.error('Error logging out:', error);
       if (typeof window !== 'undefined') {
         localStorage.removeItem('strike_app_user');
         window.location.href = '/auth/login';
@@ -206,7 +213,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
         
         {/* Sidebar for desktop */}
         <div 
-          className={`fixed top-0 left-0 bottom-0 z-40 w-64 border-r bg-card transition-transform duration-300 ease-in-out ${
+          className={`fixed top-0 left-0 bottom-0 z-40 ${sidebarCollapsed ? 'w-16' : 'w-64'} border-r bg-card transition-all duration-300 ease-in-out ${
             sidebarOpen ? 'translate-x-0' : '-translate-x-full lg:translate-x-0'
           }`}
         >
@@ -215,7 +222,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
               <div className="w-8 h-8 rounded-full bg-primary flex items-center justify-center">
                 <span className="text-primary-foreground font-semibold">AI</span>
               </div>
-              <span className="font-semibold text-xl">AI CRM</span>
+              {!sidebarCollapsed && <span className="font-semibold text-xl">AI CRM</span>}
             </Link>
           </div>
           <div className="p-4">
@@ -224,33 +231,58 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
                 <Link 
                   key={item.href} 
                   href={item.href}
-                  className={`flex items-center gap-3 px-3 py-2 text-sm rounded-md transition-colors ${
+                  className={`flex items-center ${sidebarCollapsed ? 'justify-center' : 'gap-3 px-3'} py-2 text-sm rounded-md transition-colors ${
                     pathname === item.href || pathname?.startsWith(`${item.href}/`) 
                       ? 'bg-primary text-primary-foreground' 
                       : 'text-muted-foreground hover:bg-secondary hover:text-foreground'
                   }`}
+                  title={sidebarCollapsed ? item.title : undefined}
                 >
                   {item.icon}
-                  {item.title}
+                  {!sidebarCollapsed && item.title}
                 </Link>
               ))}
             </nav>
           </div>
           <div className="absolute bottom-0 left-0 right-0 border-t p-4">
-            <div className="flex items-center gap-3">
-              <Avatar>
-                <AvatarImage src="" />
-                <AvatarFallback>{userInitials}</AvatarFallback>
-              </Avatar>
-              <div className="flex-1 min-w-0">
-                <p className="text-sm font-medium truncate">{userName}</p>
-                <p className="text-xs text-muted-foreground truncate">Logged in</p>
+            {!sidebarCollapsed ? (
+              <div className="flex items-center gap-3">
+                <Avatar>
+                  <AvatarImage src="" />
+                  <AvatarFallback>{userInitials}</AvatarFallback>
+                </Avatar>
+                <div className="flex-1 min-w-0">
+                  <p className="text-sm font-medium truncate">{userName}</p>
+                  <p className="text-xs text-muted-foreground truncate">Logged in</p>
+                </div>
+                <Button variant="ghost" size="icon" onClick={handleLogout} title="Logout">
+                  <LogOut className="h-4 w-4" />
+                </Button>
               </div>
-              <Button variant="ghost" size="icon" onClick={handleLogout} title="Logout">
-                <LogOut className="h-4 w-4" />
-              </Button>
-            </div>
+            ) : (
+              <div className="flex flex-col items-center gap-2">
+                <Avatar className="h-8 w-8">
+                  <AvatarImage src="" />
+                  <AvatarFallback className="text-xs">{userInitials}</AvatarFallback>
+                </Avatar>
+                <Button variant="ghost" size="icon" onClick={handleLogout} title="Logout">
+                  <LogOut className="h-4 w-4" />
+                </Button>
+              </div>
+            )}
           </div>
+          
+          {/* Sidebar collapse toggle button */}
+          <button
+            onClick={toggleSidebar}
+            className="absolute top-1/2 -right-3 transform -translate-y-1/2 bg-primary text-primary-foreground rounded-full p-1 shadow-md hover:bg-primary/90 transition-colors"
+            title={sidebarCollapsed ? "Expand sidebar" : "Collapse sidebar"}
+          >
+            {sidebarCollapsed ? 
+              <ChevronRight className="h-4 w-4" /> : 
+              <ChevronLeft className="h-4 w-4" />
+            }
+          </button>
         </div>
         
         {/* Backdrop for mobile sidebar */}
@@ -262,7 +294,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
         )}
         
         {/* Main content */}
-        <div className="lg:pl-64 pt-16 lg:pt-0 min-h-screen">
+        <div className={`transition-all duration-300 ${sidebarCollapsed ? 'lg:pl-16' : 'lg:pl-64'} pt-16 lg:pt-0 min-h-screen`}>
           <header className="hidden lg:flex h-16 border-b items-center gap-4 px-6 sticky top-0 bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60 z-30">
             <div className="flex-1" />
             <Button variant="ghost" size="icon" onClick={toggleTheme} className="mr-2">
@@ -304,8 +336,10 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
           </header>
           
           {/* Main content with children */}
-          <main className="max-w-7xl mx-auto">
-            {children}
+          <main className="max-w-full px-4 sm:px-6 lg:px-8 py-6 overflow-x-auto">
+            <div className="max-w-7xl mx-auto">
+              {children}
+            </div>
           </main>
         </div>
         

@@ -51,7 +51,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       }
       
       toast.success('Login successful!');
-      router.push('/dashboard');
+      
+      // Add a small delay before redirecting to ensure state is updated
+      setTimeout(() => {
+        router.replace('/dashboard');
+      }, 500);
     } catch (error: any) {
       console.error('Login error:', error.message);
       toast.error(error.message || 'Failed to sign in');

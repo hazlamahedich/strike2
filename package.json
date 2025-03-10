@@ -6,7 +6,10 @@
   "scripts": {
     "fix": "node fix-all.js",
     "fix-password": "node fix-admin-password.js",
-    "fix-trigger": "node fix-trigger.js"
+    "fix-trigger": "node fix-trigger.js",
+    "dev": "cd frontend && npm run dev",
+    "build": "cd frontend && npm run build",
+    "start": "cd frontend && npm run start"
   },
   "dependencies": {
     "@radix-ui/react-separator": "^1.1.2",

@@ -13,11 +13,11 @@ export const authOptions: NextAuthOptions = {
       },
       async authorize(credentials) {
         if (!credentials?.email || !credentials?.password) {
-          return null;
+          throw new Error("Email and password are required");
         }
 
         try {
-          // For now, we'll use a mock user for testing
+          // For testing purposes, we'll use hardcoded credentials
           // In production, you would validate against your database
           if (credentials.email === "admin@example.com" && credentials.password === "password123") {
             return {
@@ -39,10 +39,11 @@ export const authOptions: NextAuthOptions = {
             };
           }
           
-          return null;
-        } catch (error) {
+          // If credentials don't match any of our test users
+          throw new Error("Invalid credentials");
+        } catch (error: any) {
           console.error("Auth error:", error);
-          return null;
+          throw new Error(error.message || "Authentication failed");
         }
       },
     }),

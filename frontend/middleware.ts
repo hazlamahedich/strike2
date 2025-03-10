@@ -10,13 +10,17 @@ export async function middleware(req: NextRequest) {
   const token = await getToken({ req, secret: process.env.NEXTAUTH_SECRET });
   const isAuthenticated = !!token;
   
+  console.log(`Middleware: Path ${pathname}, Authenticated: ${isAuthenticated}`);
+  
   // Auth condition: if accessing dashboard routes and not authenticated
   if (pathname.startsWith('/dashboard') && !isAuthenticated) {
+    console.log('Redirecting to login from dashboard');
     return NextResponse.redirect(new URL('/auth/login', req.url));
   }
 
   // If user is authenticated and trying to access auth pages, redirect to dashboard
   if ((pathname.startsWith('/auth') || pathname === '/') && isAuthenticated) {
+    console.log('Redirecting to dashboard from auth page');
     return NextResponse.redirect(new URL('/dashboard', req.url));
   }
 
