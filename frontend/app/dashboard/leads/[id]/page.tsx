@@ -105,7 +105,7 @@ const mockLeadDetails: Record<string, any> = {
       address: '123 Main St, San Francisco, CA 94105'
     },
     lead_score: 8.5,
-    conversion_probability: 0.65,
+    conversion_probability: 0.75,
     created_at: '2023-05-15T10:30:00Z',
     updated_at: '2023-05-15T10:30:00Z',
     tasks: [
@@ -181,6 +181,9 @@ const mockInsightsData = {
   ],
   conversion_probability: 0.75
 };
+
+// Add import for CompanyAnalysis
+import CompanyAnalysis from '@/components/leads/CompanyAnalysis';
 
 export default function LeadDetailPage() {
   const router = useRouter();
@@ -1499,12 +1502,13 @@ export default function LeadDetailPage() {
           
           {/* Tabs for different sections */}
           <Tabs defaultValue="timeline" className="w-full">
-            <TabsList className="grid grid-cols-5 mb-4">
-              <TabsTrigger value="timeline">Timeline</TabsTrigger>
+            <TabsList className="grid grid-cols-6 mb-4">
+              <TabsTrigger value="overview">Overview</TabsTrigger>
               <TabsTrigger value="tasks">Tasks</TabsTrigger>
               <TabsTrigger value="notes">Notes</TabsTrigger>
+              <TabsTrigger value="timeline">Timeline</TabsTrigger>
               <TabsTrigger value="campaigns">Campaigns</TabsTrigger>
-              <TabsTrigger value="insights">Insights</TabsTrigger>
+              <TabsTrigger value="company-analysis">Company Analysis</TabsTrigger>
             </TabsList>
             
             {/* Timeline Tab */}
@@ -1905,6 +1909,11 @@ export default function LeadDetailPage() {
                   )}
                 </CardContent>
               </Card>
+            </TabsContent>
+            
+            {/* Company Analysis Tab */}
+            <TabsContent value="company-analysis" className="space-y-4">
+              <CompanyAnalysis leadId={parseInt(params.id as string)} />
             </TabsContent>
           </Tabs>
           

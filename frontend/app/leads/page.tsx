@@ -535,8 +535,6 @@ export default function LeadsPage() {
           )}
         </DialogContent>
       </Dialog>
-      
-      <Toaster />
     </div>
   );
 } 

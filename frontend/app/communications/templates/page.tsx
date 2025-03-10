@@ -5,7 +5,6 @@ import { Button } from '../../../components/ui/button';
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from '../../../components/ui/card';
 import { Input } from '../../../components/ui/input';
 import { useToast } from '../../../components/ui/use-toast';
-import { Toaster } from '../../../components/ui/toaster';
 import { Plus, Edit, Trash, Search } from 'lucide-react';
 import { getEmailTemplates } from '../../../lib/services/emailService';
 
@@ -146,8 +145,6 @@ export default function TemplatesPage() {
           </Button>
         </div>
       )}
-      
-      <Toaster />
     </div>
   );
 } 

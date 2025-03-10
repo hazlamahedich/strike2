@@ -26,6 +26,7 @@ class LeadBase(BaseModel):
     last_name: str
     email: Optional[EmailStr] = None
     phone: Optional[str] = None
+    phone_extension: Optional[str] = None  # New field for phone extensions
     company: Optional[str] = None
     title: Optional[str] = None
     source: LeadSource = LeadSource.OTHER
@@ -45,6 +46,7 @@ class LeadUpdate(BaseModel):
     last_name: Optional[str] = None
     email: Optional[EmailStr] = None
     phone: Optional[str] = None
+    phone_extension: Optional[str] = None  # New field for phone extensions
     company: Optional[str] = None
     title: Optional[str] = None
     source: Optional[LeadSource] = None

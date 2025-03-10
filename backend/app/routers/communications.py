@@ -553,4 +553,42 @@ async def sendgrid_webhook(request: Request) -> Any:
         return JSONResponse(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             content={"status": "error", "message": str(e)}
-        ) 
+        )
+
+@router.post("/calls/with-extension", response_model=Dict[str, Any])
+async def make_call_with_extension(
+    lead_id: int,
+    phone: str,
+    extension: Optional[str] = None,
+    scheduled_at: Optional[datetime] = None,
+    notes: Optional[str] = None,
+    purpose: Optional[str] = None,
+    current_user: User = Depends(get_current_active_user)
+):
+    """
+    Make a call to a phone number with an extension
+    
+    Args:
+        lead_id: ID of the lead to call
+        phone: Phone number to call
+        extension: Optional extension to dial after connecting
+        scheduled_at: Optional time to schedule the call
+        notes: Optional notes about the call
+        purpose: Optional purpose of the call
+        
+    Returns:
+        Dict with call details
+    """
+    comm_service = CommunicationService()
+    
+    result = await comm_service.create_call_with_extension(
+        lead_id=lead_id,
+        user_id=current_user.id,
+        phone=phone,
+        extension=extension,
+        scheduled_at=scheduled_at,
+        notes=notes,
+        purpose=purpose
+    )
+    
+    return result 

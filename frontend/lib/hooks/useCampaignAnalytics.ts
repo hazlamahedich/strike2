@@ -1,5 +1,6 @@
 import { useQuery } from '@tanstack/react-query';
 import apiClient from '../api/client';
+import { useMockData } from '@/lib/config';
 
 // Query keys
 export const campaignAnalyticsKeys = {
@@ -71,9 +72,6 @@ export interface CampaignTimelineEvent {
   description: string;
   metadata?: Record<string, any>;
 }
-
-// Mock data flag - set to false when ready to use real Supabase data
-export const USE_MOCK_DATA = true;
 
 // Mock data for development
 const mockOverviewStats: CampaignOverviewStats = {
@@ -249,7 +247,7 @@ export const useCampaignOverviewStats = () => {
   return useQuery({
     queryKey: campaignAnalyticsKeys.overview(),
     queryFn: async () => {
-      if (USE_MOCK_DATA) {
+      if (useMockData()) {
         return mockOverviewStats;
       }
       
@@ -269,7 +267,7 @@ export const useCampaignPerformance = (campaignId: string) => {
   return useQuery({
     queryKey: campaignAnalyticsKeys.performance(campaignId),
     queryFn: async () => {
-      if (USE_MOCK_DATA) {
+      if (useMockData()) {
         return mockPerformanceData(campaignId);
       }
       
@@ -290,7 +288,7 @@ export const useCampaignLeadStats = (campaignId: string) => {
   return useQuery({
     queryKey: campaignAnalyticsKeys.leads(campaignId),
     queryFn: async () => {
-      if (USE_MOCK_DATA) {
+      if (useMockData()) {
         return mockLeadStats(campaignId);
       }
       
@@ -311,7 +309,7 @@ export const useCampaignActivityStats = (campaignId: string) => {
   return useQuery({
     queryKey: campaignAnalyticsKeys.activities(campaignId),
     queryFn: async () => {
-      if (USE_MOCK_DATA) {
+      if (useMockData()) {
         return mockActivityStats(campaignId);
       }
       
@@ -332,7 +330,7 @@ export const useCampaignTimeline = (campaignId: string) => {
   return useQuery({
     queryKey: campaignAnalyticsKeys.timeline(campaignId),
     queryFn: async () => {
-      if (USE_MOCK_DATA) {
+      if (useMockData()) {
         return mockTimelineEvents(campaignId);
       }
       
@@ -346,4 +344,8 @@ export const useCampaignTimeline = (campaignId: string) => {
     },
     enabled: !!campaignId,
   });
-}; 
+};
+
+export function useCampaignAnalytics(campaignId?: string) {
+  // ... existing code ...
+} 

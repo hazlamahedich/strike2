@@ -433,6 +433,7 @@ class ContactBase(BaseModel):
     """Base model for contacts"""
     name: str
     phone_number: str
+    phone_extension: Optional[str] = None  # New field for phone extensions
     email: Optional[EmailStr] = None
     company: Optional[str] = None
     job_title: Optional[str] = None
@@ -449,6 +450,7 @@ class ContactUpdate(BaseModel):
     """Model for updating a contact"""
     name: Optional[str] = None
     phone_number: Optional[str] = None
+    phone_extension: Optional[str] = None  # New field for phone extensions
     email: Optional[EmailStr] = None
     company: Optional[str] = None
     job_title: Optional[str] = None

@@ -1,6 +1,6 @@
 'use client';
 
-import { AuthProvider } from '@/lib/hooks/useAuth';
+import { AuthProvider } from '@/context/AuthContext';
 
 export default function AuthProviderWrapper({ 
   children 

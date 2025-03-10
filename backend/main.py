@@ -3,11 +3,12 @@ from fastapi.middleware.cors import CORSMiddleware
 from contextlib import asynccontextmanager
 
 # Import our routers
-from app.routers import auth, leads, tasks, communications, meetings, analytics, campaigns, notifications, agents, chatbot
+from app.routers import auth, leads, tasks, communications, meetings, analytics, campaigns, notifications, agents, chatbot, company_analysis
 from app.routers.low_probability_workflow import router as low_probability_workflow_router
 from app.core.config import settings
 from app.core.security import get_current_active_user
 from app.core.scheduler import setup_scheduler, shutdown_scheduler
+from app.core.middleware import add_rbac_middleware
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
@@ -41,6 +42,9 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+# Add RBAC middleware
+add_rbac_middleware(app)
 
 # Include routers
 app.include_router(auth.router, prefix="/api/auth", tags=["Authentication"])
@@ -102,6 +106,12 @@ app.include_router(
     chatbot.router, 
     prefix="/api/chatbot", 
     tags=["Chatbot"]
+)
+app.include_router(
+    company_analysis.router, 
+    prefix="/api/company-analysis", 
+    tags=["Company Analysis"], 
+    dependencies=[Depends(get_current_active_user)]
 )
 
 @app.get("/api/health")

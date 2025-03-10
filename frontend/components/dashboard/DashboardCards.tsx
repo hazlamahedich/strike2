@@ -6,7 +6,8 @@ import {
   Mail, 
   PhoneMissed,
   Clock,
-  ArrowUpRight
+  ArrowUpRight,
+  TrendingUp
 } from 'lucide-react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
@@ -17,6 +18,18 @@ import {
   TooltipTrigger,
 } from '@/components/ui/tooltip';
 import { format } from 'date-fns';
+
+// Dashboard stats type
+type DashboardStats = {
+  total_leads: number;
+  new_leads_today: number;
+  active_campaigns: number;
+  pending_tasks: number;
+  upcoming_meetings: number;
+  recent_communications: number;
+  conversion_rate: number;
+  lead_sources: { [key: string]: number };
+};
 
 // Task type definition
 type Task = {
@@ -60,18 +73,23 @@ type Call = {
   };
 };
 
-export function DashboardCards() {
+interface DashboardCardsProps {
+  stats: DashboardStats | null;
+  isLoading: boolean;
+}
+
+export function DashboardCards({ stats, isLoading }: DashboardCardsProps) {
   const [overdueTasks, setOverdueTasks] = useState<Task[]>([]);
   const [tasksDueToday, setTasksDueToday] = useState<Task[]>([]);
   const [meetingsToday, setMeetingsToday] = useState<Meeting[]>([]);
   const [newEmails, setNewEmails] = useState<Email[]>([]);
   const [missedCalls, setMissedCalls] = useState<Call[]>([]);
-  const [isLoading, setIsLoading] = useState(true);
+  const [localIsLoading, setLocalIsLoading] = useState(true);
 
   useEffect(() => {
     const fetchDashboardData = async () => {
       try {
-        setIsLoading(true);
+        setLocalIsLoading(true);
         
         // In a real app, these would be API calls
         // For now, we'll use mock data
@@ -208,10 +226,10 @@ export function DashboardCards() {
         setMeetingsToday(mockMeetingsToday);
         setNewEmails(mockNewEmails);
         setMissedCalls(mockMissedCalls);
-        setIsLoading(false);
+        setLocalIsLoading(false);
       } catch (error) {
         console.error('Failed to fetch dashboard data', error);
-        setIsLoading(false);
+        setLocalIsLoading(false);
       }
     };
 
@@ -223,8 +241,58 @@ export function DashboardCards() {
     return format(new Date(dateString), 'h:mm a');
   };
 
+  // Use either the passed isLoading prop or the local state
+  const loading = isLoading || localIsLoading;
+
   return (
-    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-4">
+    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+      {/* Total Leads Card */}
+      <Card className="hover-lift">
+        <CardHeader className="pb-2">
+          <CardTitle className="text-sm font-medium text-muted-foreground">Total Leads</CardTitle>
+        </CardHeader>
+        <CardContent>
+          <div className="text-2xl font-bold">{stats?.total_leads || '—'}</div>
+          <div className="text-xs text-muted-foreground mt-1 flex items-center">
+            <TrendingUp className="h-3 w-3 mr-1 text-green-500" />
+            <span className="text-green-500 font-medium">{stats?.new_leads_today || 0} new today</span>
+          </div>
+        </CardContent>
+      </Card>
+      
+      {/* Active Campaigns Card */}
+      <Card className="hover-lift">
+        <CardHeader className="pb-2">
+          <CardTitle className="text-sm font-medium text-muted-foreground">Active Campaigns</CardTitle>
+        </CardHeader>
+        <CardContent>
+          <div className="text-2xl font-bold">{stats?.active_campaigns || '—'}</div>
+          <div className="text-xs text-muted-foreground mt-1">Running campaigns</div>
+        </CardContent>
+      </Card>
+      
+      {/* Pending Tasks Card */}
+      <Card className="hover-lift">
+        <CardHeader className="pb-2">
+          <CardTitle className="text-sm font-medium text-muted-foreground">Pending Tasks</CardTitle>
+        </CardHeader>
+        <CardContent>
+          <div className="text-2xl font-bold">{stats?.pending_tasks || '—'}</div>
+          <div className="text-xs text-muted-foreground mt-1">Requiring attention</div>
+        </CardContent>
+      </Card>
+      
+      {/* Conversion Rate Card */}
+      <Card className="hover-lift">
+        <CardHeader className="pb-2">
+          <CardTitle className="text-sm font-medium text-muted-foreground">Conversion Rate</CardTitle>
+        </CardHeader>
+        <CardContent>
+          <div className="text-2xl font-bold">{stats?.conversion_rate || '—'}%</div>
+          <div className="text-xs text-muted-foreground mt-1">Lead to customer</div>
+        </CardContent>
+      </Card>
+      
       {/* Overdue Tasks Card */}
       <TooltipProvider>
         <Tooltip>
