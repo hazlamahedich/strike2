@@ -2,7 +2,23 @@
  * Application Configuration
  */
 
-// Set to true to use mock data, false to use live Supabase data
+// Mock data configuration
+// This will be replaced with a function that can be dynamically updated
+let _useMockData = true;
+
+// Function to get the current mock data setting
+export const useMockData = () => _useMockData;
+
+// Function to update the mock data setting
+export const setUseMockData = (value: boolean) => {
+  _useMockData = value;
+  // Optionally dispatch an event to notify components of the change
+  if (typeof window !== 'undefined') {
+    window.dispatchEvent(new CustomEvent('mock-data-changed', { detail: { useMockData: value } }));
+  }
+};
+
+// For backward compatibility
 export const USE_MOCK_DATA = true;
 
 // API Configuration

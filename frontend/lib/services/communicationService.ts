@@ -2,10 +2,10 @@
  * Communication Service
  * 
  * This service handles all communication functionality including emails, SMS, and calls.
- * It uses the global USE_MOCK_DATA flag to switch between mock data and real Supabase/API data.
+ * It uses the global useMockData function to switch between mock data and real Supabase/API data.
  */
 
-import { USE_MOCK_DATA } from '@/lib/config';
+import { useMockData } from '@/lib/config';
 import supabase from '@/lib/supabase/client';
 
 // Types
@@ -131,7 +131,7 @@ export interface Contact {
  * Send an email
  */
 export async function sendEmail(params: SendEmailParams): Promise<EmailResponse> {
-  if (USE_MOCK_DATA) {
+  if (useMockData()) {
     console.log('Using mock data for sendEmail:', params);
     
     // Simulate API call delay
@@ -171,7 +171,7 @@ export async function sendEmail(params: SendEmailParams): Promise<EmailResponse>
       }
       
       // If lead_id is provided, record in lead timeline
-      if (params.lead_id && !USE_MOCK_DATA) {
+      if (params.lead_id && !useMockData()) {
         try {
           // Record the email in the lead_emails table
           const { data: emailData, error: emailError } = await supabase
@@ -228,7 +228,7 @@ export async function sendEmail(params: SendEmailParams): Promise<EmailResponse>
  * Generate an email using AI
  */
 export async function generateEmailWithAI(params: GenerateEmailParams): Promise<{ subject: string; content: string }> {
-  if (USE_MOCK_DATA) {
+  if (useMockData()) {
     console.log('Using mock data for generateEmailWithAI:', params);
     
     // Simulate API call delay
@@ -294,7 +294,7 @@ export async function generateEmailWithAI(params: GenerateEmailParams): Promise<
  * Get email templates
  */
 export async function getEmailTemplates(): Promise<EmailTemplate[]> {
-  if (USE_MOCK_DATA) {
+  if (useMockData()) {
     // Simulate API call delay
     await new Promise(resolve => setTimeout(resolve, 500));
     
@@ -344,7 +344,7 @@ export async function getEmailTemplates(): Promise<EmailTemplate[]> {
  * Get received emails
  */
 export async function getReceivedEmails(): Promise<ReceivedEmail[]> {
-  if (USE_MOCK_DATA) {
+  if (useMockData()) {
     // Simulate API call delay
     await new Promise(resolve => setTimeout(resolve, 800));
     
@@ -448,7 +448,7 @@ export async function getReceivedEmails(): Promise<ReceivedEmail[]> {
  * Send an SMS
  */
 export async function sendSMS(params: SMSParams): Promise<SMSResponse> {
-  if (USE_MOCK_DATA) {
+  if (useMockData()) {
     console.log(`Using mock data for sendSMS to ${params.to}: ${params.body}`);
     
     // Simulate API call delay
@@ -482,7 +482,7 @@ export async function sendSMS(params: SMSParams): Promise<SMSResponse> {
       }
       
       // If lead_id is provided, record in lead timeline
-      if (params.lead_id && !USE_MOCK_DATA) {
+      if (params.lead_id && !useMockData()) {
         try {
           // Record the SMS in the lead_sms table
           const { data: smsData, error: smsError } = await supabase
@@ -537,7 +537,7 @@ export async function sendSMS(params: SMSParams): Promise<SMSResponse> {
  * Generate SMS with AI
  */
 export async function generateSMSWithAI(prompt: string): Promise<string> {
-  if (USE_MOCK_DATA) {
+  if (useMockData()) {
     console.log(`Using mock data for generateSMSWithAI: ${prompt}`);
     
     // Simulate API call delay
@@ -574,7 +574,7 @@ export async function generateSMSWithAI(prompt: string): Promise<string> {
  * Get SMS templates
  */
 export async function getSMSTemplates(): Promise<SMSTemplate[]> {
-  if (USE_MOCK_DATA) {
+  if (useMockData()) {
     // Simulate API call delay
     await new Promise(resolve => setTimeout(resolve, 500));
     
@@ -635,7 +635,7 @@ export async function getSMSTemplates(): Promise<SMSTemplate[]> {
  * Make a call
  */
 export async function makeCall(params: CallParams): Promise<CallResponse> {
-  if (USE_MOCK_DATA) {
+  if (useMockData()) {
     console.log(`Using mock data for makeCall to ${params.to}`);
     
     // Simulate API call delay
@@ -670,7 +670,7 @@ export async function makeCall(params: CallParams): Promise<CallResponse> {
       }
       
       // If lead_id is provided, record in lead timeline
-      if (params.lead_id && !USE_MOCK_DATA) {
+      if (params.lead_id && !useMockData()) {
         try {
           // Record the call in the lead_calls table
           const { data: callData, error: callError } = await supabase
@@ -729,7 +729,7 @@ export async function makeCall(params: CallParams): Promise<CallResponse> {
  * Get call logs
  */
 export async function getCallLogs(): Promise<CallLog[]> {
-  if (USE_MOCK_DATA) {
+  if (useMockData()) {
     // Simulate API call delay
     await new Promise(resolve => setTimeout(resolve, 800));
     
@@ -815,7 +815,7 @@ export async function getCallLogs(): Promise<CallLog[]> {
  * Get contacts
  */
 export async function getContacts(): Promise<Contact[]> {
-  if (USE_MOCK_DATA) {
+  if (useMockData()) {
     // Simulate API call delay
     await new Promise(resolve => setTimeout(resolve, 600));
     
@@ -874,34 +874,39 @@ export async function getContacts(): Promise<Contact[]> {
  * Create a contact
  */
 export async function createContact(contact: Omit<Contact, 'id' | 'created_at' | 'updated_at'>): Promise<Contact> {
-  if (USE_MOCK_DATA) {
+  if (useMockData()) {
     console.log('Using mock data for createContact:', contact);
     
     // Simulate API call delay
-    await new Promise(resolve => setTimeout(resolve, 1000));
+    await new Promise(resolve => setTimeout(resolve, 800));
     
-    // Mock created contact
-    return {
+    // Generate a mock response
+    const newContact: Contact = {
       id: Math.floor(Math.random() * 1000) + 10,
       ...contact,
       created_at: new Date().toISOString(),
       updated_at: new Date().toISOString()
     };
-  } else {
-    // Real implementation using API or Supabase
-    try {
-      const { data, error } = await supabase
-        .from('contacts')
-        .insert(contact)
-        .select()
-        .single();
-      
-      if (error) throw error;
-      
-      return data as Contact;
-    } catch (error) {
+    
+    return newContact;
+  }
+  
+  try {
+    // Create contact in Supabase
+    const { data, error } = await supabase
+      .from('contacts')
+      .insert(contact)
+      .select()
+      .single();
+    
+    if (error) {
       console.error('Error creating contact:', error);
-      throw error;
+      throw new Error(`Failed to create contact: ${error.message}`);
     }
+    
+    return data;
+  } catch (error) {
+    console.error('Error in createContact:', error);
+    throw error;
   }
 } 

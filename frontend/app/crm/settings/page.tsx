@@ -15,6 +15,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { toast } from "@/components/ui/use-toast";
 import { Loader2, AlertTriangle } from "lucide-react";
 import { useUserSettings } from "@/hooks/useUserSettings";
+import { useMockData } from "@/hooks/useMockData";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 
 export default function SettingsPage() {
@@ -25,9 +26,9 @@ export default function SettingsPage() {
     error, 
     updatePreferences, 
     updateNotificationSettings,
-    toggleMockFeatures,
-    isMockFeaturesEnabled
   } = useUserSettings();
+  
+  const { isEnabled: isMockFeaturesEnabled, toggleMockData: toggleMockFeatures } = useMockData();
   
   // Local state for form values
   const [formValues, setFormValues] = useState({
@@ -182,7 +183,7 @@ export default function SettingsPage() {
     if (success) {
       toast({
         title: "Mock Features " + (isMockFeaturesEnabled ? "Disabled" : "Enabled"),
-        description: "Your settings have been updated.",
+        description: "Your settings have been updated. This will affect all mock data across the application.",
       });
     }
   };
@@ -588,6 +589,7 @@ export default function SettingsPage() {
                       <Label htmlFor="mock-features" className="font-medium">Enable Mock Features</Label>
                       <p className="text-sm text-muted-foreground">
                         Enable mock features and sample data for testing and demonstration purposes.
+                        This setting affects all mock data across the application.
                       </p>
                     </div>
                     <Switch 
@@ -602,7 +604,17 @@ export default function SettingsPage() {
                       <AlertTriangle className="h-4 w-4" />
                       <AlertTitle>Mock Features Enabled</AlertTitle>
                       <AlertDescription>
-                        You are currently using mock features. Some functionality may be simulated.
+                        You are currently using mock features. All data is simulated and not connected to the real database.
+                        This affects all components that use mock data, including leads, communications, meetings, and analytics.
+                      </AlertDescription>
+                    </Alert>
+                  )}
+
+                  {!isMockFeaturesEnabled && (
+                    <Alert>
+                      <AlertTitle>Live Data Mode</AlertTitle>
+                      <AlertDescription>
+                        You are using live data from Supabase. All actions will affect real data in the database.
                       </AlertDescription>
                     </Alert>
                   )}

@@ -12,13 +12,14 @@ import {
   LeadCampaignStatus
 } from '../../types/lead';
 import { SupabaseMLService } from '@/lib/ml/mlService';
+import { useMockData } from '@/lib/config';
 
 // Base URL for lead endpoints
 const BASE_URL = 'leads';
 
 // Configuration flag to control whether to use mock data or real data
 // Set this to false once the RLS policy is fixed
-const USE_MOCK_DATA_API = true;
+// const USE_MOCK_DATA_API = true;
 
 // Configuration flag to control whether to use ML-based insights
 // Set this to true to use the ML service for predictions
@@ -106,8 +107,7 @@ export const getLead = async (
       throw new Error(`Invalid lead ID: ${leadId}`);
     }
 
-    // Use mock data if configured to do so
-    if (USE_MOCK_DATA_API) {
+    if (useMockData()) {
       console.log(`Using mock data for lead ID: ${leadId}`);
       
       // Return mock data
@@ -465,8 +465,7 @@ export const getLeadTimeline = async (
       throw new Error(`Invalid lead ID: ${leadId}`);
     }
     
-    // Use mock data if configured to do so
-    if (USE_MOCK_DATA_API) {
+    if (useMockData()) {
       console.log(`Using mock timeline data for lead ID: ${leadId}`);
       
       // Return mock timeline data
@@ -686,8 +685,7 @@ export const getLeadInsights = async (leadId: number): Promise<any> => {
       throw new Error(`Invalid lead ID: ${leadId}`);
     }
     
-    // Use mock data if configured to do so
-    if (USE_MOCK_DATA_API) {
+    if (useMockData()) {
       console.log(`Using enhanced mock insights data for lead ID: ${leadId}`);
       
       // First, try to get some basic lead info to make the mock data more realistic
@@ -1207,8 +1205,7 @@ export const addLeadNote = async (
       throw new Error(`Invalid lead ID: ${leadId}`);
     }
     
-    // Use mock data if configured to do so
-    if (USE_MOCK_DATA_API) {
+    if (useMockData()) {
       console.log(`Using mock data for adding note to lead ID: ${leadId}`);
       
       // Return mock note data
@@ -1290,8 +1287,7 @@ export const calculateLeadInsights = async (
   try {
     console.log(`Calculating insights for ${leadIds ? leadIds.length : limit} leads`);
     
-    // If we're using mock data, just return a success response
-    if (USE_MOCK_DATA_API) {
+    if (useMockData()) {
       return {
         processed: leadIds?.length || limit,
         errors: 0
