@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useEffect } from 'react';
-import { usePathname } from 'next/navigation';
+import { usePathname, useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { 
   LayoutGrid, 
@@ -43,6 +43,7 @@ import { AnalyticsProvider } from '@/context/AnalyticsContext';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Input } from '../ui/input';
 import { cn } from '@/lib/utils';
+import { signOut } from 'next-auth/react';
 
 type NavItem = {
   title: string;
@@ -86,6 +87,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
   const pathname = usePathname();
   const { theme, setTheme } = useTheme();
   const [searchQuery, setSearchQuery] = useState('');
+  const router = useRouter();
 
   // Toggle theme between light and dark
   const toggleTheme = () => {
@@ -118,9 +120,12 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
         const response = await apiClient.get<User>('/auth/me');
         if (response && response.data) {
           const user = response.data;
-          setUserName(user.full_name || user.email.split('@')[0]);
+          setUserName(user.full_name || (user.email ? user.email.split('@')[0] : 'User'));
           setUserInitials(
-            (user.full_name ? user.full_name.split(' ').map((n: string) => n[0]).join('') : user.email[0]).toUpperCase()
+            (user.full_name 
+              ? user.full_name.split(' ').map((n: string) => n[0]).join('') 
+              : (user.email && user.email.length > 0 ? user.email[0] : 'U')
+            ).toUpperCase()
           );
         }
       } catch (error) {
@@ -135,7 +140,8 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
   useEffect(() => {
     const fetchNotifications = async () => {
       try {
-        const response = await apiClient.get<Notification[]>('/notifications/unread');
+        // Use the API route we created
+        const response = await apiClient.get<Notification[]>('/api/notifications/unread');
         if (response && response.data) {
           setNotifications(response.data.slice(0, 5));
         }
@@ -155,13 +161,26 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
   // Handle logout
   const handleLogout = async () => {
     try {
-      await apiClient.post('/auth/logout', {});
+      // First try to logout from the API
+      try {
+        await apiClient.post('/auth/logout', {});
+      } catch (apiError) {
+        console.warn('API logout failed, continuing with client-side logout:', apiError);
+      }
+      
+      // Clear local storage
       if (typeof window !== 'undefined') {
         localStorage.removeItem('strike_app_user');
-        window.location.href = '/auth/login';
       }
+      
+      // Use Next-Auth signOut for proper session cleanup
+      await signOut({ redirect: false });
+      
+      // Force redirect to login page
+      window.location.href = '/auth/login';
     } catch (error) {
       console.error('Error logging out:', error);
+      // Fallback: force redirect even if there was an error
       if (typeof window !== 'undefined') {
         localStorage.removeItem('strike_app_user');
         window.location.href = '/auth/login';

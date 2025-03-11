@@ -4,7 +4,7 @@ STRIKE is an intelligent, modular CRM system built with modern AI capabilities, 
 
 ## Features
 
-- **User Authentication & Management**: Secure login, role-based access control, team collaboration, and user profiles.
+- **User Authentication & Management**: Secure login, role-based access control, team collaboration, and user profiles. Enhanced user lifecycle management with inactive/deactivated states and automated archiving.
 - **Lead Management**: Import/export with AI parsing, customizable fields, segmentation, and pipeline stages.
 - **Communication Suite**: Email, SMS, and call integration with tracking and sentiment analysis. Support for phone extensions for business contacts.
 - **Campaign Management**: Create, manage, and track marketing campaigns with different statuses (draft, active, paused, completed).
@@ -15,6 +15,7 @@ STRIKE is an intelligent, modular CRM system built with modern AI capabilities, 
 - **Company Analysis**: Automated web scraping and AI analysis of company websites to provide strategic insights and enhance lead scoring.
 - **Analytics & Reporting**: Real-time dashboards, custom reports, and sales forecasting.
 - **AI Chatbot Assistant**: Integrated chatbot for user assistance and natural language database queries.
+- **Advanced RBAC System**: Comprehensive role-based access control with granular permissions, role assignments, and audit logging.
 
 ## Technical Stack
 
@@ -203,7 +204,13 @@ Each status has specific behaviors and restrictions regarding lead and activity 
 
 The CRM system uses a Supabase PostgreSQL database with the following main tables:
 
-- **users**: User accounts with role-based access control
+- **users**: User accounts with role-based access control and lifecycle management (active, inactive, deactivated, archived)
+- **roles**: Defines available roles in the system (Admin, Manager, Agent, Viewer, etc.)
+- **permissions**: Defines available permissions for system actions
+- **user_roles**: Maps users to roles for access control
+- **role_permissions**: Maps roles to permissions
+- **user_role_history**: Tracks role assignment history, including removals during deactivation
+- **archived_users**: Stores user data after the archival period (60 days post-deactivation)
 - **teams**: Team organization for users
 - **leads**: Lead information and tracking
 - **pipeline_stages**: Customizable sales pipeline stages
@@ -318,4 +325,34 @@ node fix-trigger.js
 
 ## Detailed Documentation
 
-For more detailed information about the fix, please refer to the [ADMIN_LOGIN_FIX.md](./ADMIN_LOGIN_FIX.md) file. 
+For more detailed information about the fix, please refer to the [ADMIN_LOGIN_FIX.md](./ADMIN_LOGIN_FIX.md) file.
+
+## System Architecture
+
+### Database Schema
+
+- **users**: User accounts with role-based access control and lifecycle management (active, inactive, deactivated, archived)
+- **roles**: Defines available roles in the system (Admin, Manager, Agent, Viewer, etc.)
+- **permissions**: Defines available permissions for system actions
+- **user_roles**: Maps users to roles for access control
+- **role_permissions**: Maps roles to permissions
+- **user_role_history**: Tracks role assignment history, including removals during deactivation
+- **archived_users**: Stores user data after the archival period (60 days post-deactivation)
+
+## User Management
+
+STRIKE implements a comprehensive user lifecycle management system:
+
+### User States
+- **Active**: Normal system access with assigned roles and permissions
+- **Inactive**: Temporarily disabled account that retains role assignments
+- **Deactivated**: Disabled account with all permissions removed, scheduled for archival after 60 days
+- **Archived**: User data moved to archive storage after the retention period
+
+### RBAC System
+- **Roles**: Predefined (Admin, Manager, Agent, Viewer) and custom roles
+- **Permissions**: Granular action-based permissions grouped by category
+- **Assignment**: Users can have multiple roles, each with different permissions
+- **Audit**: Complete history of role assignments and permission changes
+
+For detailed information on the RBAC system, see the [RBAC README](backend/RBAC_README.md). 

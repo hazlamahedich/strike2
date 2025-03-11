@@ -13,7 +13,7 @@ import { Separator } from "@/components/ui/separator";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
 import { toast } from "@/components/ui/use-toast";
-import { Loader2, AlertTriangle, Users, Settings, Sliders, ShieldCheck, UserPlus } from "lucide-react";
+import { Loader2, AlertTriangle, Users, Settings, Sliders, ShieldCheck, UserPlus, UserMinus, Search, Plus, Pencil, Trash2, Info, Lock, UserCog, CheckCircle, AlertCircle, Ban, MoreHorizontal, Copy } from "lucide-react";
 import { useUserSettings } from "@/hooks/useUserSettings";
 import { useMockData } from "@/hooks/useMockData";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
@@ -21,8 +21,53 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import RoleManagementDialog from "@/components/settings/RoleManagementDialog";
 import PermissionManagementDialog from "@/components/settings/PermissionManagementDialog";
 import UserRoleManagementDialog from "@/components/settings/UserRoleManagementDialog";
+import ProfileManagementDialog from "@/components/settings/ProfileManagementDialog";
+import UserPermissionsDialog from "@/components/settings/UserPermissionsDialog";
+import AddUserDialog from "@/components/settings/AddUserDialog";
 import { useRBAC } from "@/hooks/useRBAC";
-import PermissionGuard from "@/components/PermissionGuard";
+import { Badge } from "@/components/ui/badge";
+import { Role as RBACRole, Permission as RBACPermission, RoleWithPermissions } from "@/hooks/useRBAC";
+import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { ShieldAlert } from "lucide-react";
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuLabel, DropdownMenuSeparator, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
+import { AlertDialog, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogCancel, AlertDialogAction } from "@/components/ui/alert-dialog";
+import UserManagementTable from "@/components/settings/UserManagementTable";
+import RoleManagementPanel from "@/components/settings/RoleManagementPanel";
+import PermissionManagementPanel from "@/components/settings/PermissionManagementPanel";
+
+// Define types for user management
+interface User {
+  id: string;
+  email: string;
+  name: string;
+  roles: Array<RBACRole>;
+  is_active?: boolean;
+  status: string; // Derived from is_active, but required for UI
+  debugInfo?: string;
+  rawMetadata?: any;
+  profileData?: any;
+  source?: string;
+}
+
+// Define types for role management that match the RoleManagementPanel component
+interface PanelRole {
+  id: number;
+  name: string;
+  description: string;
+  created_at?: string;
+  updated_at?: string;
+  permissions?: PanelPermission[];
+}
+
+interface PanelPermission {
+  id: number;
+  name: string;
+  description: string;
+  category: string;
+}
+
+// Default UUID to use as fallback if a non-UUID ID is encountered
+const DEFAULT_UUID = "00000000-0000-0000-0000-000000000000";
 
 export default function SettingsPage() {
   const { data: session } = useSession();
@@ -35,7 +80,19 @@ export default function SettingsPage() {
   } = useUserSettings();
   
   const { isEnabled: isMockFeaturesEnabled, toggleMockData: toggleMockFeatures } = useMockData();
-  const { userRoles, fetchUserRolesAndPermissions } = useRBAC();
+  const { 
+    userRoles, 
+    fetchUserRolesAndPermissions, 
+    currentUserRoles, 
+    hasPermission, 
+    permissions: allPermissions,
+    roles: allRoles,
+    fetchPermissions,
+    fetchRoles,
+    fetchRolesWithPermissions,
+    createRole,
+    deleteRole
+  } = useRBAC();
   
   // Local state for form values
   const [formValues, setFormValues] = useState({
@@ -63,6 +120,24 @@ export default function SettingsPage() {
     system_announcements: true,
   });
 
+  // User management state
+  const [users, setUsers] = useState<User[]>([]);
+  const [isLoadingUsers, setIsLoadingUsers] = useState(false);
+  const [userError, setUserError] = useState<string | null>(null);
+  const [selectedUser, setSelectedUser] = useState<User | null>(null);
+  
+  // Dialog states
+  const [isAddUserDialogOpen, setIsAddUserDialogOpen] = useState(false);
+  const [isRoleDialogOpen, setIsRoleDialogOpen] = useState(false);
+  const [isPermissionDialogOpen, setIsPermissionDialogOpen] = useState(false);
+  const [isUserRoleDialogOpen, setIsUserRoleDialogOpen] = useState(false);
+  const [isProfileDialogOpen, setIsProfileDialogOpen] = useState(false);
+  const [isUserPermissionsDialogOpen, setIsUserPermissionsDialogOpen] = useState(false);
+  const [isDeleteUserDialogOpen, setIsDeleteUserDialogOpen] = useState(false);
+  
+  // Active tab state
+  const [activeTab, setActiveTab] = useState("users");
+
   // Application settings state
   const [settings, setSettings] = useState({
     compact_mode: false,
@@ -70,17 +145,44 @@ export default function SettingsPage() {
     enable_mock_features: true,
   });
 
-  // RBAC dialog states
-  const [roleDialogOpen, setRoleDialogOpen] = useState(false);
-  const [permissionDialogOpen, setPermissionDialogOpen] = useState(false);
-  const [userRoleDialogOpen, setUserRoleDialogOpen] = useState(false);
+  // New state for role management
+  const [newRoleDialogOpen, setNewRoleDialogOpen] = useState(false);
+  const [deleteRoleDialogOpen, setDeleteRoleDialogOpen] = useState(false);
+  const [roleToDelete, setRoleToDelete] = useState<RBACRole | null>(null);
+  const [newRoleData, setNewRoleData] = useState({ name: '', description: '' });
 
-  // Mock users for the user management tab
-  const [users, setUsers] = useState([
-    { id: '1', name: 'Admin User', email: 'admin@example.com', role: 'Admin', status: 'Active' },
-    { id: '2', name: 'Sales Rep', email: 'sales@example.com', role: 'Sales', status: 'Active' },
-    { id: '3', name: 'Marketing User', email: 'marketing@example.com', role: 'Marketing', status: 'Inactive' },
-  ]);
+  // New state for the unified UI
+  const [activeView, setActiveView] = useState<'user-details' | 'roles' | 'permissions' | 'profiles'>('user-details');
+  const [searchTerm, setSearchTerm] = useState('');
+  const [permissionSearchTerm, setPermissionSearchTerm] = useState('');
+  const [permissionResourceFilter, setPermissionResourceFilter] = useState('all');
+  const [selectedRole, setSelectedRole] = useState<RBACRole | null>(null);
+  const [selectedPermission, setSelectedPermission] = useState<any>(null);
+  const [showDeleteRoleConfirm, setShowDeleteRoleConfirm] = useState(false);
+  const [showDeletePermissionConfirm, setShowDeletePermissionConfirm] = useState(false);
+  const [selectedRoleToRemove, setSelectedRoleToRemove] = useState<RBACRole | null>(null);
+  const [showRemoveRoleConfirm, setShowRemoveRoleConfirm] = useState(false);
+  const [userPermissions, setUserPermissions] = useState<any[]>([]);
+  const [isLoadingPermissions, setIsLoadingPermissions] = useState(false);
+  const [showDeleteUserConfirm, setShowDeleteUserConfirm] = useState(false);
+  const [showDebug, setShowDebug] = useState(false);
+  const [selectedCategory, setSelectedCategory] = useState<string>("all");
+  const [searchQuery, setSearchQuery] = useState("");
+
+  // Get unique resources for filtering permissions
+  const uniqueResources = [...new Set(allPermissions?.map(p => p.resource) || [])].sort();
+
+  // Filter permissions based on search and resource filter
+  const filteredPermissions = allPermissions?.filter(permission => {
+    const matchesSearch = permissionSearchTerm === '' || 
+      permission.name.toLowerCase().includes(permissionSearchTerm.toLowerCase()) ||
+      permission.resource.toLowerCase().includes(permissionSearchTerm.toLowerCase()) ||
+      permission.action.toLowerCase().includes(permissionSearchTerm.toLowerCase());
+    
+    const matchesResource = permissionResourceFilter === 'all' || permission.resource === permissionResourceFilter;
+    
+    return matchesSearch && matchesResource;
+  }) || [];
 
   // Load user data when profile is available
   useEffect(() => {
@@ -113,9 +215,97 @@ export default function SettingsPage() {
   // Fetch user roles and permissions
   useEffect(() => {
     if (session?.user?.id) {
+      console.log('Session user ID in settings page:', session.user.id);
+      
+      // Validate UUID format
+      const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+      if (!uuidRegex.test(session.user.id)) {
+        console.error('Invalid user ID format in session. Expected UUID, got:', session.user.id);
+        console.warn('Using default UUID instead of invalid user ID');
+        // Use default UUID instead of showing an error
+        if (session.user) {
+          session.user.id = DEFAULT_UUID;
+        }
+      }
+      
       fetchUserRolesAndPermissions();
     }
   }, [session, fetchUserRolesAndPermissions]);
+
+  // Load user data when profile is available
+  useEffect(() => {
+    if (profile) {
+      fetchUsers();
+    }
+  }, [profile]);
+
+  // Fetch roles and permissions when component mounts
+  useEffect(() => {
+    fetchRolesWithPermissions();
+    fetchPermissions();
+  }, [fetchRolesWithPermissions, fetchPermissions]);
+
+  // Fetch users from the API
+  const fetchUsers = async () => {
+    try {
+      setIsLoadingUsers(true);
+      setUserError(null);
+      
+      const response = await fetch('/api/admin/users');
+      
+      if (!response.ok) {
+        throw new Error('Failed to fetch users');
+      }
+      
+      const data = await response.json();
+      
+      // Map is_active to status if needed
+      const processedUsers = data.map((user: any) => ({
+        ...user,
+        // Ensure status is always defined based on is_active
+        status: user.status || (user.is_active === false ? 'inactive' : 'active')
+      }));
+      
+      setUsers(processedUsers);
+    } catch (error) {
+      console.error('Error fetching users:', error);
+      setUserError(error instanceof Error ? error.message : 'An unknown error occurred');
+    } finally {
+      setIsLoadingUsers(false);
+    }
+  };
+
+  // Fetch user permissions
+  const fetchUserPermissions = async (userId: string) => {
+    try {
+      setIsLoadingPermissions(true);
+      const response = await fetch(`/api/admin/users/${userId}/permissions`);
+      
+      if (!response.ok) {
+        throw new Error('Failed to fetch user permissions');
+      }
+      
+      const data = await response.json();
+      setUserPermissions(data.permissions || []);
+    } catch (error) {
+      console.error('Error fetching user permissions:', error);
+      toast({
+        title: "Error",
+        description: "Failed to fetch user permissions. Please try again.",
+        variant: "destructive",
+      });
+      setUserPermissions([]);
+    } finally {
+      setIsLoadingPermissions(false);
+    }
+  };
+
+  // Effect to fetch user permissions when a user is selected
+  useEffect(() => {
+    if (selectedUser && activeView === 'user-details') {
+      fetchUserPermissions(selectedUser.id);
+    }
+  }, [selectedUser, activeView]);
 
   // Handle profile form submission
   const handleProfileUpdate = async (e: React.FormEvent) => {
@@ -227,10 +417,116 @@ export default function SettingsPage() {
 
   // Add new user (mock function)
   const handleAddUser = () => {
-    toast({
-      title: "Feature in development",
-      description: "User management functionality is coming soon.",
-    });
+    setIsAddUserDialogOpen(true);
+  };
+
+  // Check if user has admin role
+  const isAdmin = currentUserRoles.some(role => role.name === 'Admin');
+
+  // Handle adding a new role
+  const handleAddRole = async () => {
+    if (!newRoleData.name.trim()) {
+      toast({
+        title: "Validation Error",
+        description: "Role name is required",
+        variant: "destructive",
+      });
+      return;
+    }
+    
+    try {
+      await createRole({ name: newRoleData.name, description: newRoleData.description });
+      
+      toast({
+        title: "Success",
+        description: "Role created successfully",
+      });
+      
+      // Reset form and close dialog
+      setNewRoleData({ name: '', description: '' });
+      setNewRoleDialogOpen(false);
+      
+      // Refresh roles
+      fetchRolesWithPermissions();
+    } catch (error) {
+      console.error('Error creating role:', error);
+      toast({
+        title: "Error",
+        description: "Failed to create role. Please try again.",
+        variant: "destructive",
+      });
+    }
+  };
+  
+  // Handle deleting a role
+  const handleDeleteRole = async () => {
+    if (!roleToDelete) return;
+    
+    try {
+      await deleteRole(roleToDelete.id);
+      
+      toast({
+        title: "Success",
+        description: "Role deleted successfully",
+      });
+      
+      // Reset state and close dialog
+      setRoleToDelete(null);
+      setDeleteRoleDialogOpen(false);
+      
+      // Refresh roles
+      fetchRolesWithPermissions();
+    } catch (error) {
+      console.error('Error deleting role:', error);
+      toast({
+        title: "Error",
+        description: "Failed to delete role. Please try again.",
+        variant: "destructive",
+      });
+    }
+  };
+
+  // Handle user status change
+  const handleUserStatusChange = async (userId: string, status: string) => {
+    try {
+      const response = await fetch(`/api/admin/users/${userId}/status`, {
+        method: 'PUT',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ status }),
+      });
+      
+      if (!response.ok) {
+        const errorData = await response.json().catch(() => null);
+        console.error('Error updating user status:', errorData);
+        throw new Error(errorData?.error || 'Failed to update user status');
+      }
+      
+      const result = await response.json();
+      
+      // Update the user in the local state
+      setUsers(users.map(user => 
+        user.id === userId ? { ...user, status } : user
+      ));
+      
+      // Update selected user if it's the one being modified
+      if (selectedUser && selectedUser.id === userId) {
+        setSelectedUser({ ...selectedUser, status });
+      }
+      
+      toast({
+        title: "Success",
+        description: "User status updated successfully",
+      });
+    } catch (error) {
+      console.error('Error updating user status:', error);
+      toast({
+        title: "Error",
+        description: error instanceof Error ? error.message : "Failed to update user status. Please try again.",
+        variant: "destructive",
+      });
+    }
   };
 
   if (isLoading) {
@@ -257,602 +553,394 @@ export default function SettingsPage() {
   }
 
   return (
-    <div className="flex-1 space-y-4 p-4 md:p-8 pt-6">
-      <div className="flex items-center justify-between">
-        <h2 className="text-3xl font-bold tracking-tight">Settings</h2>
+    <div className="container mx-auto py-6 space-y-6">
+      <div className="flex justify-between items-center">
+        <div>
+          <h1 className="text-3xl font-bold">Settings</h1>
+          <p className="text-muted-foreground">
+            Manage your account settings and preferences.
+          </p>
+        </div>
+        <Button 
+          variant="outline" 
+          onClick={() => setShowDebug(!showDebug)}
+        >
+          {showDebug ? "Hide Debug" : "Show Debug"}
+        </Button>
       </div>
-      
-      <Tabs defaultValue="account" className="space-y-4">
-        <TabsList>
-          <TabsTrigger value="account" className="flex items-center gap-2">
-            <Settings className="h-4 w-4" />
-            <span>Account</span>
-          </TabsTrigger>
-          <TabsTrigger value="users" className="flex items-center gap-2">
-            <Users className="h-4 w-4" />
-            <span>User Management</span>
-          </TabsTrigger>
-          <TabsTrigger value="preferences" className="flex items-center gap-2">
-            <Sliders className="h-4 w-4" />
-            <span>Preferences</span>
-          </TabsTrigger>
-          <TabsTrigger value="rbac" className="flex items-center gap-2">
-            <ShieldCheck className="h-4 w-4" />
-            <span>Access Control</span>
-          </TabsTrigger>
+
+      {showDebug && (
+        <div className="bg-slate-100 p-4 rounded-md mb-4 overflow-auto max-h-60">
+          <h2 className="text-lg font-semibold mb-2">Session Debug Info</h2>
+          <pre className="text-xs">{JSON.stringify(session, null, 2)}</pre>
+          <h2 className="text-lg font-semibold mt-4 mb-2">Current User Roles</h2>
+          <pre className="text-xs">{JSON.stringify(currentUserRoles, null, 2)}</pre>
+        </div>
+      )}
+
+      <Tabs defaultValue="users" value={activeTab} onValueChange={setActiveTab}>
+        <TabsList className="grid w-full grid-cols-3">
+          <TabsTrigger value="users">Users</TabsTrigger>
+          <TabsTrigger value="roles">Roles</TabsTrigger>
+          <TabsTrigger value="permissions">Permissions</TabsTrigger>
         </TabsList>
-        
-        {/* Account Settings Tab */}
-        <TabsContent value="account" className="space-y-4">
-          <Card>
-            <CardHeader>
-              <CardTitle>Profile Information</CardTitle>
-              <CardDescription>
-                Update your account information and personal details.
-              </CardDescription>
-            </CardHeader>
-            <CardContent>
-              <form onSubmit={handleProfileUpdate} className="space-y-4">
-                <div className="flex flex-col md:flex-row gap-4 items-start">
-                  <div className="flex flex-col items-center space-y-2">
-                    <Avatar className="h-24 w-24">
-                      <AvatarImage src={formValues.avatar} alt={formValues.name} />
-                      <AvatarFallback className="text-lg">{getInitials(formValues.name)}</AvatarFallback>
-                    </Avatar>
-                    <Button variant="outline" size="sm">Change Avatar</Button>
-                  </div>
-                  
-                  <div className="grid gap-4 flex-1">
-                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                      <div className="space-y-2">
-                        <Label htmlFor="name">Full Name</Label>
-                        <Input 
-                          id="name" 
-                          value={formValues.name} 
-                          onChange={(e) => setFormValues({...formValues, name: e.target.value})}
-                        />
-                      </div>
-                      <div className="space-y-2">
-                        <Label htmlFor="email">Email</Label>
-                        <Input 
-                          id="email" 
-                          type="email" 
-                          value={formValues.email} 
-                          onChange={(e) => setFormValues({...formValues, email: e.target.value})}
-                          disabled
-                        />
-                      </div>
-                    </div>
-                    
-                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                      <div className="space-y-2">
-                        <Label htmlFor="phone">Phone Number</Label>
-                        <Input 
-                          id="phone" 
-                          value={formValues.phone} 
-                          onChange={(e) => setFormValues({...formValues, phone: e.target.value})}
-                        />
-                      </div>
-                      <div className="space-y-2">
-                        <Label htmlFor="role">Role</Label>
-                        <Input 
-                          id="role" 
-                          value={formValues.role} 
-                          onChange={(e) => setFormValues({...formValues, role: e.target.value})}
-                          disabled
-                        />
-                      </div>
-                    </div>
-                    
-                    <div className="space-y-2">
-                      <Label htmlFor="bio">Bio</Label>
-                      <Textarea 
-                        id="bio" 
-                        value={formValues.bio} 
-                        onChange={(e) => setFormValues({...formValues, bio: e.target.value})}
-                        placeholder="Tell us about yourself"
-                        rows={3}
-                      />
-                    </div>
-                  </div>
-                </div>
-                
-                <div className="flex justify-end">
-                  <Button type="submit">Save Changes</Button>
-                </div>
-              </form>
-            </CardContent>
-          </Card>
-          
-          <Card>
-            <CardHeader>
-              <CardTitle>Notification Preferences</CardTitle>
-              <CardDescription>
-                Manage how you receive notifications and updates.
-              </CardDescription>
-            </CardHeader>
-            <CardContent className="space-y-4">
-              <div className="space-y-4">
-                <div className="flex items-center justify-between">
-                  <div className="space-y-0.5">
-                    <Label htmlFor="email-notifications">Email Notifications</Label>
-                    <p className="text-sm text-muted-foreground">
-                      Receive email notifications for important updates.
-                    </p>
-                  </div>
-                  <Switch 
-                    id="email-notifications" 
-                    checked={notifications.email}
-                    onCheckedChange={() => handleNotificationToggle('email')}
-                  />
-                </div>
-                
-                <Separator />
-                
-                <div className="flex items-center justify-between">
-                  <div className="space-y-0.5">
-                    <Label htmlFor="push-notifications">Push Notifications</Label>
-                    <p className="text-sm text-muted-foreground">
-                      Receive push notifications in your browser.
-                    </p>
-                  </div>
-                  <Switch 
-                    id="push-notifications" 
-                    checked={notifications.push}
-                    onCheckedChange={() => handleNotificationToggle('push')}
-                  />
-                </div>
-                
-                <Separator />
-                
-                <div className="flex items-center justify-between">
-                  <div className="space-y-0.5">
-                    <Label htmlFor="task-reminders">Task Reminders</Label>
-                    <p className="text-sm text-muted-foreground">
-                      Get reminders for upcoming tasks and deadlines.
-                    </p>
-                  </div>
-                  <Switch 
-                    id="task-reminders" 
-                    checked={notifications.task_reminders}
-                    onCheckedChange={() => handleNotificationToggle('task_reminders')}
-                  />
-                </div>
-                
-                <Separator />
-                
-                <div className="flex items-center justify-between">
-                  <div className="space-y-0.5">
-                    <Label htmlFor="deal-updates">Deal Updates</Label>
-                    <p className="text-sm text-muted-foreground">
-                      Receive notifications when deals are updated.
-                    </p>
-                  </div>
-                  <Switch 
-                    id="deal-updates" 
-                    checked={notifications.deal_updates}
-                    onCheckedChange={() => handleNotificationToggle('deal_updates')}
-                  />
-                </div>
-                
-                <Separator />
-                
-                <div className="flex items-center justify-between">
-                  <div className="space-y-0.5">
-                    <Label htmlFor="weekly-reports">Weekly Reports</Label>
-                    <p className="text-sm text-muted-foreground">
-                      Receive weekly summary reports of your activity.
-                    </p>
-                  </div>
-                  <Switch 
-                    id="weekly-reports" 
-                    checked={notifications.weekly_reports}
-                    onCheckedChange={() => handleNotificationToggle('weekly_reports')}
-                  />
-                </div>
-                
-                <Separator />
-                
-                <div className="flex items-center justify-between">
-                  <div className="space-y-0.5">
-                    <Label htmlFor="marketing-emails">Marketing Emails</Label>
-                    <p className="text-sm text-muted-foreground">
-                      Receive marketing emails and product updates.
-                    </p>
-                  </div>
-                  <Switch 
-                    id="marketing-emails" 
-                    checked={notifications.marketing_emails}
-                    onCheckedChange={() => handleNotificationToggle('marketing_emails')}
-                  />
-                </div>
-                
-                <Separator />
-                
-                <div className="flex items-center justify-between">
-                  <div className="space-y-0.5">
-                    <Label htmlFor="system-announcements">System Announcements</Label>
-                    <p className="text-sm text-muted-foreground">
-                      Receive important system announcements and updates.
-                    </p>
-                  </div>
-                  <Switch 
-                    id="system-announcements" 
-                    checked={notifications.system_announcements}
-                    onCheckedChange={() => handleNotificationToggle('system_announcements')}
-                  />
-                </div>
-              </div>
-            </CardContent>
-          </Card>
-        </TabsContent>
-        
-        {/* User Management Tab */}
         <TabsContent value="users" className="space-y-4">
-          <Card>
-            <CardHeader>
-              <CardTitle>User Management</CardTitle>
-              <CardDescription>
-                Manage users and their access to the application.
-              </CardDescription>
-            </CardHeader>
-            <CardContent>
-              <div className="flex justify-end mb-4">
-                <Button onClick={handleAddUser}>Add User</Button>
-              </div>
-              
-              <div className="rounded-md border">
-                <Table>
-                  <TableHeader>
-                    <TableRow>
-                      <TableHead>Name</TableHead>
-                      <TableHead>Email</TableHead>
-                      <TableHead>Role</TableHead>
-                      <TableHead>Status</TableHead>
-                      <TableHead className="text-right">Actions</TableHead>
-                    </TableRow>
-                  </TableHeader>
-                  <TableBody>
-                    {users.map((user) => (
-                      <TableRow key={user.id}>
-                        <TableCell className="font-medium">{user.name}</TableCell>
-                        <TableCell>{user.email}</TableCell>
-                        <TableCell>{user.role}</TableCell>
-                        <TableCell>
-                          <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${
-                            user.status === 'Active' ? 'bg-green-100 text-green-800' : 'bg-gray-100 text-gray-800'
-                          }`}>
-                            {user.status}
-                          </span>
-                        </TableCell>
-                        <TableCell className="text-right">
-                          <Button variant="ghost" size="sm">Edit</Button>
-                        </TableCell>
-                      </TableRow>
-                    ))}
-                  </TableBody>
-                </Table>
-              </div>
-            </CardContent>
-            <CardFooter className="flex justify-between">
-              <p className="text-sm text-muted-foreground">
-                Showing {users.length} users
-              </p>
-            </CardFooter>
-          </Card>
+          <UserManagementTable 
+            users={users}
+            isLoading={isLoadingUsers}
+            onAddUser={() => setIsAddUserDialogOpen(true)}
+            onEditUser={(user) => {
+              setSelectedUser(user);
+              setIsProfileDialogOpen(true);
+            }}
+            onDeleteUser={async (user) => {
+              try {
+                const response = await fetch(`/api/admin/users/${user.id}`, {
+                  method: 'DELETE',
+                });
+                
+                if (!response.ok) {
+                  throw new Error('Failed to delete user');
+                }
+                
+                toast({
+                  title: "User deleted",
+                  description: `${user.name} has been deleted successfully.`,
+                });
+                
+                fetchUsers();
+              } catch (error) {
+                console.error('Error deleting user:', error);
+                toast({
+                  title: "Error",
+                  description: "Failed to delete user. Please try again.",
+                  variant: "destructive",
+                });
+              }
+            }}
+            onManageRoles={(user) => {
+              setSelectedUser(user);
+              setIsUserRoleDialogOpen(true);
+            }}
+            onManagePermissions={(user) => {
+              setSelectedUser(user);
+              setIsUserPermissionsDialogOpen(true);
+            }}
+            onManageProfile={(user) => {
+              setSelectedUser(user);
+              setIsProfileDialogOpen(true);
+            }}
+            onStatusChange={async (userId, status) => {
+              try {
+                const response = await fetch(`/api/admin/users/${userId}/status`, {
+                  method: 'PUT',
+                  headers: {
+                    'Content-Type': 'application/json',
+                  },
+                  body: JSON.stringify({ status }),
+                });
+                
+                if (!response.ok) {
+                  throw new Error('Failed to update user status');
+                }
+                
+                fetchUsers();
+                return Promise.resolve();
+              } catch (error) {
+                console.error('Error updating user status:', error);
+                return Promise.reject(error);
+              }
+            }}
+            onRefresh={fetchUsers}
+          />
           
-          <Card>
-            <CardHeader>
-              <CardTitle>Role-Based Access Control</CardTitle>
-              <CardDescription>
-                Configure roles and permissions for users.
-              </CardDescription>
-            </CardHeader>
-            <CardContent>
-              <Alert>
-                <AlertTitle>Coming Soon</AlertTitle>
-                <AlertDescription>
-                  Role-based access control configuration will be available in a future update.
-                </AlertDescription>
-              </Alert>
-            </CardContent>
-          </Card>
+          {userError && (
+            <Alert variant="destructive" className="mt-4">
+              <AlertTriangle className="h-4 w-4" />
+              <AlertTitle>Error</AlertTitle>
+              <AlertDescription>{userError}</AlertDescription>
+            </Alert>
+          )}
         </TabsContent>
-        
-        {/* Preferences Tab */}
-        <TabsContent value="preferences" className="space-y-4">
-          <Card>
-            <CardHeader>
-              <CardTitle>Application Preferences</CardTitle>
-              <CardDescription>
-                Customize your application experience.
-              </CardDescription>
-            </CardHeader>
-            <CardContent className="space-y-4">
-              <div className="space-y-4">
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                  <div className="space-y-2">
-                    <Label htmlFor="theme">Theme</Label>
-                    <Select 
-                      value={formValues.theme} 
-                      onValueChange={(value) => {
-                        setFormValues({...formValues, theme: value});
-                        handleSettingsChange('theme', value);
-                      }}
-                    >
-                      <SelectTrigger id="theme">
-                        <SelectValue placeholder="Select theme" />
-                      </SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="light">Light</SelectItem>
-                        <SelectItem value="dark">Dark</SelectItem>
-                        <SelectItem value="system">System</SelectItem>
-                      </SelectContent>
-                    </Select>
-                  </div>
-                  
-                  <div className="space-y-2">
-                    <Label htmlFor="language">Language</Label>
-                    <Select 
-                      value={formValues.language} 
-                      onValueChange={(value) => {
-                        setFormValues({...formValues, language: value});
-                        handleSettingsChange('language', value);
-                      }}
-                    >
-                      <SelectTrigger id="language">
-                        <SelectValue placeholder="Select language" />
-                      </SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="en">English</SelectItem>
-                        <SelectItem value="es">Spanish</SelectItem>
-                        <SelectItem value="fr">French</SelectItem>
-                        <SelectItem value="de">German</SelectItem>
-                      </SelectContent>
-                    </Select>
-                  </div>
-                </div>
+        <TabsContent value="roles" className="space-y-4">
+          <RoleManagementPanel 
+            roles={allRoles.map((role: RBACRole | RoleWithPermissions) => ({
+              id: role.id,
+              name: role.name,
+              description: role.description || '',
+              created_at: role.created_at,
+              updated_at: role.updated_at,
+              permissions: 'permissions' in role 
+                ? role.permissions.map((p: RBACPermission) => ({
+                    id: p.id,
+                    name: p.name,
+                    description: p.description || '',
+                    category: p.resource || 'General'
+                  }))
+                : []
+            }))}
+            permissions={allPermissions.map((permission: RBACPermission) => ({
+              id: permission.id,
+              name: permission.name,
+              description: permission.description || '',
+              category: permission.resource || 'General'
+            }))}
+            isLoading={isLoading}
+            onAddRole={async (role) => {
+              try {
+                await createRole({ name: role.name, description: role.description });
+                toast({
+                  title: "Role created",
+                  description: `Role "${role.name}" has been created successfully.`,
+                });
+                return Promise.resolve();
+              } catch (error) {
+                console.error('Error creating role:', error);
+                toast({
+                  title: "Error",
+                  description: "Failed to create role. Please try again.",
+                  variant: "destructive",
+                });
+                return Promise.reject(error);
+              }
+            }}
+            onUpdateRole={async (role) => {
+              try {
+                // Implement role update API call
+                const response = await fetch(`/api/admin/roles/${role.id}`, {
+                  method: 'PUT',
+                  headers: {
+                    'Content-Type': 'application/json',
+                  },
+                  body: JSON.stringify({ 
+                    name: role.name, 
+                    description: role.description 
+                  }),
+                });
                 
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                  <div className="space-y-2">
-                    <Label htmlFor="timezone">Timezone</Label>
-                    <Select 
-                      value={formValues.timezone} 
-                      onValueChange={(value) => setFormValues({...formValues, timezone: value})}
-                    >
-                      <SelectTrigger id="timezone">
-                        <SelectValue placeholder="Select timezone" />
-                      </SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="America/New_York">Eastern Time (ET)</SelectItem>
-                        <SelectItem value="America/Chicago">Central Time (CT)</SelectItem>
-                        <SelectItem value="America/Denver">Mountain Time (MT)</SelectItem>
-                        <SelectItem value="America/Los_Angeles">Pacific Time (PT)</SelectItem>
-                        <SelectItem value="Europe/London">London (GMT)</SelectItem>
-                      </SelectContent>
-                    </Select>
-                  </div>
-                  
-                  <div className="space-y-2">
-                    <Label htmlFor="date-format">Date Format</Label>
-                    <Select 
-                      value={formValues.date_format} 
-                      onValueChange={(value) => {
-                        setFormValues({...formValues, date_format: value});
-                        handleSettingsChange('date_format', value);
-                      }}
-                    >
-                      <SelectTrigger id="date-format">
-                        <SelectValue placeholder="Select date format" />
-                      </SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="MM/DD/YYYY">MM/DD/YYYY</SelectItem>
-                        <SelectItem value="DD/MM/YYYY">DD/MM/YYYY</SelectItem>
-                        <SelectItem value="YYYY-MM-DD">YYYY-MM-DD</SelectItem>
-                      </SelectContent>
-                    </Select>
-                  </div>
-                </div>
+                if (!response.ok) {
+                  throw new Error('Failed to update role');
+                }
                 
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                  <div className="space-y-2">
-                    <Label htmlFor="currency">Currency</Label>
-                    <Select 
-                      value={formValues.currency} 
-                      onValueChange={(value) => {
-                        setFormValues({...formValues, currency: value});
-                        handleSettingsChange('currency', value);
-                      }}
-                    >
-                      <SelectTrigger id="currency">
-                        <SelectValue placeholder="Select currency" />
-                      </SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="USD">US Dollar ($)</SelectItem>
-                        <SelectItem value="EUR">Euro (€)</SelectItem>
-                        <SelectItem value="GBP">British Pound (£)</SelectItem>
-                        <SelectItem value="JPY">Japanese Yen (¥)</SelectItem>
-                      </SelectContent>
-                    </Select>
-                  </div>
-                  
-                  <div className="space-y-2">
-                    <Label htmlFor="default-view">Default View</Label>
-                    <Select 
-                      value={settings.default_view} 
-                      onValueChange={(value) => handleSettingsChange('default_view', value)}
-                    >
-                      <SelectTrigger id="default-view">
-                        <SelectValue placeholder="Select default view" />
-                      </SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="kanban">Kanban</SelectItem>
-                        <SelectItem value="list">List</SelectItem>
-                        <SelectItem value="calendar">Calendar</SelectItem>
-                      </SelectContent>
-                    </Select>
-                  </div>
-                </div>
+                toast({
+                  title: "Role updated",
+                  description: `Role "${role.name}" has been updated successfully.`,
+                });
                 
-                <Separator />
+                fetchRolesWithPermissions();
+                return Promise.resolve();
+              } catch (error) {
+                console.error('Error updating role:', error);
+                toast({
+                  title: "Error",
+                  description: "Failed to update role. Please try again.",
+                  variant: "destructive",
+                });
+                return Promise.reject(error);
+              }
+            }}
+            onDeleteRole={async (roleId) => {
+              try {
+                await deleteRole(roleId);
+                toast({
+                  title: "Role deleted",
+                  description: "Role has been deleted successfully.",
+                });
+                return Promise.resolve();
+              } catch (error) {
+                console.error('Error deleting role:', error);
+                toast({
+                  title: "Error",
+                  description: "Failed to delete role. Please try again.",
+                  variant: "destructive",
+                });
+                return Promise.reject(error);
+              }
+            }}
+            onUpdateRolePermissions={async (roleId, permissionIds) => {
+              try {
+                // Implement role permissions update API call
+                const response = await fetch(`/api/admin/roles/${roleId}/permissions`, {
+                  method: 'PUT',
+                  headers: {
+                    'Content-Type': 'application/json',
+                  },
+                  body: JSON.stringify({ permissions: permissionIds }),
+                });
                 
-                <div className="flex items-center justify-between">
-                  <div className="space-y-0.5">
-                    <Label htmlFor="compact-mode">Compact Mode</Label>
-                    <p className="text-sm text-muted-foreground">
-                      Use a more compact layout for the application.
-                    </p>
-                  </div>
-                  <Switch 
-                    id="compact-mode" 
-                    checked={settings.compact_mode}
-                    onCheckedChange={(checked) => handleSettingsChange('compact_mode', checked)}
-                  />
-                </div>
+                if (!response.ok) {
+                  throw new Error('Failed to update role permissions');
+                }
                 
-                <Separator />
+                toast({
+                  title: "Permissions updated",
+                  description: "Role permissions have been updated successfully.",
+                });
                 
-                <div className="flex items-center justify-between">
-                  <div className="space-y-0.5">
-                    <Label htmlFor="mock-features">Enable Mock Features</Label>
-                    <p className="text-sm text-muted-foreground">
-                      Enable mock features for demonstration purposes.
-                    </p>
-                  </div>
-                  <Switch 
-                    id="mock-features" 
-                    checked={isMockFeaturesEnabled}
-                    onCheckedChange={handleToggleMockFeatures}
-                  />
-                </div>
-              </div>
-            </CardContent>
-          </Card>
-          
-          <Card>
-            <CardHeader>
-              <CardTitle>Data Management</CardTitle>
-              <CardDescription>
-                Manage your data and export options.
-              </CardDescription>
-            </CardHeader>
-            <CardContent className="space-y-4">
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                <Button variant="outline">Export All Data</Button>
-                <Button variant="outline">Import Data</Button>
-              </div>
-              
-              <Alert className="mt-4">
-                <AlertTitle>Data Privacy</AlertTitle>
-                <AlertDescription>
-                  Your data is securely stored and processed according to our privacy policy.
-                </AlertDescription>
-              </Alert>
-            </CardContent>
-          </Card>
+                fetchRolesWithPermissions();
+                return Promise.resolve();
+              } catch (error) {
+                console.error('Error updating role permissions:', error);
+                toast({
+                  title: "Error",
+                  description: "Failed to update role permissions. Please try again.",
+                  variant: "destructive",
+                });
+                return Promise.reject(error);
+              }
+            }}
+            onRefresh={fetchRolesWithPermissions}
+          />
         </TabsContent>
-        
-        {/* RBAC Tab */}
-        <TabsContent value="rbac" className="space-y-4">
-          <PermissionGuard 
-            permissionName="manage_roles" 
-            resource="roles"
-            fallback={
-              <Alert>
-                <AlertTitle>Access Restricted</AlertTitle>
-                <AlertDescription>
-                  You don't have permission to manage roles and permissions. Please contact your administrator.
-                </AlertDescription>
-              </Alert>
-            }
-          >
-            <Card>
-              <CardHeader>
-                <CardTitle>Role-Based Access Control</CardTitle>
-                <CardDescription>
-                  Manage roles and permissions for users in the system.
-                </CardDescription>
-              </CardHeader>
-              <CardContent className="space-y-4">
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                  <div>
-                    <h3 className="text-lg font-medium mb-2">Your Roles</h3>
-                    {userRoles.length > 0 ? (
-                      <div className="space-y-2">
-                        {userRoles.map(role => (
-                          <div key={role.id} className="p-3 border rounded-md">
-                            <div className="font-medium">{role.name}</div>
-                            {role.description && (
-                              <div className="text-sm text-muted-foreground">
-                                {role.description}
-                              </div>
-                            )}
-                          </div>
-                        ))}
-                      </div>
-                    ) : (
-                      <div className="text-muted-foreground">
-                        You don't have any assigned roles.
-                      </div>
-                    )}
-                  </div>
-                  
-                  <div>
-                    <h3 className="text-lg font-medium mb-2">Management</h3>
-                    <div className="space-y-2">
-                      <Button 
-                        variant="outline" 
-                        className="w-full justify-start"
-                        onClick={() => setRoleDialogOpen(true)}
-                      >
-                        <Users className="h-4 w-4 mr-2" />
-                        Manage Roles
-                      </Button>
-                      <Button 
-                        variant="outline" 
-                        className="w-full justify-start"
-                        onClick={() => setPermissionDialogOpen(true)}
-                      >
-                        <ShieldCheck className="h-4 w-4 mr-2" />
-                        Manage Permissions
-                      </Button>
-                      <Button 
-                        variant="outline" 
-                        className="w-full justify-start"
-                        onClick={() => setUserRoleDialogOpen(true)}
-                      >
-                        <UserPlus className="h-4 w-4 mr-2" />
-                        Manage User Roles
-                      </Button>
-                    </div>
-                  </div>
-                </div>
+        <TabsContent value="permissions" className="space-y-4">
+          <PermissionManagementPanel 
+            permissions={allPermissions.map((permission: RBACPermission) => ({
+              id: permission.id,
+              name: permission.name,
+              description: permission.description || '',
+              category: permission.resource || 'General'
+            }))}
+            categories={Array.from(new Set(allPermissions.map(p => p.resource || 'General')))}
+            isLoading={isLoading}
+            onAddPermission={async (permission) => {
+              try {
+                // Implement permission creation API call
+                const response = await fetch('/api/admin/permissions', {
+                  method: 'POST',
+                  headers: {
+                    'Content-Type': 'application/json',
+                  },
+                  body: JSON.stringify({
+                    name: permission.name,
+                    description: permission.description,
+                    resource: permission.category,
+                    action: 'access' // Default action
+                  }),
+                });
                 
-                <Alert>
-                  <AlertTitle>Access Control</AlertTitle>
-                  <AlertDescription>
-                    Role-based access control allows you to define what users can do in the system based on their assigned roles.
-                    Each role can have multiple permissions, and users can have multiple roles.
-                  </AlertDescription>
-                </Alert>
-              </CardContent>
-            </Card>
-          </PermissionGuard>
+                if (!response.ok) {
+                  throw new Error('Failed to create permission');
+                }
+                
+                toast({
+                  title: "Permission created",
+                  description: `Permission "${permission.name}" has been created successfully.`,
+                });
+                
+                fetchPermissions();
+                return Promise.resolve();
+              } catch (error) {
+                console.error('Error creating permission:', error);
+                toast({
+                  title: "Error",
+                  description: "Failed to create permission. Please try again.",
+                  variant: "destructive",
+                });
+                return Promise.reject(error);
+              }
+            }}
+            onUpdatePermission={async (permission) => {
+              try {
+                // Implement permission update API call
+                const response = await fetch(`/api/admin/permissions/${permission.id}`, {
+                  method: 'PUT',
+                  headers: {
+                    'Content-Type': 'application/json',
+                  },
+                  body: JSON.stringify({
+                    name: permission.name,
+                    description: permission.description,
+                    resource: permission.category
+                  }),
+                });
+                
+                if (!response.ok) {
+                  throw new Error('Failed to update permission');
+                }
+                
+                toast({
+                  title: "Permission updated",
+                  description: `Permission "${permission.name}" has been updated successfully.`,
+                });
+                
+                fetchPermissions();
+                return Promise.resolve();
+              } catch (error) {
+                console.error('Error updating permission:', error);
+                toast({
+                  title: "Error",
+                  description: "Failed to update permission. Please try again.",
+                  variant: "destructive",
+                });
+                return Promise.reject(error);
+              }
+            }}
+            onDeletePermission={async (permissionId) => {
+              try {
+                // Implement permission deletion API call
+                const response = await fetch(`/api/admin/permissions/${permissionId}`, {
+                  method: 'DELETE',
+                });
+                
+                if (!response.ok) {
+                  throw new Error('Failed to delete permission');
+                }
+                
+                toast({
+                  title: "Permission deleted",
+                  description: "Permission has been deleted successfully.",
+                });
+                
+                fetchPermissions();
+                return Promise.resolve();
+              } catch (error) {
+                console.error('Error deleting permission:', error);
+                toast({
+                  title: "Error",
+                  description: "Failed to delete permission. Please try again.",
+                  variant: "destructive",
+                });
+                return Promise.reject(error);
+              }
+            }}
+            onRefresh={fetchPermissions}
+          />
         </TabsContent>
       </Tabs>
+
+      {/* Dialogs */}
+      <AddUserDialog 
+        open={isAddUserDialogOpen} 
+        onOpenChange={setIsAddUserDialogOpen} 
+        onSuccess={fetchUsers}
+      />
       
-      {/* RBAC Dialogs */}
       <RoleManagementDialog 
-        open={roleDialogOpen} 
-        onOpenChange={setRoleDialogOpen} 
+        open={isRoleDialogOpen} 
+        onOpenChange={setIsRoleDialogOpen}
       />
+      
       <PermissionManagementDialog 
-        open={permissionDialogOpen} 
-        onOpenChange={setPermissionDialogOpen} 
+        open={isPermissionDialogOpen} 
+        onOpenChange={setIsPermissionDialogOpen}
       />
+      
       <UserRoleManagementDialog 
-        open={userRoleDialogOpen} 
-        onOpenChange={setUserRoleDialogOpen} 
+        open={isUserRoleDialogOpen} 
+        onOpenChange={setIsUserRoleDialogOpen}
+        selectedUser={selectedUser}
+      />
+      
+      <ProfileManagementDialog 
+        open={isProfileDialogOpen} 
+        onOpenChange={setIsProfileDialogOpen}
+        user={selectedUser}
+      />
+      
+      <UserPermissionsDialog 
+        open={isUserPermissionsDialogOpen} 
+        onOpenChange={setIsUserPermissionsDialogOpen}
+        user={selectedUser}
       />
     </div>
   );

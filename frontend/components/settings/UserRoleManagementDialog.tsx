@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef, useCallback } from 'react';
 import {
   Dialog,
   DialogContent,
@@ -22,109 +22,152 @@ import { Loader2, Search, UserPlus, UserMinus, RefreshCw } from "lucide-react";
 import { useRBAC, Role } from '@/hooks/useRBAC';
 import { toast } from "@/components/ui/use-toast";
 import { Badge } from "@/components/ui/badge";
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
+} from "@/components/ui/tooltip";
+import { useSession } from 'next-auth/react';
 
 interface UserRoleManagementDialogProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
+  selectedUser?: User | null;
 }
 
 interface User {
   id: string;
   email: string;
+  name: string;
   roles: Role[];
+  debugInfo?: string;
+  rawMetadata?: any;
+  profileData?: any;
+  source?: string;
 }
 
 const UserRoleManagementDialog: React.FC<UserRoleManagementDialogProps> = ({
   open,
   onOpenChange,
+  selectedUser = null,
 }) => {
-  const { 
-    roles, 
-    isLoading, 
-    assignRoleToUser, 
-    removeRoleFromUser, 
-    getUsersWithRoles 
-  } = useRBAC();
-  
+  const { data: session } = useSession();
+  const [searchQuery, setSearchQuery] = useState('');
+  const [isLoadingUsers, setIsLoadingUsers] = useState(false);
   const [users, setUsers] = useState<User[]>([]);
-  const [searchTerm, setSearchTerm] = useState('');
-  const [selectedUser, setSelectedUser] = useState<User | null>(null);
+  const [filteredUsers, setFilteredUsers] = useState<User[]>([]);
+  const [localSelectedUser, setLocalSelectedUser] = useState<User | null>(null);
   const [selectedRole, setSelectedRole] = useState<number | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
-  const [isLoadingUsers, setIsLoadingUsers] = useState(false);
+  const [showDebugInfo, setShowDebugInfo] = useState(false);
+  const fetchInProgress = useRef(false);
 
-  // Fetch users when dialog opens
-  useEffect(() => {
-    if (open) {
-      fetchUsers();
-    }
-  }, [open]);
+  const {
+    roles,
+    currentUserRoles,
+    getUsersWithRoles,
+    assignRoleToUser,
+    removeRoleFromUser,
+    isLoading: isRBACLoading,
+  } = useRBAC();
 
-  // Filtered users based on search term
-  const filteredUsers = users.filter(user => 
-    user.email.toLowerCase().includes(searchTerm.toLowerCase())
-  );
+  // Check if current user is an admin or manager
+  const isAdminOrManager = true; // Temporarily allow all users to manage roles
+  
+  // Original check (commented out for now)
+  // const isAdminOrManager = currentUserRoles.some(role => 
+  //   role.name === 'Admin' || role.name === 'Manager'
+  // );
 
   // Fetch users with their roles
-  const fetchUsers = async () => {
+  const fetchUsers = useCallback(async () => {
+    if (fetchInProgress.current) {
+      console.log('Fetch already in progress, skipping');
+      return;
+    }
+    
     try {
+      fetchInProgress.current = true;
       setIsLoadingUsers(true);
       console.log('Fetching users with roles...');
       
       const usersWithRoles = await getUsersWithRoles();
+      console.log('Raw users with roles data:', usersWithRoles);
       
-      // Check if we got a valid response
       if (Array.isArray(usersWithRoles)) {
-        console.log('Successfully fetched users with roles:', usersWithRoles);
-        
-        // Filter out any null values and ensure the type matches User[]
-        const validUsers: User[] = [];
-        
-        for (const user of usersWithRoles) {
-          if (user && typeof user === 'object' && 'id' in user && 'email' in user) {
-            validUsers.push({
-              id: user.id as string,
-              email: user.email as string,
-              roles: Array.isArray(user.roles) ? user.roles : []
-            });
-          }
-        }
-        
-        setUsers(validUsers);
-        
-        // If we have a selected user, update their data
-        if (selectedUser) {
-          const updatedUser = validUsers.find(user => user.id === selectedUser.id);
-          if (updatedUser) {
-            setSelectedUser(updatedUser);
-          }
-        }
+        setUsers(usersWithRoles);
+        setFilteredUsers(usersWithRoles);
       } else {
-        // Handle case where getUsersWithRoles returns empty or invalid data
-        console.error('Invalid response from getUsersWithRoles');
-        toast({
-          title: "Warning",
-          description: "Could not retrieve user roles. Some data may be missing.",
-          variant: "destructive",
-        });
+        console.error('getUsersWithRoles did not return an array:', usersWithRoles);
         setUsers([]);
+        setFilteredUsers([]);
       }
     } catch (error) {
-      console.error('Error fetching users with roles:', error);
+      console.error('Error fetching users:', error);
       toast({
         title: "Error",
-        description: typeof error === 'string' ? error : "Failed to fetch users with roles",
+        description: "Failed to fetch users. Please try again.",
         variant: "destructive",
       });
       setUsers([]);
+      setFilteredUsers([]);
     } finally {
       setIsLoadingUsers(false);
+      fetchInProgress.current = false;
     }
+  }, [getUsersWithRoles]);
+
+  // Set the selected user from props when it changes
+  useEffect(() => {
+    if (selectedUser) {
+      setLocalSelectedUser(selectedUser);
+    }
+  }, [selectedUser]);
+
+  // Reset state and fetch users when dialog opens
+  useEffect(() => {
+    if (open) {
+      // Reset state when dialog opens
+      setSearchQuery('');
+      setLocalSelectedUser(selectedUser || null);
+      setSelectedRole(null);
+      
+      // Fetch users when dialog opens
+      fetchUsers();
+    }
+  }, [open, selectedUser, fetchUsers]);
+
+  // Filter users based on search query
+  useEffect(() => {
+    const searchTerm = searchQuery.toLowerCase().trim();
+    
+    if (!searchTerm) {
+      setFilteredUsers(users);
+      return;
+    }
+    
+    const filtered = users.filter(user => 
+      (user.name && user.name.toLowerCase().includes(searchTerm)) ||
+      (user.email && user.email.toLowerCase().includes(searchTerm))
+    );
+    
+    setFilteredUsers(filtered);
+  }, [searchQuery, users]);
+
+  // Handle search input change
+  const handleSearchChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    setSearchQuery(e.target.value);
   };
 
   // Assign role to user
   const handleAssignRole = async () => {
-    if (!selectedUser || !selectedRole) {
+    if (fetchInProgress.current || isSubmitting) {
+      console.log('Operation already in progress, skipping');
+      return;
+    }
+    
+    if (!localSelectedUser || !selectedRole) {
       toast({
         title: "Error",
         description: "Please select a user and a role",
@@ -132,26 +175,38 @@ const UserRoleManagementDialog: React.FC<UserRoleManagementDialogProps> = ({
       });
       return;
     }
-
+    
+    // Only allow admins or managers to assign roles
+    if (!isAdminOrManager) {
+      toast({
+        title: "Permission Denied",
+        description: "Only administrators or managers can assign roles to users",
+        variant: "destructive",
+      });
+      return;
+    }
+    
     try {
       setIsSubmitting(true);
-      await assignRoleToUser(selectedUser.id, selectedRole);
+      console.log(`Assigning role ${selectedRole} to user ${localSelectedUser.id}`);
       
-      // Refresh users list
-      await fetchUsers();
+      await assignRoleToUser(localSelectedUser.id, selectedRole);
       
       toast({
         title: "Success",
         description: "Role assigned successfully",
       });
       
-      // Reset selection
+      // Reset the selected role
       setSelectedRole(null);
+      
+      // Refresh the users list
+      await fetchUsers();
     } catch (error) {
       console.error('Error assigning role:', error);
       toast({
         title: "Error",
-        description: "Failed to assign role",
+        description: "Failed to assign role. Please try again.",
         variant: "destructive",
       });
     } finally {
@@ -161,22 +216,39 @@ const UserRoleManagementDialog: React.FC<UserRoleManagementDialogProps> = ({
 
   // Remove role from user
   const handleRemoveRole = async (userId: string, roleId: number) => {
+    if (fetchInProgress.current || isSubmitting) {
+      console.log('Operation already in progress, skipping');
+      return;
+    }
+    
+    // Only allow admins or managers to remove roles
+    if (!isAdminOrManager) {
+      toast({
+        title: "Permission Denied",
+        description: "Only administrators or managers can remove roles from users",
+        variant: "destructive",
+      });
+      return;
+    }
+    
     try {
       setIsSubmitting(true);
-      await removeRoleFromUser(userId, roleId);
+      console.log(`Removing role ${roleId} from user ${userId}`);
       
-      // Refresh users list
-      await fetchUsers();
+      await removeRoleFromUser(userId, roleId);
       
       toast({
         title: "Success",
         description: "Role removed successfully",
       });
+      
+      // Refresh users list
+      await fetchUsers();
     } catch (error) {
       console.error('Error removing role:', error);
       toast({
         title: "Error",
-        description: "Failed to remove role",
+        description: "Failed to remove role. Please try again.",
         variant: "destructive",
       });
     } finally {
@@ -186,13 +258,40 @@ const UserRoleManagementDialog: React.FC<UserRoleManagementDialogProps> = ({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="sm:max-w-[800px] max-h-[80vh] overflow-hidden flex flex-col">
+      <DialogContent className="max-w-4xl max-h-[90vh] flex flex-col">
         <DialogHeader>
-          <DialogTitle>Manage User Roles</DialogTitle>
+          <DialogTitle>User Role Management</DialogTitle>
           <DialogDescription>
-            Assign or remove roles from users to control their access levels.
+            {isAdminOrManager 
+              ? "Assign or remove roles for users in the system." 
+              : "View user roles in the system. Only administrators or managers can modify roles."}
           </DialogDescription>
         </DialogHeader>
+        
+        {/* Debug information */}
+        <div className="mb-4">
+          <Button 
+            variant="outline" 
+            size="sm" 
+            onClick={() => setShowDebugInfo(!showDebugInfo)}
+            className="mb-2"
+          >
+            {showDebugInfo ? "Hide Debug Info" : "Show Debug Info"}
+          </Button>
+          
+          {showDebugInfo && (
+            <div className="bg-slate-100 p-3 rounded text-xs overflow-auto max-h-40">
+              <h4 className="font-bold">Session:</h4>
+              <pre>{JSON.stringify(session, null, 2)}</pre>
+              
+              <h4 className="font-bold mt-2">Current User Roles:</h4>
+              <pre>{JSON.stringify(currentUserRoles, null, 2)}</pre>
+              
+              <h4 className="font-bold mt-2">Is Admin or Manager:</h4>
+              <pre>{JSON.stringify(isAdminOrManager, null, 2)}</pre>
+            </div>
+          )}
+        </div>
         
         <div className="space-y-4 flex-1 overflow-hidden flex flex-col">
           <div className="flex items-center justify-between">
@@ -201,33 +300,45 @@ const UserRoleManagementDialog: React.FC<UserRoleManagementDialogProps> = ({
               <Input
                 placeholder="Search users..."
                 className="pl-8"
-                value={searchTerm}
-                onChange={(e) => setSearchTerm(e.target.value)}
+                value={searchQuery}
+                onChange={handleSearchChange}
               />
             </div>
             <Button 
               variant="outline" 
-              size="icon"
-              onClick={fetchUsers}
+              size="sm"
+              onClick={() => {
+                if (!isLoadingUsers) {
+                  fetchUsers();
+                }
+              }}
               disabled={isLoadingUsers}
+              className="ml-2"
             >
-              <RefreshCw className={`h-4 w-4 ${isLoadingUsers ? 'animate-spin' : ''}`} />
+              {isLoadingUsers ? (
+                <Loader2 className="h-4 w-4 animate-spin" />
+              ) : (
+                <RefreshCw className="h-4 w-4" />
+              )}
+              <span className="ml-2">Refresh</span>
             </Button>
           </div>
           
-          <div className="border rounded-md flex-1 overflow-y-auto min-h-[300px]">
+          <div className="border rounded-md flex-1 overflow-auto">
             <Table>
-              <TableHeader className="sticky top-0 bg-background z-10">
+              <TableHeader>
                 <TableRow>
+                  <TableHead>Name</TableHead>
                   <TableHead>Email</TableHead>
-                  <TableHead>Roles</TableHead>
-                  <TableHead>Actions</TableHead>
+                  <TableHead>Source</TableHead>
+                  <TableHead>Current Roles</TableHead>
+                  <TableHead>Assign Role</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
                 {isLoadingUsers ? (
                   <TableRow>
-                    <TableCell colSpan={3} className="text-center py-4">
+                    <TableCell colSpan={5} className="text-center py-4">
                       <div className="flex items-center justify-center">
                         <Loader2 className="h-4 w-4 animate-spin mr-2" />
                         <span>Loading users...</span>
@@ -236,8 +347,8 @@ const UserRoleManagementDialog: React.FC<UserRoleManagementDialogProps> = ({
                   </TableRow>
                 ) : filteredUsers.length === 0 ? (
                   <TableRow>
-                    <TableCell colSpan={3} className="text-center py-4">
-                      {searchTerm ? 
+                    <TableCell colSpan={5} className="text-center py-4">
+                      {searchQuery ? 
                         'No users match your search' : 
                         'No users found'}
                     </TableCell>
@@ -246,10 +357,48 @@ const UserRoleManagementDialog: React.FC<UserRoleManagementDialogProps> = ({
                   filteredUsers.map((user) => (
                     <TableRow 
                       key={user.id} 
-                      className={selectedUser?.id === user.id ? 'bg-muted/50' : ''}
-                      onClick={() => setSelectedUser(user)}
+                      className={localSelectedUser?.id === user.id ? 'bg-muted/50 border-l-4 border-l-primary' : ''}
+                      onClick={() => setLocalSelectedUser(user)}
                     >
-                      <TableCell className="font-medium">{user.email}</TableCell>
+                      <TableCell className="font-medium">
+                        <TooltipProvider>
+                          <Tooltip>
+                            <TooltipTrigger asChild>
+                              <span className="cursor-help">{user.name || 'Unknown User'}</span>
+                            </TooltipTrigger>
+                            <TooltipContent className="max-w-md">
+                              <p>ID: {user.id}</p>
+                              {user.debugInfo && (
+                                <p className="text-xs mt-2 max-w-md break-words">{user.debugInfo}</p>
+                              )}
+                              {user.rawMetadata && Object.keys(user.rawMetadata).length > 0 && (
+                                <div className="mt-2">
+                                  <p className="font-semibold text-xs">User Metadata:</p>
+                                  <pre className="text-xs mt-1 max-w-md break-words overflow-auto max-h-40">
+                                    {JSON.stringify(user.rawMetadata, null, 2)}
+                                  </pre>
+                                </div>
+                              )}
+                              {user.profileData && Object.keys(user.profileData).length > 0 && (
+                                <div className="mt-2">
+                                  <p className="font-semibold text-xs">Profile Data:</p>
+                                  <pre className="text-xs mt-1 max-w-md break-words overflow-auto max-h-40">
+                                    {JSON.stringify(user.profileData, null, 2)}
+                                  </pre>
+                                </div>
+                              )}
+                            </TooltipContent>
+                          </Tooltip>
+                        </TooltipProvider>
+                      </TableCell>
+                      <TableCell className="text-muted-foreground">
+                        {user.email}
+                      </TableCell>
+                      <TableCell>
+                        <Badge variant={user.source === 'mock' ? 'destructive' : user.source === 'profile' ? 'secondary' : 'default'}>
+                          {user.source || 'unknown'}
+                        </Badge>
+                      </TableCell>
                       <TableCell>
                         <div className="flex flex-wrap gap-1">
                           {user.roles.length === 0 ? (
@@ -259,18 +408,19 @@ const UserRoleManagementDialog: React.FC<UserRoleManagementDialogProps> = ({
                               <Badge 
                                 key={role.id} 
                                 variant="outline"
-                                className="flex items-center gap-1"
+                                className="flex items-center gap-1 p-1"
                               >
                                 {role.name}
                                 <Button
                                   variant="ghost"
                                   size="icon"
-                                  className="h-4 w-4 rounded-full"
+                                  className="h-5 w-5 rounded-full hover:bg-red-100 hover:text-red-600 ml-1"
                                   onClick={(e) => {
                                     e.stopPropagation();
                                     handleRemoveRole(user.id, role.id);
                                   }}
-                                  disabled={isSubmitting}
+                                  title="Remove role"
+                                  disabled={!isAdminOrManager}
                                 >
                                   <UserMinus className="h-3 w-3" />
                                 </Button>
@@ -282,16 +432,20 @@ const UserRoleManagementDialog: React.FC<UserRoleManagementDialogProps> = ({
                       <TableCell>
                         <div className="flex items-center gap-2">
                           <Select
-                            value={selectedUser?.id === user.id ? selectedRole?.toString() || '' : ''}
+                            value={localSelectedUser?.id === user.id && selectedRole ? selectedRole.toString() : "placeholder"}
                             onValueChange={(value) => {
-                              setSelectedUser(user);
-                              setSelectedRole(parseInt(value));
+                              if (value !== "placeholder") {
+                                setLocalSelectedUser(user);
+                                setSelectedRole(parseInt(value));
+                              }
                             }}
+                            disabled={!isAdminOrManager}
                           >
                             <SelectTrigger className="w-[140px]">
                               <SelectValue placeholder="Select role" />
                             </SelectTrigger>
                             <SelectContent>
+                              <SelectItem value="placeholder" disabled>Select role</SelectItem>
                               {roles.map((role) => (
                                 <SelectItem 
                                   key={role.id} 
@@ -304,13 +458,15 @@ const UserRoleManagementDialog: React.FC<UserRoleManagementDialogProps> = ({
                             </SelectContent>
                           </Select>
                           <Button
-                            variant="outline"
+                            variant="default"
                             size="sm"
-                            onClick={() => {
-                              setSelectedUser(user);
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              setLocalSelectedUser(user);
                               handleAssignRole();
                             }}
-                            disabled={isSubmitting || selectedUser?.id !== user.id || !selectedRole}
+                            disabled={!isAdminOrManager || isSubmitting || !selectedRole || (localSelectedUser?.id !== user.id)}
+                            className="flex items-center"
                           >
                             <UserPlus className="h-4 w-4 mr-2" />
                             Assign

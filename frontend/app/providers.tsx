@@ -7,7 +7,7 @@ import { Toaster } from 'sonner';
 
 export function Providers({ children }: { children: ReactNode }) {
   return (
-    <SessionProvider>
+    <SessionProvider refetchInterval={0} refetchOnWindowFocus={false}>
       <AuthProvider>
         {children}
         <Toaster position="top-right" richColors />

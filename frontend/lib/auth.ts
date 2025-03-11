@@ -3,6 +3,12 @@ import CredentialsProvider from "next-auth/providers/credentials";
 import type { JWT } from "next-auth/jwt";
 import type { Session } from "next-auth";
 
+// Default UUID to use as fallback if a non-UUID ID is encountered
+const DEFAULT_UUID = "00000000-0000-0000-0000-000000000000";
+
+// UUID validation regex
+const UUID_REGEX = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
 export const authOptions: NextAuthOptions = {
   providers: [
     CredentialsProvider({
@@ -21,7 +27,7 @@ export const authOptions: NextAuthOptions = {
           // In production, you would validate against your database
           if (credentials.email === "admin@example.com" && credentials.password === "password123") {
             return {
-              id: "1",
+              id: "7007305b-1d08-49ae-9aa3-680eb8394a76",
               name: "Admin User",
               email: "admin@example.com",
               role: "admin",
@@ -31,7 +37,7 @@ export const authOptions: NextAuthOptions = {
           
           if (credentials.email === "user@example.com" && credentials.password === "password123") {
             return {
-              id: "2",
+              id: "8107305b-2e09-59bf-9bb4-790eb8394b87",
               name: "Regular User",
               email: "user@example.com",
               role: "user",
@@ -56,8 +62,21 @@ export const authOptions: NextAuthOptions = {
     async jwt({ token, user }) {
       // Add custom user data to the JWT token
       if (user) {
-        // Use type assertion to ensure type safety
-        token.id = user.id || "";
+        // Ensure user ID is a valid UUID
+        if (user.id && typeof user.id === 'string') {
+          // If it's already a valid UUID, use it
+          if (UUID_REGEX.test(user.id)) {
+            token.id = user.id;
+          } else {
+            // If it's not a valid UUID (e.g., numeric ID), log a warning and use default UUID
+            console.warn(`Converting non-UUID user ID to default UUID. Original ID: ${user.id}`);
+            token.id = DEFAULT_UUID;
+          }
+        } else {
+          // If no ID is provided, use default UUID
+          token.id = DEFAULT_UUID;
+        }
+        
         token.role = (user as any).role || "user";
       }
       return token;
@@ -65,8 +84,15 @@ export const authOptions: NextAuthOptions = {
     async session({ session, token }) {
       // Add custom user data to the session
       if (session.user) {
-        // Use type assertion to ensure type safety
-        session.user.id = token.id || "";
+        // Ensure user ID is a valid UUID
+        if (token.id && typeof token.id === 'string' && UUID_REGEX.test(token.id)) {
+          session.user.id = token.id;
+        } else {
+          // Use default UUID if token.id is not a valid UUID
+          console.warn(`Using default UUID for session. Token ID: ${token.id}`);
+          session.user.id = DEFAULT_UUID;
+        }
+        
         session.user.role = (token as any).role || "user";
       }
       return session;
@@ -77,5 +103,6 @@ export const authOptions: NextAuthOptions = {
     signOut: "/auth/login",
     error: "/auth/login",
   },
+  secret: process.env.NEXTAUTH_SECRET,
   debug: process.env.NODE_ENV === "development",
 }; 

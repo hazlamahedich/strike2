@@ -6,6 +6,11 @@ export async function middleware(req: NextRequest) {
   // Get the pathname
   const { pathname } = req.nextUrl;
   
+  // Skip middleware for NextAuth API routes
+  if (pathname.startsWith('/api/auth')) {
+    return NextResponse.next();
+  }
+  
   // Get the NextAuth.js session token
   const token = await getToken({ req, secret: process.env.NEXTAUTH_SECRET });
   const isAuthenticated = !!token;

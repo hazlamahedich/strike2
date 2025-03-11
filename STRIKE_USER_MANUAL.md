@@ -57,6 +57,7 @@
     - [Developer Settings](#developer-settings)
 11. [System Administration](#system-administration)
     - [Role-Based Access Control](#role-based-access-control)
+    - [User Lifecycle Management](#user-lifecycle-management)
     - [Audit Logs](#audit-logs)
     - [Integration Management](#integration-management)
     - [Ticketing System](#ticketing-system)
@@ -1214,11 +1215,9 @@ The Developer Settings also include API configuration options:
 STRIKE implements a comprehensive role-based access control (RBAC) system to ensure appropriate access to features and data:
 
 1. **Predefined Roles**:
-   - **Administrator**: Full system access and configuration rights
-   - **Manager**: Team management and reporting access
-   - **Sales Rep**: Standard CRM functionality for assigned leads
-   - **Marketing**: Campaign management and analytics access
-   - **Support**: Limited access focused on customer service
+   - **Admin**: Full system access with all permissions
+   - **Manager**: Can manage campaigns, leads, and view analytics
+   - **Agent**: Can interact with leads and campaigns
    - **Viewer**: Read-only access to specific data
 
 2. **Role Management**:
@@ -1252,6 +1251,49 @@ STRIKE implements a comprehensive role-based access control (RBAC) system to ens
    - Regular access reviews
    - Permission usage reports
    - Compliance documentation
+
+### User Lifecycle Management
+
+STRIKE provides comprehensive user lifecycle management to maintain security and data integrity:
+
+1. **User States**:
+   - **Active**: Users with full access according to their assigned roles
+   - **Inactive**: Temporarily disabled accounts that retain their role assignments
+   - **Deactivated**: Permanently disabled accounts with all permissions removed
+   - **Archived**: User data moved to archive storage after the retention period
+
+2. **State Transitions**:
+   - **Active → Inactive**: Temporary suspension (e.g., leave of absence)
+   - **Active/Inactive → Deactivated**: Permanent removal of access
+   - **Deactivated → Archived**: Automatic after 60 days
+
+3. **Deactivation Process**:
+   - All role assignments are removed and stored in history
+   - User is marked as deactivated with timestamp
+   - Scheduled for archival after 60 days
+   - Cannot log in or access any system features
+
+4. **Archival Process**:
+   - After 60 days, deactivated user data is moved to archive storage
+   - Original user record is removed from active users table
+   - Archived data is accessible only to administrators for audit purposes
+
+5. **Reactivation**:
+   - Inactive users can be easily reactivated with all roles intact
+   - Deactivated users require manual role reassignment if reactivated
+   - Archived users cannot be reactivated (new account required)
+
+6. **Managing User States**:
+   - From Settings > User Management, select a user
+   - Use the Actions menu to change user state
+   - Set Active: Enables full access
+   - Set Inactive: Temporarily disables access
+   - Deactivate: Permanently removes access and schedules archival
+
+7. **Security Considerations**:
+   - Regular audit of user accounts and states
+   - Prompt deactivation of departing employees
+   - Periodic review of inactive accounts
 
 ### Audit Logs
 

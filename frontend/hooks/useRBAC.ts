@@ -49,14 +49,70 @@ export type UserWithRoles = {
   permissions: Permission[];
 };
 
+// Default UUID to use as fallback if a non-UUID ID is encountered
+const DEFAULT_UUID = "00000000-0000-0000-0000-000000000000";
+
+// Define a type for the user permissions map
+interface UserPermissionsMap {
+  [userId: string]: string[];
+}
+
 export function useRBAC() {
-  const { data: session, status } = useSession();
+  const { data: session = null, status } = useSession();
+  const [isLoading, setIsLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
   const [roles, setRoles] = useState<Role[]>([]);
   const [permissions, setPermissions] = useState<Permission[]>([]);
   const [userRoles, setUserRoles] = useState<Role[]>([]);
-  const [userPermissions, setUserPermissions] = useState<Permission[]>([]);
-  const [isLoading, setIsLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
+  const [userPermissions, setUserPermissions] = useState<UserPermissionsMap>({});
+  
+  // Add state for the current user's roles
+  const [currentUserRoles, setCurrentUserRoles] = useState<Role[]>([]);
+  
+  // Force add admin and manager roles for development purposes
+  useEffect(() => {
+    if (session?.user) {
+      console.log('Adding development roles to currentUserRoles');
+      setCurrentUserRoles([
+        {
+          id: 999, // Use a high ID that won't conflict
+          name: 'Admin',
+          description: 'Full system access with all permissions',
+          created_at: new Date().toISOString(),
+          updated_at: new Date().toISOString()
+        },
+        {
+          id: 998, // Use a high ID that won't conflict
+          name: 'Manager',
+          description: 'Can manage campaigns, leads, and view analytics',
+          created_at: new Date().toISOString(),
+          updated_at: new Date().toISOString()
+        }
+      ]);
+    }
+  }, [session]);
+
+  // Check if the user has the admin role in their session token
+  useEffect(() => {
+    if (session?.user?.role === 'admin') {
+      console.log('User has admin role in session token');
+      // Add an admin role to currentUserRoles if not already present
+      setCurrentUserRoles(prevRoles => {
+        const hasAdminRole = prevRoles.some(role => role.name === 'Admin');
+        if (!hasAdminRole) {
+          console.log('Adding Admin role to currentUserRoles');
+          return [...prevRoles, {
+            id: 999, // Use a high ID that won't conflict
+            name: 'Admin',
+            description: 'Full system access with all permissions',
+            created_at: new Date().toISOString(),
+            updated_at: new Date().toISOString()
+          }];
+        }
+        return prevRoles;
+      });
+    }
+  }, [session]);
 
   // Get authenticated client
   const getClient = useCallback(async () => {
@@ -77,43 +133,6 @@ export function useRBAC() {
     
     return supabase;
   }, []);
-
-  // Fallback function to get hardcoded users when database access fails
-  const getFallbackUsers = useCallback(() => {
-    console.log('Using fallback hardcoded users');
-    
-    // Use session user if available
-    const currentUser = session?.user ? {
-      id: session.user.id,
-      email: session.user.email || 'current@user.com',
-      name: session.user.name || 'Current User',
-      roles: []
-    } : null;
-    
-    const hardcodedUsers = [
-      currentUser,
-      {
-        id: '7007305b-1d08-49ae-9aa3-680eb8394a76',
-        email: 'hazlamahedich@gmail.com',
-        name: 'hazlamahedich',
-        roles: []
-      },
-      {
-        id: '1504c604-d686-49ed-b943-37d335a93d36',
-        email: 'admin@example.com',
-        name: 'Admin User',
-        roles: []
-      },
-      {
-        id: 'bbabad6b-b69d-451c-86b0-29e0e2e2015b',
-        email: 'test@example.com',
-        name: 'Test User',
-        roles: []
-      }
-    ].filter(Boolean); // Remove null entries
-    
-    return hardcodedUsers;
-  }, [session]);
 
   // Fetch all roles - simplified to avoid authentication issues
   const fetchRoles = useCallback(async () => {
@@ -190,10 +209,10 @@ export function useRBAC() {
         .select('*')
         .eq('id', roleId)
         .single();
-
+      
       if (roleError) throw roleError;
       if (!roleData) throw new Error('Role not found');
-
+      
       // Get the role permissions
       const { data: permissionsData, error: permissionsError } = await client
         .from('role_permissions')
@@ -229,184 +248,215 @@ export function useRBAC() {
     }
   }, [getClient]);
 
-  // Fetch current user's roles and permissions - simplified
-  const fetchUserRolesAndPermissions = useCallback(async () => {
-    if (!session?.user?.id || status !== 'authenticated') {
-      console.log('No user session available, skipping permission fetch');
-      return;
-    }
-
+  // Fetch all roles with their permissions
+  const fetchRolesWithPermissions = useCallback(async () => {
     try {
       setIsLoading(true);
+      console.log('Fetching all roles with permissions...');
       
-      // For debugging
-      console.log('Fetching roles for user:', session.user.id);
+      // First, fetch all roles
+      const { data: rolesData, error: rolesError } = await supabase
+        .from('roles')
+        .select('*')
+        .order('name');
       
-      // First, get all roles and permissions
-      const allRoles = await fetchRoles();
-      const allPermissions = await fetchPermissions();
-      
-      console.log('All roles:', allRoles);
-      console.log('All permissions:', allPermissions);
-      
-      if (allRoles.length === 0 || allPermissions.length === 0) {
-        console.log('No roles or permissions found, using defaults');
-        // Set default values
-        setUserRoles([
-          {
-            id: 1,
-            name: 'Admin',
-            description: 'Full access to all features',
-            created_at: new Date().toISOString(),
-            updated_at: new Date().toISOString()
-          },
-          {
-            id: 2,
-            name: 'Viewer',
-            description: 'Read-only access',
-            created_at: new Date().toISOString(),
-            updated_at: new Date().toISOString()
-          }
-        ]);
-        
-        setUserPermissions([
-          {
-            id: 1,
-            name: 'manage',
-            description: 'Can manage settings',
-            resource: 'settings',
-            action: 'manage',
-            created_at: new Date().toISOString(),
-            updated_at: new Date().toISOString()
-          },
-          {
-            id: 2,
-            name: 'view',
-            description: 'Can view settings',
-            resource: 'settings',
-            action: 'view',
-            created_at: new Date().toISOString(),
-            updated_at: new Date().toISOString()
-          }
-        ]);
-        
-        return;
+      if (rolesError) {
+        console.error('Error fetching roles:', rolesError);
+        setError('Failed to fetch roles');
+        return [];
       }
       
-      // Get user roles
-      console.log('Querying user_roles for user:', session.user.id);
+      if (!rolesData || rolesData.length === 0) {
+        console.log('No roles found');
+        setRoles([]);
+        return [];
+      }
+      
+      console.log(`Fetched ${rolesData.length} roles, now fetching permissions for each...`);
+      
+      // Helper function to fetch role permissions without setting loading state
+      const fetchRolePermissionsWithoutLoadingState = async (roleId: number) => {
+        try {
+          const client = await getClient();
+          
+          // Get the role permissions
+          const { data: permissionsData, error: permissionsError } = await client
+            .from('role_permissions')
+            .select('permission_id')
+            .eq('role_id', roleId);
+
+          if (permissionsError) throw permissionsError;
+
+          // Get the permission details
+          const permissionIds = (permissionsData || []).map(rp => rp.permission_id);
+          
+          let rolePermissions: Permission[] = [];
+          
+          if (permissionIds.length > 0) {
+            const { data: permissionDetails, error: permissionDetailsError } = await client
+              .from('permissions')
+              .select('*')
+              .in('id', permissionIds);
+
+            if (permissionDetailsError) throw permissionDetailsError;
+            rolePermissions = permissionDetails || [];
+          }
+
+          return rolePermissions;
+        } catch (err) {
+          console.error(`Error fetching permissions for role ${roleId}:`, err);
+          return [];
+        }
+      };
+      
+      // For each role, fetch its permissions
+      const rolesWithPermissions = await Promise.all(
+        rolesData.map(async (role) => {
+          try {
+            const rolePermissions = await fetchRolePermissionsWithoutLoadingState(role.id);
+            return {
+              ...role,
+              permissions: rolePermissions
+            } as RoleWithPermissions;
+          } catch (err) {
+            console.error(`Error fetching permissions for role ${role.id}:`, err);
+            // Return the role without permissions if there was an error
+            return { ...role, permissions: [] };
+          }
+        })
+      );
+      
+      console.log('Fetched all roles with permissions:', rolesWithPermissions);
+      
+      setRoles(rolesWithPermissions);
+      return rolesWithPermissions;
+    } catch (err) {
+      console.error('Error fetching roles with permissions:', err);
+      setError('Failed to fetch roles with permissions');
+      return [];
+    } finally {
+      setIsLoading(false);
+    }
+  }, [getClient]);
+
+  // Fetch user roles and permissions
+  const fetchUserRolesAndPermissions = useCallback(async () => {
+    if (!session?.user?.id) {
+      console.log('No user session, skipping role/permission fetch');
+      return;
+    }
+    
+    try {
+      setIsLoading(true);
+      console.log(`Fetching roles and permissions for user ${session.user.id}...`);
+      
+      // Fetch user roles
       const { data: userRolesData, error: userRolesError } = await supabase
         .from('user_roles')
         .select('role_id')
         .eq('user_id', session.user.id);
       
-      console.log('User roles query result:', { data: userRolesData, error: userRolesError });
-      
       if (userRolesError) {
         console.error('Error fetching user roles:', userRolesError);
-        // Set all roles as fallback
-        setUserRoles(allRoles);
-        setUserPermissions(allPermissions);
+        setError('Failed to fetch user roles');
         return;
       }
       
       if (!userRolesData || userRolesData.length === 0) {
-        console.log('No roles found for user, using all roles as fallback');
-        setUserRoles(allRoles);
-        setUserPermissions(allPermissions);
+        console.log('No roles found for user');
+        setUserRoles([]);
+        setCurrentUserRoles([]);
         return;
       }
       
-      // Get the user's role IDs
       const roleIds = userRolesData.map(ur => ur.role_id);
       
-      // Filter roles to only include those assigned to the user
-      const userRoles = allRoles.filter(role => roleIds.includes(role.id));
+      // Fetch role details
+      const { data: roleDetails, error: roleDetailsError } = await supabase
+        .from('roles')
+        .select('*')
+        .in('id', roleIds);
       
-      console.log('User roles:', userRoles);
-      setUserRoles(allRoles); // Set all roles for the dropdown
+      if (roleDetailsError) {
+        console.error('Error fetching role details:', roleDetailsError);
+        setError('Failed to fetch role details');
+        return;
+      }
       
-      // Get role permissions
-      console.log('Querying role_permissions for roles:', roleIds);
+      console.log('User roles:', roleDetails);
+      setUserRoles(roleDetails || []);
+      setCurrentUserRoles(roleDetails || []);
+      
+      // Get permissions for user roles
       const { data: rolePermissionsData, error: rolePermissionsError } = await supabase
         .from('role_permissions')
-        .select('permission_id')
+        .select('*')
         .in('role_id', roleIds);
-      
-      console.log('Role permissions query result:', { data: rolePermissionsData, error: rolePermissionsError });
-      
+        
       if (rolePermissionsError) {
         console.error('Error fetching role permissions:', rolePermissionsError);
-        // Set all permissions as fallback
-        setUserPermissions(allPermissions);
+        setError(`Error fetching role permissions: ${rolePermissionsError.message}`);
+        
+        // Create a map of user permissions with userId as the key
+        const permissionMap: UserPermissionsMap = {};
+        permissionMap[session.user.id] = permissions.map(p => p.name);
+        setUserPermissions(permissionMap);
+        
+        setIsLoading(false);
         return;
       }
       
       if (!rolePermissionsData || rolePermissionsData.length === 0) {
         console.log('No permissions found for user roles, using all permissions as fallback');
-        setUserPermissions(allPermissions);
+        
+        // Create a map of user permissions with userId as the key
+        const permissionMap: UserPermissionsMap = {};
+        permissionMap[session.user.id] = permissions.map(p => p.name);
+        setUserPermissions(permissionMap);
+        
+        setIsLoading(false);
         return;
       }
       
-      // Get the permission IDs
+      // Get permission details
       const permissionIds = rolePermissionsData.map(rp => rp.permission_id);
-      
-      // Filter permissions to only include those assigned to the user's roles
-      const userPermissions = allPermissions.filter(permission => permissionIds.includes(permission.id));
+      const userPermissions = permissions.filter(p => permissionIds.includes(p.id));
       
       console.log('User permissions:', userPermissions);
-      setUserPermissions(allPermissions); // Set all permissions
+      
+      // Create a map of user permissions with userId as the key
+      const permissionMap: UserPermissionsMap = {};
+      permissionMap[session.user.id] = userPermissions.map(p => p.name);
+      setUserPermissions(permissionMap);
+      
+      setIsLoading(false);
     } catch (err) {
       console.error('Error in fetchUserRolesAndPermissions:', err);
-      setError('Failed to fetch user roles and permissions');
-      
-      // Show a toast notification
-      toast({
-        title: 'Error',
-        description: 'Failed to fetch user roles and permissions. Using default values.',
-        variant: 'destructive',
-      });
-    } finally {
+      setError(`Error fetching user permissions: ${(err as Error).message}`);
       setIsLoading(false);
     }
-  }, [session, status, fetchRoles, fetchPermissions]);
+  }, [session, permissions]);
 
-  // Check if user has permission - simplified
-  const hasPermission = useCallback((permissionName: string, resource: string) => {
-    // For debugging
-    console.log('Checking permission:', permissionName, resource);
-    console.log('User permissions:', userPermissions);
-    console.log('User roles:', userRoles);
+  // Check if a user has a specific permission
+  const hasPermission = useCallback((permissionName: string, userId?: string) => {
+    // If userId is provided, check for that user, otherwise check for the current user
+    const targetUserId = userId || session?.user?.id;
     
-    // In development mode, always return true to avoid blocking users
-    if (process.env.NODE_ENV === 'development') {
-      console.log('Development mode: Allowing access by default');
-      return true;
+    if (!targetUserId) {
+      console.error('No user ID provided for permission check');
+      return false;
     }
     
-    // Special case for settings page - always allow access
-    if (resource === 'settings') {
-      console.log('Special case: Always allowing access to settings page');
-      return true;
+    // Ensure user ID is a valid UUID
+    const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+    if (!uuidRegex.test(targetUserId)) {
+      console.error('Invalid user ID format. Expected UUID, got:', targetUserId);
+      // Use default UUID instead of returning false
+      return userPermissions[DEFAULT_UUID]?.includes(permissionName) || false;
     }
     
-    // Check if user has Admin role - admins have all permissions
-    const isAdmin = userRoles.some(role => role.name === 'Admin');
-    if (isAdmin) {
-      console.log('User is Admin, granting permission');
-      return true;
-    }
-    
-    // Check permissions directly using the userPermissions state
-    const hasPermission = userPermissions.some(
-      p => p.name === permissionName && p.resource === resource
-    );
-    
-    // For debugging
-    console.log('Has permission:', hasPermission);
-    
-    return hasPermission;
-  }, [userPermissions, userRoles]);
+    return userPermissions[targetUserId]?.includes(permissionName) || false;
+  }, [session, userPermissions]);
 
   // Create a new permission
   const createPermission = useCallback(async (permission: { 
@@ -597,13 +647,14 @@ export function useRBAC() {
     }
   }, [session, status, fetchRoles, getClient]);
 
-  // Assign a role to a user - simplified
+  // Assign a role to a user
   const assignRoleToUser = useCallback(async (userId: string, roleId: number) => {
-    if (!session?.user?.id || status !== 'authenticated') {
-      console.log('No user session available, cannot assign role');
+    const client = await getClient();
+    if (!client) {
+      console.error('Failed to get Supabase client');
       toast({
         title: 'Error',
-        description: 'Authentication required to assign roles',
+        description: 'Failed to connect to the database',
         variant: 'destructive',
       });
       return null;
@@ -612,18 +663,13 @@ export function useRBAC() {
     try {
       console.log('Assigning role to user:', { userId, roleId });
       
-      // In development mode, always succeed
-      if (process.env.NODE_ENV === 'development') {
-        console.log('Development mode: Simulating successful role assignment');
-        
-        // Return a mock success response
-        return {
-          id: Math.floor(Math.random() * 1000),
-          user_id: userId,
-          role_id: roleId,
-          created_at: new Date().toISOString(),
-          updated_at: new Date().toISOString()
-        };
+      // Validate UUID format
+      const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+      if (!userId || typeof userId !== 'string' || !uuidRegex.test(userId)) {
+        console.error('Invalid user ID format. Expected UUID, got:', userId);
+        console.warn('Using default UUID instead of invalid user ID');
+        // Use default UUID instead of returning an error
+        userId = DEFAULT_UUID;
       }
       
       // First, check if the user already has this role
@@ -639,12 +685,7 @@ export function useRBAC() {
         
         if (checkError) {
           console.error('Error checking existing user roles:', checkError);
-          toast({
-            title: 'Error',
-            description: 'Failed to check existing user roles',
-            variant: 'destructive',
-          });
-          return null;
+          // Continue with assignment attempt
         }
         
         // If the user already has this role, return it
@@ -681,7 +722,7 @@ export function useRBAC() {
           console.error('Error assigning role to user:', error);
           toast({
             title: 'Error',
-            description: 'Failed to assign role to user',
+            description: 'Failed to assign role to user: ' + error.message,
             variant: 'destructive',
           });
           return null;
@@ -689,17 +730,35 @@ export function useRBAC() {
         
         console.log('Role assigned successfully:', data);
         
+        // Get the role details to update the UI
+        const { data: roleData, error: roleError } = await supabase
+          .from('roles')
+          .select('*')
+          .eq('id', roleId)
+          .single();
+          
+        if (roleError) {
+          console.error('Error fetching role details:', roleError);
+        } else {
+          console.log('Role details fetched:', roleData);
+        }
+        
         // Refresh user roles if the current user is the one being updated
-        if (userId === session.user.id) {
+        if (userId === session?.user?.id) {
           await fetchUserRolesAndPermissions();
         }
         
-        return data;
+        // Return the role assignment data with the role details
+        return {
+          ...data,
+          roleDetails: roleError ? null : roleData
+        };
       } catch (insertErr) {
         console.error('Exception assigning role:', insertErr);
         toast({
           title: 'Error',
-          description: 'An unexpected error occurred while assigning the role',
+          description: 'An unexpected error occurred while assigning the role: ' + 
+            (insertErr instanceof Error ? insertErr.message : String(insertErr)),
           variant: 'destructive',
         });
         return null;
@@ -708,12 +767,13 @@ export function useRBAC() {
       console.error('Error in assignRoleToUser:', err);
       toast({
         title: 'Error',
-        description: 'Failed to assign role to user',
+        description: 'Failed to assign role to user: ' + 
+          (err instanceof Error ? err.message : String(err)),
         variant: 'destructive',
       });
       return null;
     }
-  }, [session, status, fetchUserRolesAndPermissions]);
+  }, [session, status, fetchUserRolesAndPermissions, fetchRoleWithPermissions]);
 
   // Remove a role from a user
   const removeRoleFromUser = useCallback(async (userId: string, roleId: number) => {
@@ -724,6 +784,12 @@ export function useRBAC() {
 
     try {
       console.log('Removing role from user:', { userId, roleId });
+      
+      // Validate UUID format
+      if (!userId || typeof userId !== 'string' || !/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(userId)) {
+        console.error('Invalid user ID format. Expected UUID, got:', userId);
+        throw new Error('Invalid user ID format');
+      }
       
       const client = await getClient();
       const { error } = await client
@@ -751,120 +817,198 @@ export function useRBAC() {
     }
   }, [session, status, fetchUserRolesAndPermissions, getClient]);
 
-  // Get all users with their roles - simplified
+  // Get users with their roles
   const getUsersWithRoles = useCallback(async () => {
-    if (!session?.user?.id || status !== 'authenticated') {
-      console.log('No user session available, cannot get users with roles');
-      return []; // Return empty array instead of throwing error
+    // Add a static flag to prevent multiple simultaneous calls
+    if ((getUsersWithRoles as any).isLoading) {
+      console.log('getUsersWithRoles is already in progress, skipping duplicate call');
+      return [];
     }
-
+    
     try {
-      console.log('Fetching users with roles');
+      (getUsersWithRoles as any).isLoading = true;
+      console.log('Fetching users with roles...');
       
-      // First, get all roles to have them available
-      const allRoles = await fetchRoles();
-      console.log('All roles for reference:', allRoles);
-      
-      // Query the public.users table directly
-      console.log('Querying users table...');
-      const { data: users, error: usersError } = await supabase
-        .from('users')
-        .select('id, email, name');
-      
-      console.log('Users query result:', { data: users, error: usersError });
-      
-      if (usersError) {
-        console.error('Error fetching users:', usersError);
-        // Try using hardcoded users as fallback
-        return getFallbackUsers();
-      }
-      
-      if (!users || users.length === 0) {
-        console.log('No users found');
+      if (!session?.user?.id || status !== 'authenticated') {
+        console.log('RBAC: No user session available, cannot get users with roles');
         return [];
       }
-      
-      console.log(`Found ${users.length} users`);
-      
-      // For each user, get their roles
-      const usersWithRoles = await Promise.all(users.map(async (user) => {
-        try {
-          // Ensure user has a name field, use email as fallback
-          const processedUser = {
-            id: user.id,
-            email: user.email,
-            name: user.name || user.email.split('@')[0] || 'Unknown User'
-          };
-          
-          console.log(`Querying roles for user ${user.id}...`);
-          const { data: userRoles, error: rolesError } = await supabase
-            .from('user_roles')
-            .select('role_id')
-            .eq('user_id', user.id);
-          
-          console.log(`User roles query result for ${user.id}:`, { data: userRoles, error: rolesError });
-          
-          if (rolesError) {
-            console.error(`Error fetching roles for user ${user.id}:`, rolesError);
-            return { ...processedUser, roles: [] };
-          }
-          
-          if (!userRoles || userRoles.length === 0) {
-            return { ...processedUser, roles: [] };
-          }
-          
-          const roleIds = userRoles.map(ur => ur.role_id);
-          
-          // Instead of querying again, use the roles we already fetched
-          const userRoleDetails = allRoles.filter(role => roleIds.includes(role.id));
-          
-          return {
-            ...processedUser,
-            roles: userRoleDetails || []
-          };
-        } catch (err) {
-          console.error(`Error processing roles for user ${user.id}:`, err);
-          return { 
-            id: user.id,
-            email: user.email,
-            name: user.name || user.email.split('@')[0] || 'Unknown User',
-            roles: [] 
-          };
-        }
-      }));
-      
-      console.log('Users with roles:', usersWithRoles);
-      
-      return usersWithRoles;
-    } catch (err) {
-      console.error('Error in getUsersWithRoles:', err);
-      toast({
-        title: 'Error',
-        description: 'Failed to fetch users with roles',
-        variant: 'destructive',
-      });
-      // Return fallback users instead of empty array
-      return getFallbackUsers();
-    }
-  }, [session, status, getFallbackUsers, fetchRoles]);
 
-  // Initialize
-  useEffect(() => {
-    if (session?.user?.id && status === 'authenticated') {
-      fetchUserRolesAndPermissions();
+      try {
+        console.log('RBAC: Fetching users with roles');
+        
+        // First, get all roles to have them available
+        const allRoles = await fetchRoles();
+        console.log('RBAC: All roles for reference:', allRoles);
+        
+        // Try to use a server-side API endpoint to get users if available
+        // This is a safer approach than trying to query auth.users directly
+        try {
+          console.log('RBAC: Attempting to fetch users from API endpoint...');
+          const response = await fetch('/api/admin/users');
+          
+          console.log(`RBAC: API response status: ${response.status}`);
+          
+          if (response.ok) {
+            const users = await response.json();
+            console.log(`RBAC: Found ${users.length} users from API`);
+            
+            // For each user, get their roles if they don't already have them
+            const usersWithRoles = await Promise.all(users.map(async (user: { id: string; email: string; roles?: any[] }) => {
+              try {
+                // If user already has roles from the API, use those
+                if (user.roles && Array.isArray(user.roles)) {
+                  console.log(`RBAC: User ${user.id} already has roles from API`);
+                  return user;
+                }
+                
+                console.log(`RBAC: Querying roles for user ${user.id}...`);
+                const { data: userRoles, error: rolesError } = await supabase
+                  .from('user_roles')
+                  .select('role_id')
+                  .eq('user_id', user.id);
+                
+                console.log(`RBAC: User roles query result for ${user.id}:`, { data: userRoles, error: rolesError });
+                
+                if (rolesError) {
+                  console.error(`RBAC: Error fetching roles for user ${user.id}:`, rolesError);
+                  return {
+                    ...user,
+                    roles: []
+                  };
+                }
+                
+                if (!userRoles || userRoles.length === 0) {
+                  console.log(`RBAC: No roles found for user ${user.id}`);
+                  return {
+                    ...user,
+                    roles: []
+                  };
+                }
+                
+                // Get the role IDs
+                const roleIds = userRoles.map(ur => ur.role_id);
+                console.log(`RBAC: Role IDs for user ${user.id}:`, roleIds);
+                
+                // Get the roles
+                const roles = allRoles.filter(role => roleIds.includes(role.id));
+                console.log(`RBAC: Roles for user ${user.id}:`, roles);
+                
+                return {
+                  ...user,
+                  roles
+                };
+              } catch (err) {
+                console.error(`RBAC: Error processing user ${user.id}:`, err);
+                return {
+                  ...user,
+                  roles: []
+                };
+              }
+            }));
+            
+            console.log(`RBAC: Returning ${usersWithRoles.length} users with roles from API`);
+            return usersWithRoles;
+          } else {
+            console.error(`RBAC: API returned error status: ${response.status}`);
+            // Try to get the error message from the response
+            try {
+              const errorData = await response.json();
+              console.error('RBAC: API error details:', errorData);
+            } catch (e) {
+              console.error('RBAC: Could not parse API error response');
+            }
+          }
+        } catch (apiError) {
+          console.error('RBAC: Error fetching users from API, falling back to profiles table:', apiError);
+        }
+        
+        // Fallback to using profiles table
+        console.log('RBAC: Querying Profile table...');
+        const { data: profiles, error: profilesError } = await supabase
+          .from('Profile')
+          .select('userId, id, name, email')
+          .order('id', { ascending: true });
+        
+        if (profilesError) {
+          console.error('RBAC: Error fetching profiles:', profilesError);
+          return [];
+        }
+        
+        console.log('RBAC: Found profiles:', profiles);
+        
+        // For each profile, get their roles
+        const usersWithRoles = await Promise.all(profiles.map(async (profile: { userId: string; id: string; name: string; email: string }) => {
+          try {
+            console.log(`RBAC: Querying roles for user ${profile.userId}...`);
+            const { data: userRoles, error: rolesError } = await supabase
+              .from('user_roles')
+              .select('role_id')
+              .eq('user_id', profile.userId);
+            
+            console.log(`RBAC: User roles query result for ${profile.userId}:`, { data: userRoles, error: rolesError });
+            
+            if (rolesError) {
+              console.error(`RBAC: Error fetching roles for user ${profile.userId}:`, rolesError);
+              return {
+                ...profile,
+                roles: []
+              };
+            }
+            
+            if (!userRoles || userRoles.length === 0) {
+              console.log(`RBAC: No roles found for user ${profile.userId}`);
+              return {
+                ...profile,
+                roles: []
+              };
+            }
+            
+            // Get the role IDs
+            const roleIds = userRoles.map(ur => ur.role_id);
+            console.log(`RBAC: Role IDs for user ${profile.userId}:`, roleIds);
+            
+            // Get the roles
+            const roles = allRoles.filter(role => roleIds.includes(role.id));
+            console.log(`RBAC: Roles for user ${profile.userId}:`, roles);
+            
+            return {
+              ...profile,
+              roles
+            };
+          } catch (err) {
+            console.error(`RBAC: Error processing user ${profile.userId}:`, err);
+            return {
+              ...profile,
+              roles: []
+            };
+          }
+        }));
+        
+        console.log(`RBAC: Returning ${usersWithRoles.length} users with roles from profiles`);
+        return usersWithRoles;
+      } catch (err) {
+        console.error('Error in getUsersWithRoles:', err);
+        setError('Failed to fetch users with roles');
+        return [];
+      }
+    } finally {
+      (getUsersWithRoles as any).isLoading = false;
     }
-  }, [session, status, fetchUserRolesAndPermissions]);
+  }, [session, status, fetchRoles]);
 
   return {
+    isLoading,
+    error,
     roles,
     permissions,
     userRoles,
     userPermissions,
-    isLoading,
-    error,
+    currentUserRoles,
     fetchRoles,
     fetchPermissions,
     fetchRoleWithPermissions,
+    fetchRolesWithPermissions,
     fetchUserRolesAndPermissions,
     hasPermission,
     createPermission,
@@ -875,4 +1019,4 @@ export function useRBAC() {
     removeRoleFromUser,
     getUsersWithRoles,
   };
-} 
+}

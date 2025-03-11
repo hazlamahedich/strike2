@@ -44,9 +44,44 @@ const apiClient = {
    */
   async get<T>(endpoint: string, params?: Record<string, any>): Promise<ApiResponse<T>> {
     try {
-      // Use Supabase for API requests
+      // Special handling for API routes
+      if (endpoint.startsWith('/notifications/') || endpoint.startsWith('/api/')) {
+        // Use fetch for API routes
+        const url = new URL(endpoint, window.location.origin);
+        
+        // Add query parameters if provided
+        if (params) {
+          Object.entries(params).forEach(([key, value]) => {
+            if (value !== undefined && value !== null) {
+              url.searchParams.append(key, String(value));
+            }
+          });
+        }
+        
+        const response = await fetch(url.toString(), {
+          method: 'GET',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+          credentials: 'include', // Include cookies for auth
+        });
+        
+        if (!response.ok) {
+          throw new Error(`API error: ${response.status} ${response.statusText}`);
+        }
+        
+        const data = await response.json();
+        
+        return {
+          data: data as T,
+          error: null
+        };
+      }
+      
+      // Regular Supabase table handling
+      const tableName = endpoint.replace('/api/', '').split('/')[0];
       let query = supabase
-        .from(endpoint.replace('/api/', ''))
+        .from(tableName)
         .select('*');
       
       // Apply filters if provided
