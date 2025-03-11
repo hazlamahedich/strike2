@@ -29,6 +29,7 @@ from app.models.ai import (
 from app.services import lead as lead_service
 from app.core.database import fetch_one, fetch_all, insert_row, update_row
 from app.agents.agent_manager import agent_manager
+from app.services.litellm_service import LiteLLMService
 
 # Initialize OpenAI client
 client = AsyncOpenAI(api_key=settings.OPENAI_API_KEY)
@@ -36,7 +37,7 @@ logger = logging.getLogger(__name__)
 
 async def analyze_sentiment(request: SentimentAnalysisRequest) -> SentimentAnalysisResponse:
     """
-    Analyze sentiment of text using OpenAI.
+    Analyze sentiment of text using LiteLLM.
     """
     try:
         # Create the prompt for sentiment analysis
@@ -56,17 +57,12 @@ async def analyze_sentiment(request: SentimentAnalysisRequest) -> SentimentAnaly
         JSON format only, no explanations.
         """
         
-        response = await client.chat.completions.create(
-            model=settings.DEFAULT_MODEL,
-            response_format={"type": "json_object"},
-            messages=[
-                {"role": "system", "content": "You are a sentiment analysis assistant. Respond only with JSON."},
-                {"role": "user", "content": prompt}
-            ]
+        # Use LiteLLM service to get JSON completion
+        result = await LiteLLMService.get_json_completion(
+            prompt=prompt,
+            system_prompt="You are a sentiment analysis assistant. Respond only with JSON.",
+            request_type="sentiment_analysis"
         )
-        
-        # Parse the result
-        result = json.loads(response.choices[0].message.content)
         
         # Create sentiment score
         sentiment = SentimentScore(
@@ -83,16 +79,9 @@ async def analyze_sentiment(request: SentimentAnalysisRequest) -> SentimentAnaly
             key_phrases=result.get("key_phrases", []),
             entities=result.get("entities", [])
         )
-        
     except Exception as e:
-        logger.error(f"Error in sentiment analysis: {str(e)}")
-        # Fallback to a neutral sentiment
-        return SentimentAnalysisResponse(
-            text=request.text,
-            sentiment=SentimentScore(score=0, positive=0.33, neutral=0.34, negative=0.33),
-            key_phrases=[],
-            entities=[]
-        )
+        logger.error(f"Error analyzing sentiment: {str(e)}")
+        raise
 
 async def calculate_lead_score(lead_id: int, force_recalculate: bool = False) -> LeadScoreResponse:
     """
@@ -773,4 +762,39 @@ class AIService:
     @staticmethod
     async def get_advanced_lead_score(lead_id: int, timeframe_days: int = 30) -> AdvancedLeadScoringResponse:
         """Get an advanced lead score with detailed analytics"""
-        return await get_advanced_lead_score(lead_id, timeframe_days) 
+        return await get_advanced_lead_score(lead_id, timeframe_days)
+    
+    @staticmethod
+    async def get_llm_settings():
+        """Get LLM settings and usage summary"""
+        return await LiteLLMService.get_settings()
+    
+    @staticmethod
+    async def get_llm_models():
+        """Get all LLM models"""
+        return await LiteLLMService.get_all_models()
+    
+    @staticmethod
+    async def get_default_llm_model():
+        """Get the default LLM model"""
+        return await LiteLLMService.get_default_model()
+    
+    @staticmethod
+    async def create_llm_model(model):
+        """Create a new LLM model"""
+        return await LiteLLMService.create_model(model)
+    
+    @staticmethod
+    async def update_llm_model(model_id, model):
+        """Update an existing LLM model"""
+        return await LiteLLMService.update_model(model_id, model)
+    
+    @staticmethod
+    async def delete_llm_model(model_id):
+        """Delete an LLM model"""
+        return await LiteLLMService.delete_model(model_id)
+    
+    @staticmethod
+    async def get_llm_usage_summary(start_date=None, end_date=None, user_id=None):
+        """Get a summary of LLM usage"""
+        return await LiteLLMService.get_usage_summary(start_date, end_date, user_id) 

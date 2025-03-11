@@ -24,7 +24,8 @@ import {
   PanelLeft,
   Home,
   Layers,
-  Activity
+  Activity,
+  BrainCircuit
 } from 'lucide-react';
 import { useTheme } from 'next-themes';
 import { Avatar, AvatarFallback, AvatarImage } from '../ui/avatar';
@@ -75,6 +76,7 @@ const navItems: NavItem[] = [
   { title: 'Communications', href: '/communications', icon: <MessageSquare className="h-5 w-5" /> },
   { title: 'Meetings', href: '/dashboard/meetings', icon: <Calendar className="h-5 w-5" /> },
   { title: 'Analytics', href: '/dashboard/analytics', icon: <Activity className="h-5 w-5" /> },
+  { title: 'AI Usage', href: '/dashboard/analytics/llm', icon: <BrainCircuit className="h-5 w-5" /> },
   { title: 'Settings', href: '/dashboard/settings', icon: <Settings className="h-5 w-5" /> },
 ];
 

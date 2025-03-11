@@ -34,6 +34,7 @@ import { AlertDialog, AlertDialogContent, AlertDialogDescription, AlertDialogFoo
 import UserManagementTable from "@/components/settings/UserManagementTable";
 import RoleManagementPanel from "@/components/settings/RoleManagementPanel";
 import PermissionManagementPanel from "@/components/settings/PermissionManagementPanel";
+import LLMSettingsPanel from "@/components/settings/LLMSettingsPanel";
 
 // Define types for user management
 interface User {
@@ -583,6 +584,7 @@ export default function SettingsPage() {
           <TabsTrigger value="users">Users</TabsTrigger>
           <TabsTrigger value="roles">Roles</TabsTrigger>
           <TabsTrigger value="permissions">Permissions</TabsTrigger>
+          <TabsTrigger value="advanced">Advanced</TabsTrigger>
         </TabsList>
         <TabsContent value="users" className="space-y-4">
           <UserManagementTable 
@@ -905,6 +907,51 @@ export default function SettingsPage() {
             }}
             onRefresh={fetchPermissions}
           />
+        </TabsContent>
+        <TabsContent value="advanced">
+          <div className="space-y-6">
+            <div>
+              <h3 className="text-lg font-medium">AI Settings</h3>
+              <p className="text-sm text-muted-foreground">
+                Configure language models and monitor usage
+              </p>
+            </div>
+            <Separator />
+            <LLMSettingsPanel />
+            
+            <div className="mt-8">
+              <h3 className="text-lg font-medium">Development Settings</h3>
+              <p className="text-sm text-muted-foreground">
+                Configure development and testing features
+              </p>
+            </div>
+            <Separator />
+            <div className="space-y-4">
+              <div className="flex items-center justify-between">
+                <div className="space-y-0.5">
+                  <Label htmlFor="mock-data">Use Mock Data</Label>
+                  <p className="text-sm text-muted-foreground">
+                    Enable mock data for development and testing purposes
+                  </p>
+                </div>
+                <Switch
+                  id="mock-data"
+                  checked={isMockFeaturesEnabled}
+                  onCheckedChange={handleToggleMockFeatures}
+                />
+              </div>
+              
+              {isMockFeaturesEnabled && (
+                <Alert>
+                  <Info className="h-4 w-4" />
+                  <AlertTitle>Mock Data Enabled</AlertTitle>
+                  <AlertDescription>
+                    Mock data is currently enabled. This will affect all components that support mock data, including the LLM Usage Dashboard.
+                  </AlertDescription>
+                </Alert>
+              )}
+            </div>
+          </div>
         </TabsContent>
       </Tabs>
 

@@ -7,7 +7,7 @@ export async function POST(request: NextRequest) {
     
     // Forward the feedback to the backend API
     const response = await axios.post(
-      `${process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000'}/api/chatbot/feedback`,
+      `${process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8001'}/api/chatbot/feedback`,
       body
     );
     

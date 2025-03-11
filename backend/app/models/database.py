@@ -1,4 +1,4 @@
-from sqlalchemy import Column, Integer, String, Float, Boolean, DateTime, ForeignKey, Text, JSON, Table
+from sqlalchemy import Column, Integer, String, Float, Boolean, DateTime, ForeignKey, Text, JSON, Table, UUID
 from sqlalchemy.orm import relationship
 from sqlalchemy.sql import func
 from datetime import datetime
@@ -149,4 +149,50 @@ class DBCampaignLead(Base):
     # Relationships
     campaign = relationship("DBCampaign", back_populates="leads")
     lead = relationship("DBLead", back_populates="campaigns")
-    adder = relationship("DBUser", foreign_keys=[added_by], backref="added_campaign_leads") 
+    adder = relationship("DBUser", foreign_keys=[added_by], backref="added_campaign_leads")
+
+class DBLLMModel(Base):
+    """
+    Database model for LLM models configuration
+    """
+    __tablename__ = "llm_models"
+    
+    id = Column(Integer, primary_key=True, index=True)
+    provider = Column(String(50), nullable=False)
+    model_name = Column(String(255), nullable=False)
+    api_key = Column(String(255), nullable=True)
+    api_base = Column(String(255), nullable=True)
+    api_version = Column(String(50), nullable=True)
+    organization_id = Column(String(255), nullable=True)
+    is_default = Column(Boolean, default=False)
+    max_tokens = Column(Integer, nullable=True)
+    temperature = Column(Float, default=0.0)
+    created_at = Column(DateTime, default=datetime.utcnow)
+    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+    
+    # Relationships
+    usage_records = relationship("DBLLMUsageRecord", back_populates="model", cascade="all, delete-orphan")
+
+class DBLLMUsageRecord(Base):
+    """
+    Database model for tracking LLM usage
+    """
+    __tablename__ = "llm_usage_records"
+    
+    id = Column(Integer, primary_key=True, index=True)
+    model_id = Column(Integer, ForeignKey("llm_models.id", ondelete="CASCADE"), nullable=False)
+    prompt_tokens = Column(Integer, nullable=False)
+    completion_tokens = Column(Integer, nullable=False)
+    total_tokens = Column(Integer, nullable=False)
+    cost = Column(Float, nullable=False)
+    request_type = Column(String(100), nullable=False)
+    user_id = Column(UUID(as_uuid=True), ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
+    timestamp = Column(DateTime, default=datetime.utcnow)
+    request_id = Column(String(255), nullable=True)
+    success = Column(Boolean, default=True)
+    error_message = Column(Text, nullable=True)
+    metadata = Column(JSON, default={})
+    
+    # Relationships
+    model = relationship("DBLLMModel", back_populates="usage_records")
+    user = relationship("DBUser", backref="llm_usage_records") 

@@ -178,4 +178,67 @@ class AdvancedLeadScoringResponse(BaseModel):
     analysis: Optional[str] = None  # Brief analysis text
     score_id: Optional[int] = None  # Database ID of the stored score
     errors: Optional[List[str]] = None  # Any errors that occurred
-    timeframe_days: int  # The timeframe used for analysis 
+    timeframe_days: int  # The timeframe used for analysis
+
+class LLMProvider(str, Enum):
+    """Supported LLM providers"""
+    OPENAI = "openai"
+    ANTHROPIC = "anthropic"
+    AZURE = "azure"
+    GOOGLE = "google"
+    COHERE = "cohere"
+    HUGGINGFACE = "huggingface"
+    CUSTOM = "custom"
+
+class LLMModel(BaseModel):
+    """Model for LLM configuration"""
+    id: Optional[int] = None
+    provider: LLMProvider
+    model_name: str
+    api_key: Optional[str] = None
+    api_base: Optional[str] = None
+    api_version: Optional[str] = None
+    organization_id: Optional[str] = None
+    is_default: bool = False
+    max_tokens: Optional[int] = None
+    temperature: float = 0.0
+    created_at: Optional[datetime] = None
+    updated_at: Optional[datetime] = None
+    
+    @validator('temperature')
+    def validate_temperature(cls, v):
+        if v < 0.0 or v > 2.0:
+            raise ValueError('Temperature must be between 0.0 and 2.0')
+        return v
+
+class LLMUsageRecord(BaseModel):
+    """Model for tracking LLM usage"""
+    id: Optional[int] = None
+    model_id: int
+    prompt_tokens: int
+    completion_tokens: int
+    total_tokens: int
+    cost: float
+    request_type: str  # e.g., "sentiment_analysis", "lead_scoring", etc.
+    user_id: Optional[int] = None
+    timestamp: Optional[datetime] = None
+    request_id: Optional[str] = None
+    success: bool = True
+    error_message: Optional[str] = None
+    metadata: Dict[str, Any] = {}
+
+class LLMUsageSummary(BaseModel):
+    """Summary of LLM usage"""
+    total_requests: int
+    total_tokens: int
+    total_cost: float
+    tokens_by_model: Dict[str, int]
+    cost_by_model: Dict[str, float]
+    requests_by_type: Dict[str, int]
+    usage_by_day: Dict[str, Dict[str, float]]  # date -> {tokens, cost}
+    
+class LLMSettingsResponse(BaseModel):
+    """Response with LLM settings"""
+    models: List[LLMModel]
+    default_model: Optional[LLMModel] = None
+    usage_summary: Optional[LLMUsageSummary] = None 
