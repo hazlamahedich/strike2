@@ -1,12 +1,15 @@
 import { useState, useEffect } from 'react';
 import { useUserSettings } from './useUserSettings';
-import { useMockData as getConfigMockData, setUseMockData } from '@/lib/config';
+import { setUseMockData } from '@/lib/config';
 
-// Mock data settings interface
+/**
+ * Mock data settings interface
+ * Contains all mock data related flags for the application
+ */
 interface MockDataSettings {
-  enabled: boolean;
-  companyAnalysis: boolean;
-  autoTriggerAnalysis: boolean;
+  enabled: boolean;              // Master toggle for all mock data
+  companyAnalysis: boolean;      // Toggle for company analysis mock data
+  autoTriggerAnalysis: boolean;  // Toggle for auto-triggering analysis
 }
 
 // Default mock data settings
@@ -18,14 +21,34 @@ const defaultSettings: MockDataSettings = {
 
 /**
  * Hook to manage mock data state across the application
- * This centralizes all mock data flags and syncs with user preferences
+ * This is the SINGLE SOURCE OF TRUTH for mock data settings
+ * 
+ * Usage:
+ * ```
+ * const { isEnabled } = useMockData();
+ * 
+ * return (
+ *   <div>
+ *     {isEnabled ? <MockDataComponent /> : <RealDataComponent />}
+ *   </div>
+ * );
+ * ```
  */
 export function useMockData() {
   const { profile, isMockFeaturesEnabled, toggleMockFeatures } = useUserSettings();
-  const [settings, setSettings] = useState<MockDataSettings>({
-    enabled: getConfigMockData(),
-    companyAnalysis: true,
-    autoTriggerAnalysis: false
+  const [settings, setSettings] = useState<MockDataSettings>(() => {
+    // Initialize from localStorage if available
+    if (typeof window !== 'undefined') {
+      const storedValue = localStorage.getItem('mockDataSettings');
+      if (storedValue) {
+        try {
+          return JSON.parse(storedValue);
+        } catch (e) {
+          console.error('Error parsing stored mock data settings:', e);
+        }
+      }
+    }
+    return defaultSettings;
   });
 
   // Sync the mock data state with user preferences when profile loads
@@ -36,17 +59,36 @@ export function useMockData() {
         ...prev,
         enabled: mockEnabled
       }));
+      
+      // Update the global config
       setUseMockData(mockEnabled);
+      
+      // Update localStorage
+      if (typeof window !== 'undefined') {
+        localStorage.setItem('mockDataSettings', JSON.stringify({
+          ...settings,
+          enabled: mockEnabled
+        }));
+      }
     }
   }, [profile]);
 
   // Listen for mock data changes from other components
   useEffect(() => {
     const handleMockDataChanged = (event: CustomEvent) => {
-      setSettings(prev => ({
-        ...prev,
-        enabled: event.detail.useMockData
-      }));
+      setSettings(prev => {
+        const newSettings = {
+          ...prev,
+          enabled: event.detail.useMockData
+        };
+        
+        // Update localStorage
+        if (typeof window !== 'undefined') {
+          localStorage.setItem('mockDataSettings', JSON.stringify(newSettings));
+        }
+        
+        return newSettings;
+      });
     };
 
     window.addEventListener('mock-data-changed', handleMockDataChanged as EventListener);
@@ -61,30 +103,68 @@ export function useMockData() {
     const success = await toggleMockFeatures();
     if (success) {
       const newValue = !settings.enabled;
-      setSettings(prev => ({
-        ...prev,
-        enabled: newValue
-      }));
+      
+      // Update local state
+      setSettings(prev => {
+        const newSettings = {
+          ...prev,
+          enabled: newValue
+        };
+        
+        // Update localStorage
+        if (typeof window !== 'undefined') {
+          localStorage.setItem('mockDataSettings', JSON.stringify(newSettings));
+        }
+        
+        return newSettings;
+      });
+      
+      // Update the global config
       setUseMockData(newValue);
+      
+      // Dispatch event for other components
+      if (typeof window !== 'undefined') {
+        window.dispatchEvent(new CustomEvent('mock-data-changed', { 
+          detail: { useMockData: newValue } 
+        }));
+      }
     }
     return success;
   };
 
   // Toggle company analysis mock data
   const toggleCompanyAnalysisMockData = () => {
-    setSettings(prev => ({
-      ...prev,
-      companyAnalysis: !prev.companyAnalysis
-    }));
+    setSettings(prev => {
+      const newSettings = {
+        ...prev,
+        companyAnalysis: !prev.companyAnalysis
+      };
+      
+      // Update localStorage
+      if (typeof window !== 'undefined') {
+        localStorage.setItem('mockDataSettings', JSON.stringify(newSettings));
+      }
+      
+      return newSettings;
+    });
     return true;
   };
 
   // Toggle auto-trigger analysis
   const toggleAutoTriggerAnalysis = () => {
-    setSettings(prev => ({
-      ...prev,
-      autoTriggerAnalysis: !prev.autoTriggerAnalysis
-    }));
+    setSettings(prev => {
+      const newSettings = {
+        ...prev,
+        autoTriggerAnalysis: !prev.autoTriggerAnalysis
+      };
+      
+      // Update localStorage
+      if (typeof window !== 'undefined') {
+        localStorage.setItem('mockDataSettings', JSON.stringify(newSettings));
+      }
+      
+      return newSettings;
+    });
     return true;
   };
 

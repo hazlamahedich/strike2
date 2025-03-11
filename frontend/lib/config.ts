@@ -3,22 +3,33 @@
  */
 
 // Mock data configuration
-// This will be replaced with a function that can be dynamically updated
+// This variable is managed by the useMockData hook in /hooks/useMockData.ts
+// IMPORTANT: For components, always use the useMockData hook instead of this variable directly
 let _useMockData = true;
 
-// Function to get the current mock data setting
+/**
+ * @deprecated Use the useMockData hook from /hooks/useMockData.ts instead
+ * This function is kept for backward compatibility
+ * @returns Current mock data status
+ */
 export const useMockData = () => _useMockData;
 
-// Function to update the mock data setting
+/**
+ * Function to update the mock data setting
+ * This should only be called by the useMockData hook
+ */
 export const setUseMockData = (value: boolean) => {
   _useMockData = value;
-  // Optionally dispatch an event to notify components of the change
+  // Dispatch an event to notify components of the change
   if (typeof window !== 'undefined') {
     window.dispatchEvent(new CustomEvent('mock-data-changed', { detail: { useMockData: value } }));
   }
 };
 
-// For backward compatibility
+/**
+ * @deprecated Use the useMockData hook from /hooks/useMockData.ts instead
+ * This constant is kept for backward compatibility
+ */
 export const USE_MOCK_DATA = true;
 
 // API Configuration

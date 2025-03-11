@@ -1,0 +1,18 @@
+1. **Mock Data System**:
+   - **Global Mock Data Toggle**: Enable or disable mock data throughout the application
+   - When enabled, all components using the standardized approach will use mock data
+   - When disabled, the system will use real data from the database
+   - The setting is stored in:
+     - User preferences in the database
+     - LocalStorage for persistence between sessions
+     - A global variable for real-time access
+   - Changes take effect immediately across the entire application
+   - A banner appears when mock data is enabled
+   - **Standardized Implementation**:
+     - All components use the `useMockData` hook from `/hooks/useMockData.ts`
+     - Non-React contexts use the `getMockDataStatus` function from `/lib/utils/mockDataUtils.ts`
+     - Real-time updates through custom events when settings change
+     - Consistent behavior across the entire application
+   - **Feature-Specific Mock Data**:
+     - **Company Analysis**: Toggle mock data specifically for company analysis features
+     - **Auto-Trigger Analysis**: Toggle automatic triggering of analysis when viewing leads 

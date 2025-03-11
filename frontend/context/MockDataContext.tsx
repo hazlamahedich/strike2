@@ -1,7 +1,12 @@
 'use client';
 
-import React, { createContext, useContext, useState, useEffect } from 'react';
+import React, { createContext, useContext } from 'react';
+import { useMockData as useStandardizedMockData } from '@/hooks/useMockData';
 
+/**
+ * @deprecated Use the useMockData hook from /hooks/useMockData.ts directly instead
+ * This context is kept for backward compatibility
+ */
 interface MockDataContextType {
   isMockDataEnabled: boolean;
   toggleMockData: () => void;
@@ -10,55 +15,43 @@ interface MockDataContextType {
 
 const MockDataContext = createContext<MockDataContextType | undefined>(undefined);
 
+/**
+ * @deprecated Use the useMockData hook from /hooks/useMockData.ts directly instead
+ * This provider is kept for backward compatibility
+ */
 export const MockDataProvider = ({ children }: { children: React.ReactNode }) => {
-  const [isMockDataEnabled, setIsMockDataEnabled] = useState(false);
+  const { 
+    isEnabled, 
+    toggleMockData: standardToggleMockData 
+  } = useStandardizedMockData();
 
-  // Load mock data preference from localStorage on mount
-  useEffect(() => {
-    if (typeof window !== 'undefined') {
-      // Check if we're in development mode
-      const isDevelopment = process.env.NODE_ENV === 'development';
-      
-      // Get stored preference or default to enabled in development mode
-      const storedPreference = localStorage.getItem('mockDataEnabled');
-      if (storedPreference !== null) {
-        setIsMockDataEnabled(storedPreference === 'true');
-      } else if (isDevelopment) {
-        // In development mode, default to enabled if no preference is set
-        setIsMockDataEnabled(true);
-        localStorage.setItem('mockDataEnabled', 'true');
-      }
-      
-      console.log(`Mock data ${isMockDataEnabled ? 'enabled' : 'disabled'} (${isDevelopment ? 'development' : 'production'} mode)`);
-    }
-  }, []);
-
-  // Toggle mock data and save preference to localStorage
-  const toggleMockData = () => {
-    const newValue = !isMockDataEnabled;
-    setIsMockDataEnabled(newValue);
-    if (typeof window !== 'undefined') {
-      localStorage.setItem('mockDataEnabled', String(newValue));
-      console.log(`Mock data ${newValue ? 'enabled' : 'disabled'}`);
-    }
+  // Adapter function to maintain the old interface
+  const toggleMockData = async () => {
+    await standardToggleMockData();
   };
 
-  // Set mock data enabled state directly
-  const setMockDataEnabled = (enabled: boolean) => {
-    setIsMockDataEnabled(enabled);
-    if (typeof window !== 'undefined') {
-      localStorage.setItem('mockDataEnabled', String(enabled));
-      console.log(`Mock data ${enabled ? 'enabled' : 'disabled'}`);
+  // Adapter function to maintain the old interface
+  const setMockDataEnabled = async (enabled: boolean) => {
+    if (enabled !== isEnabled) {
+      await standardToggleMockData();
     }
   };
 
   return (
-    <MockDataContext.Provider value={{ isMockDataEnabled, toggleMockData, setMockDataEnabled }}>
+    <MockDataContext.Provider value={{ 
+      isMockDataEnabled: isEnabled, 
+      toggleMockData, 
+      setMockDataEnabled 
+    }}>
       {children}
     </MockDataContext.Provider>
   );
 };
 
+/**
+ * @deprecated Use the useMockData hook from /hooks/useMockData.ts directly instead
+ * This hook is kept for backward compatibility
+ */
 export const useMockData = (): MockDataContextType => {
   const context = useContext(MockDataContext);
   if (context === undefined) {

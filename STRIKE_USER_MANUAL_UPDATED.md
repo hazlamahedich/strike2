@@ -1433,14 +1433,18 @@ The LLM Settings tab provides advanced configuration options for the language mo
 
 1. **Model Configuration**:
    - Add, edit, and remove language models
-   - Configure model parameters
+   - Configure model parameters including:
+     - Provider (OpenAI, Azure OpenAI, Anthropic, Google AI/Gemini)
+     - Model name (e.g., gpt-4, claude-3-opus)
+     - API key and custom endpoints
+     - Temperature and max tokens
    - Set default models for different features
    - Manage API credentials
 
 2. **Usage Monitoring**:
    - Track token usage by model
    - Monitor costs and request volume
-   - View usage trends over time
+   - View usage trends over time (daily, weekly, monthly)
    - Export usage reports
 
 3. **Performance Settings**:
@@ -1455,9 +1459,13 @@ The LLM Settings tab provides advanced configuration options for the language mo
    - Define acceptable use parameters
    - Set up content warnings
 
-For detailed information on managing language models, see the [Language Model Management](#language-model-management) section.
+5. **Mock Data Integration**:
+   - When mock data is enabled, the system displays simulated usage data
+   - This allows testing and demonstration without incurring actual API costs
+   - You can enable mock data in the **Development Mode** section
+   - A note appears on the Usage tab when viewing mock data
 
-### Development Mode
+For detailed information on managing language models, see the [Language Model Management](#language-model-management) section. ### Development Mode
 
 The Development Mode section provides tools and settings for developers and testers:
 
@@ -1476,8 +1484,9 @@ The Development Mode section provides tools and settings for developers and test
      - Non-React contexts use the `getMockDataStatus` function from `/lib/utils/mockDataUtils.ts`
      - Real-time updates through custom events when settings change
      - Consistent behavior across the entire application
-
-2. **Developer Tools**:
+   - **Feature-Specific Mock Data**:
+     - **Company Analysis**: Toggle mock data specifically for company analysis features
+     - **Auto-Trigger Analysis**: Toggle automatic triggering of analysis when viewing leads 2. **Developer Tools**:
    - Debug information toggle
    - Performance monitoring
    - Network request logging
@@ -17700,14 +17709,18 @@ The LLM Settings tab provides advanced configuration options for the language mo
 
 1. **Model Configuration**:
    - Add, edit, and remove language models
-   - Configure model parameters
+   - Configure model parameters including:
+     - Provider (OpenAI, Azure OpenAI, Anthropic, Google AI/Gemini)
+     - Model name (e.g., gpt-4, claude-3-opus)
+     - API key and custom endpoints
+     - Temperature and max tokens
    - Set default models for different features
    - Manage API credentials
 
 2. **Usage Monitoring**:
    - Track token usage by model
    - Monitor costs and request volume
-   - View usage trends over time
+   - View usage trends over time (daily, weekly, monthly)
    - Export usage reports
 
 3. **Performance Settings**:
@@ -17722,9 +17735,13 @@ The LLM Settings tab provides advanced configuration options for the language mo
    - Define acceptable use parameters
    - Set up content warnings
 
-For detailed information on managing language models, see the [Language Model Management](#language-model-management) section.
+5. **Mock Data Integration**:
+   - When mock data is enabled, the system displays simulated usage data
+   - This allows testing and demonstration without incurring actual API costs
+   - You can enable mock data in the **Development Mode** section
+   - A note appears on the Usage tab when viewing mock data
 
-### Development Mode
+For detailed information on managing language models, see the [Language Model Management](#language-model-management) section. ### Development Mode
 
 The Development Mode section provides tools and settings for developers and testers:
 
@@ -17738,8 +17755,14 @@ The Development Mode section provides tools and settings for developers and test
      - A global variable for real-time access
    - Changes take effect immediately across the entire application
    - A banner appears when mock data is enabled
-
-2. **Developer Tools**:
+   - **Standardized Implementation**:
+     - All components use the `useMockData` hook from `/hooks/useMockData.ts`
+     - Non-React contexts use the `getMockDataStatus` function from `/lib/utils/mockDataUtils.ts`
+     - Real-time updates through custom events when settings change
+     - Consistent behavior across the entire application
+   - **Feature-Specific Mock Data**:
+     - **Company Analysis**: Toggle mock data specifically for company analysis features
+     - **Auto-Trigger Analysis**: Toggle automatic triggering of analysis when viewing leads 2. **Developer Tools**:
    - Debug information toggle
    - Performance monitoring
    - Network request logging

@@ -16,6 +16,8 @@ STRIKE is an intelligent, modular CRM system built with modern AI capabilities, 
 - **Analytics & Reporting**: Real-time dashboards, custom reports, and sales forecasting.
 - **AI Chatbot Assistant**: Integrated chatbot for user assistance and natural language database queries.
 - **Advanced RBAC System**: Comprehensive role-based access control with granular permissions, role assignments, and audit logging.
+- **LLM Integration**: Configurable language model settings with support for multiple providers, models, and usage tracking.
+- **Development Mode**: Global mock data toggle for easy switching between mock and real data during development and testing.
 
 ## Technical Stack
 
@@ -33,6 +35,7 @@ STRIKE is an intelligent, modular CRM system built with modern AI capabilities, 
 - Tailwind CSS with shadcn/ui components
 - Supabase client for authentication and data access
 - Modern React patterns with hooks and context
+- Standardized mock data implementation for development and testing
 
 ### DevOps & Infrastructure
 - Docker for containerization
@@ -186,6 +189,7 @@ STRIKE is an intelligent, modular CRM system built with modern AI capabilities, 
 - **Automated Follow-ups**: Smart scheduling and content generation.
 - **Company Analysis**: Automated web scraping and AI analysis of company websites to provide strategic insights for lead conversion.
 - **Chatbot Assistant**: Integrated with the user manual for contextual help and natural language database queries.
+- **Language Model Management**: Configure and manage multiple language models from different providers with detailed usage tracking and cost analysis.
 
 ## Campaign Management
 
@@ -355,4 +359,16 @@ STRIKE implements a comprehensive user lifecycle management system:
 - **Assignment**: Users can have multiple roles, each with different permissions
 - **Audit**: Complete history of role assignments and permission changes
 
-For detailed information on the RBAC system, see the [RBAC README](backend/RBAC_README.md). 
+For detailed information on the RBAC system, see the [RBAC README](backend/RBAC_README.md).
+
+## Mock Data System
+
+STRIKE includes a sophisticated mock data system for development and testing:
+
+- **Global Toggle**: Switch between mock and real data with a single setting in the Preferences tab.
+- **Standardized Implementation**: Consistent approach across the entire application using the `useMockData` hook.
+- **Persistent Settings**: Mock data preferences are stored in user settings and localStorage for persistence.
+- **Real-time Updates**: Components automatically update when the mock data setting changes.
+- **Documentation**: Comprehensive guide for using and extending the mock data system.
+
+For more details, see the [Mock Data Implementation Guide](frontend/docs/MOCK_DATA_GUIDE.md). 

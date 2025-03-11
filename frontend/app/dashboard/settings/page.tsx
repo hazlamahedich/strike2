@@ -137,7 +137,7 @@ export default function SettingsPage() {
   const [isDeleteUserDialogOpen, setIsDeleteUserDialogOpen] = useState(false);
   
   // Active tab state
-  const [activeTab, setActiveTab] = useState("users");
+  const [activeTab, setActiveTab] = useState("account");
 
   // Application settings state
   const [settings, setSettings] = useState({
@@ -579,13 +579,381 @@ export default function SettingsPage() {
         </div>
       )}
 
-      <Tabs defaultValue="users" value={activeTab} onValueChange={setActiveTab}>
-        <TabsList className="grid w-full grid-cols-3">
+      <Tabs defaultValue="account" value={activeTab} onValueChange={setActiveTab}>
+        <TabsList className="grid w-full grid-cols-6">
+          <TabsTrigger value="account">Account</TabsTrigger>
+          <TabsTrigger value="preferences">Preferences</TabsTrigger>
           <TabsTrigger value="users">Users</TabsTrigger>
           <TabsTrigger value="roles">Roles</TabsTrigger>
           <TabsTrigger value="permissions">Permissions</TabsTrigger>
           <TabsTrigger value="advanced">Advanced</TabsTrigger>
         </TabsList>
+        
+        {/* Account Tab */}
+        <TabsContent value="account" className="space-y-6">
+          <div>
+            <h3 className="text-lg font-medium">Account Information</h3>
+            <p className="text-sm text-muted-foreground">
+              Update your account information and profile settings
+            </p>
+          </div>
+          <Separator />
+          
+          <form onSubmit={handleProfileUpdate} className="space-y-8">
+            <div className="space-y-4">
+              <div className="flex items-center gap-4">
+                <Avatar className="h-20 w-20">
+                  <AvatarImage src={formValues.avatar || session?.user?.image || ''} alt={formValues.name} />
+                  <AvatarFallback>{getInitials(formValues.name || session?.user?.name || 'User')}</AvatarFallback>
+                </Avatar>
+                <div className="space-y-2">
+                  <h3 className="text-xl font-medium">{formValues.name || session?.user?.name}</h3>
+                  <p className="text-sm text-muted-foreground">{formValues.email || session?.user?.email}</p>
+                </div>
+              </div>
+              
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div className="space-y-2">
+                  <Label htmlFor="name">Full Name</Label>
+                  <Input 
+                    id="name" 
+                    value={formValues.name} 
+                    onChange={(e) => setFormValues({...formValues, name: e.target.value})}
+                    placeholder="Your full name"
+                  />
+                </div>
+                
+                <div className="space-y-2">
+                  <Label htmlFor="email">Email</Label>
+                  <Input 
+                    id="email" 
+                    value={formValues.email} 
+                    onChange={(e) => setFormValues({...formValues, email: e.target.value})}
+                    placeholder="Your email address"
+                    disabled
+                  />
+                </div>
+                
+                <div className="space-y-2">
+                  <Label htmlFor="phone">Phone</Label>
+                  <Input 
+                    id="phone" 
+                    value={formValues.phone} 
+                    onChange={(e) => setFormValues({...formValues, phone: e.target.value})}
+                    placeholder="Your phone number"
+                  />
+                </div>
+                
+                <div className="space-y-2">
+                  <Label htmlFor="role">Role</Label>
+                  <Input 
+                    id="role" 
+                    value={currentUserRoles?.map(r => r.name).join(', ') || formValues.role} 
+                    disabled
+                    placeholder="Your role"
+                  />
+                </div>
+              </div>
+              
+              <div className="space-y-2">
+                <Label htmlFor="bio">Bio</Label>
+                <Textarea 
+                  id="bio" 
+                  value={formValues.bio} 
+                  onChange={(e) => setFormValues({...formValues, bio: e.target.value})}
+                  placeholder="Tell us about yourself"
+                  rows={4}
+                />
+              </div>
+            </div>
+            
+            <Button type="submit">Save Changes</Button>
+          </form>
+          
+          <div className="mt-8">
+            <h3 className="text-lg font-medium">Notification Settings</h3>
+            <p className="text-sm text-muted-foreground">
+              Configure how and when you receive notifications
+            </p>
+          </div>
+          <Separator />
+          
+          <div className="space-y-4">
+            <div className="flex items-center justify-between">
+              <div className="space-y-0.5">
+                <Label htmlFor="email-notifications">Email Notifications</Label>
+                <p className="text-sm text-muted-foreground">
+                  Receive notifications via email
+                </p>
+              </div>
+              <Switch
+                id="email-notifications"
+                checked={notifications.email}
+                onCheckedChange={() => handleNotificationToggle('email')}
+              />
+            </div>
+            
+            <div className="flex items-center justify-between">
+              <div className="space-y-0.5">
+                <Label htmlFor="push-notifications">Push Notifications</Label>
+                <p className="text-sm text-muted-foreground">
+                  Receive push notifications in your browser
+                </p>
+              </div>
+              <Switch
+                id="push-notifications"
+                checked={notifications.push}
+                onCheckedChange={() => handleNotificationToggle('push')}
+              />
+            </div>
+            
+            <div className="flex items-center justify-between">
+              <div className="space-y-0.5">
+                <Label htmlFor="task-reminders">Task Reminders</Label>
+                <p className="text-sm text-muted-foreground">
+                  Get reminders for upcoming tasks and deadlines
+                </p>
+              </div>
+              <Switch
+                id="task-reminders"
+                checked={notifications.task_reminders}
+                onCheckedChange={() => handleNotificationToggle('task_reminders')}
+              />
+            </div>
+            
+            <div className="flex items-center justify-between">
+              <div className="space-y-0.5">
+                <Label htmlFor="deal-updates">Deal Updates</Label>
+                <p className="text-sm text-muted-foreground">
+                  Receive updates when deals change status
+                </p>
+              </div>
+              <Switch
+                id="deal-updates"
+                checked={notifications.deal_updates}
+                onCheckedChange={() => handleNotificationToggle('deal_updates')}
+              />
+            </div>
+            
+            <div className="flex items-center justify-between">
+              <div className="space-y-0.5">
+                <Label htmlFor="weekly-reports">Weekly Reports</Label>
+                <p className="text-sm text-muted-foreground">
+                  Get weekly summary reports of your activity
+                </p>
+              </div>
+              <Switch
+                id="weekly-reports"
+                checked={notifications.weekly_reports}
+                onCheckedChange={() => handleNotificationToggle('weekly_reports')}
+              />
+            </div>
+            
+            <div className="flex items-center justify-between">
+              <div className="space-y-0.5">
+                <Label htmlFor="marketing-emails">Marketing Emails</Label>
+                <p className="text-sm text-muted-foreground">
+                  Receive marketing and promotional emails
+                </p>
+              </div>
+              <Switch
+                id="marketing-emails"
+                checked={notifications.marketing_emails}
+                onCheckedChange={() => handleNotificationToggle('marketing_emails')}
+              />
+            </div>
+            
+            <div className="flex items-center justify-between">
+              <div className="space-y-0.5">
+                <Label htmlFor="system-announcements">System Announcements</Label>
+                <p className="text-sm text-muted-foreground">
+                  Receive important system announcements and updates
+                </p>
+              </div>
+              <Switch
+                id="system-announcements"
+                checked={notifications.system_announcements}
+                onCheckedChange={() => handleNotificationToggle('system_announcements')}
+              />
+            </div>
+          </div>
+        </TabsContent>
+        
+        {/* Preferences Tab */}
+        <TabsContent value="preferences" className="space-y-6">
+          <div>
+            <h3 className="text-lg font-medium">Application Preferences</h3>
+            <p className="text-sm text-muted-foreground">
+              Customize your application experience
+            </p>
+          </div>
+          <Separator />
+          
+          <div className="space-y-4">
+            <div className="flex items-center justify-between">
+              <div className="space-y-0.5">
+                <Label htmlFor="theme">Theme</Label>
+                <p className="text-sm text-muted-foreground">
+                  Choose your preferred theme
+                </p>
+              </div>
+              <Select
+                value={formValues.theme}
+                onValueChange={(value) => {
+                  setFormValues({...formValues, theme: value as 'light' | 'dark' | 'system'});
+                  updatePreferences({ theme: value as 'light' | 'dark' | 'system' });
+                }}
+              >
+                <SelectTrigger className="w-[180px]">
+                  <SelectValue placeholder="Select theme" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="light">Light</SelectItem>
+                  <SelectItem value="dark">Dark</SelectItem>
+                  <SelectItem value="system">System</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+            
+            <div className="flex items-center justify-between">
+              <div className="space-y-0.5">
+                <Label htmlFor="language">Language</Label>
+                <p className="text-sm text-muted-foreground">
+                  Choose your preferred language
+                </p>
+              </div>
+              <Select
+                value={formValues.language}
+                onValueChange={(value) => {
+                  setFormValues({...formValues, language: value});
+                  updatePreferences({ language: value });
+                }}
+              >
+                <SelectTrigger className="w-[180px]">
+                  <SelectValue placeholder="Select language" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="en">English</SelectItem>
+                  <SelectItem value="es">Spanish</SelectItem>
+                  <SelectItem value="fr">French</SelectItem>
+                  <SelectItem value="de">German</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+            
+            <div className="flex items-center justify-between">
+              <div className="space-y-0.5">
+                <Label htmlFor="currency">Currency</Label>
+                <p className="text-sm text-muted-foreground">
+                  Choose your preferred currency
+                </p>
+              </div>
+              <Select
+                value={formValues.currency}
+                onValueChange={(value) => {
+                  setFormValues({...formValues, currency: value});
+                  updatePreferences({ currency: value });
+                }}
+              >
+                <SelectTrigger className="w-[180px]">
+                  <SelectValue placeholder="Select currency" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="USD">USD ($)</SelectItem>
+                  <SelectItem value="EUR">EUR (€)</SelectItem>
+                  <SelectItem value="GBP">GBP (£)</SelectItem>
+                  <SelectItem value="JPY">JPY (¥)</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+            
+            <div className="flex items-center justify-between">
+              <div className="space-y-0.5">
+                <Label htmlFor="date-format">Date Format</Label>
+                <p className="text-sm text-muted-foreground">
+                  Choose your preferred date format
+                </p>
+              </div>
+              <Select
+                value={formValues.date_format}
+                onValueChange={(value) => {
+                  setFormValues({...formValues, date_format: value});
+                  updatePreferences({ date_format: value });
+                }}
+              >
+                <SelectTrigger className="w-[180px]">
+                  <SelectValue placeholder="Select date format" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="MM/DD/YYYY">MM/DD/YYYY</SelectItem>
+                  <SelectItem value="DD/MM/YYYY">DD/MM/YYYY</SelectItem>
+                  <SelectItem value="YYYY-MM-DD">YYYY-MM-DD</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+            
+            <div className="flex items-center justify-between">
+              <div className="space-y-0.5">
+                <Label htmlFor="compact-mode">Compact Mode</Label>
+                <p className="text-sm text-muted-foreground">
+                  Use a more compact UI layout
+                </p>
+              </div>
+              <Switch
+                id="compact-mode"
+                checked={settings.compact_mode}
+                onCheckedChange={(checked) => handleSettingsChange('compact_mode', checked)}
+              />
+            </div>
+            
+            <div className="flex items-center justify-between">
+              <div className="space-y-0.5">
+                <Label htmlFor="default-view">Default View</Label>
+                <p className="text-sm text-muted-foreground">
+                  Choose your default view for deals and leads
+                </p>
+              </div>
+              <Select
+                value={settings.default_view}
+                onValueChange={(value) => handleSettingsChange('default_view', value)}
+              >
+                <SelectTrigger className="w-[180px]">
+                  <SelectValue placeholder="Select default view" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="kanban">Kanban</SelectItem>
+                  <SelectItem value="list">List</SelectItem>
+                  <SelectItem value="table">Table</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+            
+            <div className="flex items-center justify-between">
+              <div className="space-y-0.5">
+                <Label htmlFor="mock-data">Use Mock Data</Label>
+                <p className="text-sm text-muted-foreground">
+                  Enable mock data for development and testing purposes
+                </p>
+              </div>
+              <Switch
+                id="mock-data"
+                checked={isMockFeaturesEnabled}
+                onCheckedChange={handleToggleMockFeatures}
+              />
+            </div>
+            
+            {isMockFeaturesEnabled && (
+              <Alert>
+                <Info className="h-4 w-4" />
+                <AlertTitle>Mock Data Enabled</AlertTitle>
+                <AlertDescription>
+                  Mock data is currently enabled. This will affect all components that support mock data.
+                </AlertDescription>
+              </Alert>
+            )}
+          </div>
+        </TabsContent>
+        
         <TabsContent value="users" className="space-y-4">
           <UserManagementTable 
             users={users}
@@ -922,34 +1290,29 @@ export default function SettingsPage() {
             <div className="mt-8">
               <h3 className="text-lg font-medium">Development Settings</h3>
               <p className="text-sm text-muted-foreground">
-                Configure development and testing features
+                Advanced settings for developers
               </p>
             </div>
             <Separator />
             <div className="space-y-4">
-              <div className="flex items-center justify-between">
-                <div className="space-y-0.5">
-                  <Label htmlFor="mock-data">Use Mock Data</Label>
-                  <p className="text-sm text-muted-foreground">
-                    Enable mock data for development and testing purposes
-                  </p>
-                </div>
-                <Switch
-                  id="mock-data"
-                  checked={isMockFeaturesEnabled}
-                  onCheckedChange={handleToggleMockFeatures}
-                />
-              </div>
+              <Alert>
+                <Info className="h-4 w-4" />
+                <AlertTitle>Developer Area</AlertTitle>
+                <AlertDescription>
+                  These settings are intended for development and debugging purposes only.
+                </AlertDescription>
+              </Alert>
               
-              {isMockFeaturesEnabled && (
-                <Alert>
-                  <Info className="h-4 w-4" />
-                  <AlertTitle>Mock Data Enabled</AlertTitle>
-                  <AlertDescription>
-                    Mock data is currently enabled. This will affect all components that support mock data, including the LLM Usage Dashboard.
-                  </AlertDescription>
-                </Alert>
-              )}
+              <div className="p-4 border rounded-md">
+                <h4 className="font-medium mb-2">Debug Information</h4>
+                <Button 
+                  variant="outline" 
+                  onClick={() => setShowDebug(!showDebug)}
+                  className="w-full"
+                >
+                  {showDebug ? "Hide Debug Info" : "Show Debug Info"}
+                </Button>
+              </div>
             </div>
           </div>
         </TabsContent>

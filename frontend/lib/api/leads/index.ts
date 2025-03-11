@@ -12,7 +12,7 @@ import {
   LeadCampaignStatus
 } from '../../types/lead';
 import { SupabaseMLService } from '@/lib/ml/mlService';
-import { useMockData } from '@/lib/config';
+import { getMockDataStatus } from '@/lib/utils/mockDataUtils';
 
 // Base URL for lead endpoints
 const BASE_URL = 'leads';
@@ -101,13 +101,9 @@ export const getLead = async (
   includeCampaignData: boolean = true
 ): Promise<LeadDetail> => {
   try {
-    // Validate leadId
-    if (isNaN(leadId) || leadId <= 0) {
-      console.error(`Invalid lead ID: ${leadId}`);
-      throw new Error(`Invalid lead ID: ${leadId}`);
-    }
-
-    if (useMockData()) {
+    // Use the standardized approach to check mock data status
+    if (getMockDataStatus()) {
+      // Mock data implementation
       console.log(`Using mock data for lead ID: ${leadId}`);
       
       // Return mock data
@@ -195,7 +191,7 @@ export const getLead = async (
       
       return mockData as unknown as LeadDetail;
     } else {
-      // Use real data from Supabase
+      // Real data implementation
       console.log(`Fetching lead with ID: ${leadId}`);
       
       // STEP 1: Fetch only the lead data with no joins
@@ -465,7 +461,7 @@ export const getLeadTimeline = async (
       throw new Error(`Invalid lead ID: ${leadId}`);
     }
     
-    if (useMockData()) {
+    if (getMockDataStatus()) {
       console.log(`Using mock timeline data for lead ID: ${leadId}`);
       
       // Return mock timeline data
@@ -685,7 +681,7 @@ export const getLeadInsights = async (leadId: number): Promise<any> => {
       throw new Error(`Invalid lead ID: ${leadId}`);
     }
     
-    if (useMockData()) {
+    if (getMockDataStatus()) {
       console.log(`Using enhanced mock insights data for lead ID: ${leadId}`);
       
       // First, try to get some basic lead info to make the mock data more realistic
@@ -1205,7 +1201,7 @@ export const addLeadNote = async (
       throw new Error(`Invalid lead ID: ${leadId}`);
     }
     
-    if (useMockData()) {
+    if (getMockDataStatus()) {
       console.log(`Using mock data for adding note to lead ID: ${leadId}`);
       
       // Return mock note data
@@ -1287,7 +1283,7 @@ export const calculateLeadInsights = async (
   try {
     console.log(`Calculating insights for ${leadIds ? leadIds.length : limit} leads`);
     
-    if (useMockData()) {
+    if (getMockDataStatus()) {
       return {
         processed: leadIds?.length || limit,
         errors: 0
