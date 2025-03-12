@@ -6,11 +6,55 @@ import { X } from "lucide-react"
 
 import { cn } from "../../lib/utils"
 
-const Dialog = DialogPrimitive.Root
+const Dialog = ({ children, ...props }: React.ComponentProps<typeof DialogPrimitive.Root>) => {
+  // Add useEffect to handle inert attribute
+  React.useEffect(() => {
+    // Only apply when dialog is open
+    if (props.open) {
+      // Store original inert values to restore later
+      const originalInertElements: HTMLElement[] = [];
+      
+      // Get all direct children of body except the dialog portal
+      const elementsToInert = Array.from(document.body.children).filter(
+        (el) => !el.hasAttribute('data-radix-dialog-portal')
+      );
+      
+      // Set inert on elements outside dialog
+      elementsToInert.forEach((el) => {
+        if (el instanceof HTMLElement) {
+          if (el.hasAttribute('inert')) {
+            originalInertElements.push(el);
+          } else {
+            el.setAttribute('inert', '');
+          }
+        }
+      });
+      
+      // Cleanup function to remove inert when dialog closes
+      return () => {
+        elementsToInert.forEach((el) => {
+          if (el instanceof HTMLElement && !originalInertElements.includes(el)) {
+            el.removeAttribute('inert');
+          }
+        });
+      };
+    }
+  }, [props.open]);
+  
+  return <DialogPrimitive.Root {...props}>{children}</DialogPrimitive.Root>;
+};
 
 const DialogTrigger = DialogPrimitive.Trigger
 
-const DialogPortal = DialogPrimitive.Portal
+const DialogPortal = ({ 
+  ...props
+}: React.ComponentPropsWithoutRef<typeof DialogPrimitive.Portal>) => (
+  <DialogPrimitive.Portal
+    {...props}
+    data-radix-dialog-portal=""
+  />
+)
+DialogPortal.displayName = DialogPrimitive.Portal.displayName
 
 const DialogClose = DialogPrimitive.Close
 

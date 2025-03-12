@@ -6,11 +6,17 @@ from contextlib import asynccontextmanager
 from fastapi import Depends
 
 from supabase.client import create_client, Client as SupabaseClient
+from sqlalchemy import create_engine
+from sqlalchemy.ext.declarative import declarative_base
+from sqlalchemy.orm import sessionmaker
 
 from ..core.config import settings
 from ..core.exceptions import DatabaseException, ResourceNotFoundException
 
 logger = logging.getLogger(__name__)
+
+# Create SQLAlchemy Base class
+Base = declarative_base()
 
 # Connection pool for asyncpg
 pool = None

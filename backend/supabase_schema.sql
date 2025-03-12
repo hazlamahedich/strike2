@@ -170,6 +170,23 @@ CREATE TABLE IF NOT EXISTS meetings (
     FOREIGN KEY (created_by) REFERENCES users(id) ON DELETE SET NULL
 );
 
+-- 11a. Meeting Summaries Table
+CREATE TABLE IF NOT EXISTS meeting_summaries (
+    id SERIAL PRIMARY KEY,
+    meeting_id INTEGER NOT NULL,
+    summary_type VARCHAR(50) NOT NULL, -- 'basic' or 'comprehensive'
+    summary TEXT,
+    insights JSONB DEFAULT '[]'::jsonb,
+    action_items JSONB DEFAULT '[]'::jsonb,
+    next_steps JSONB DEFAULT '[]'::jsonb,
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+    updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+    created_by UUID,
+    FOREIGN KEY (meeting_id) REFERENCES meetings(id) ON DELETE CASCADE,
+    FOREIGN KEY (created_by) REFERENCES users(id) ON DELETE SET NULL,
+    UNIQUE(meeting_id, summary_type)
+);
+
 -- 12. Notes Table
 CREATE TABLE IF NOT EXISTS notes (
     id SERIAL PRIMARY KEY,

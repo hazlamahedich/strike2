@@ -11,6 +11,7 @@ import json
 import logging
 from datetime import datetime, timedelta, time
 from typing import Any, Dict, List, Optional, Tuple, Union
+import uuid
 
 from fastapi import HTTPException, status
 from google.oauth2.credentials import Credentials
@@ -30,7 +31,11 @@ from app.models.meeting import (
     CalendarIntegration,
     CalendarProvider,
     AvailabilitySchedule,
-    TimeSlot
+    TimeSlot,
+    MeetingSummary,
+    MeetingSummaryCreate,
+    MeetingSummaryType,
+    MeetingSummaryUpdate
 )
 from app.services.lead import LeadService
 from app.core.exceptions import ResourceNotFoundException, PermissionDeniedException, ExternalAPIException
@@ -214,6 +219,12 @@ class MeetingService:
             updated_at=datetime.now()
         )
         
+        # Store lead phone number in custom_fields if provided
+        if hasattr(meeting_data, 'lead_phone') and meeting_data.lead_phone:
+            if not meeting.custom_fields:
+                meeting.custom_fields = {}
+            meeting.custom_fields['lead_phone'] = meeting_data.lead_phone
+        
         # Add the organizer as an attendee
         # In a real implementation, we would fetch user details from database
         organizer = MeetingAttendee(
@@ -271,33 +282,21 @@ class MeetingService:
     
     async def update_meeting(self, meeting_id: str, update_data: MeetingUpdate, user_id: str) -> Meeting:
         """
-        Update an existing meeting
+        Update a meeting
         
         Args:
-            meeting_id: Meeting ID
-            update_data: Meeting update data
-            user_id: ID of the user updating the meeting
+            meeting_id: ID of the meeting to update
+            update_data: Data to update the meeting with
+            user_id: ID of the user making the update
             
         Returns:
-            Updated Meeting object
+            Updated meeting
         """
-        # In a real implementation, retrieve meeting from database
-        # For now, create a mock meeting
-        meeting = Meeting(
-            id=meeting_id,
-            title="Existing Meeting",
-            description="Original description",
-            start_time=datetime.now() + timedelta(days=1),
-            end_time=datetime.now() + timedelta(days=1, hours=1),
-            location={
-                "type": "virtual",
-                "virtual_link": "https://meet.example.com/123"
-            },
-            organizer_id=user_id,
-            status=MeetingStatus.SCHEDULED,
-            created_at=datetime.now() - timedelta(days=1),
-            updated_at=datetime.now() - timedelta(days=1)
-        )
+        # In a real implementation, fetch from database
+        meeting = self.meetings.get(meeting_id)
+        
+        if not meeting:
+            raise ValueError(f"Meeting with ID {meeting_id} not found")
         
         # Update fields if provided
         if update_data.title is not None:
@@ -312,11 +311,14 @@ class MeetingService:
         if update_data.end_time is not None:
             meeting.end_time = update_data.end_time
             
+        if update_data.location is not None:
+            meeting.location = update_data.location
+            
         if update_data.status is not None:
             meeting.status = update_data.status
             
-        if update_data.location is not None:
-            meeting.location = update_data.location
+        if update_data.lead_id is not None:
+            meeting.lead_id = update_data.lead_id
             
         if update_data.notes is not None:
             meeting.notes = update_data.notes
@@ -326,6 +328,16 @@ class MeetingService:
             
         if update_data.reminder_time is not None:
             meeting.reminder_time = update_data.reminder_time
+        
+        # Update summary fields
+        if update_data.summary is not None:
+            meeting.summary = update_data.summary
+            
+        if update_data.action_items is not None:
+            meeting.action_items = update_data.action_items
+            
+        if update_data.comprehensive_summary is not None:
+            meeting.comprehensive_summary = update_data.comprehensive_summary
         
         # Update timestamp
         meeting.updated_at = datetime.now()
@@ -686,4 +698,147 @@ class MeetingService:
             "message": "Meeting reminders sent successfully",
             "meetings_processed": 5,
             "reminders_sent": 12
-        } 
+        }
+    
+    async def create_meeting_summary(
+        self, 
+        summary_data: MeetingSummaryCreate, 
+        user_id: str
+    ) -> MeetingSummary:
+        """
+        Create a meeting summary
+        
+        Args:
+            summary_data: Data for the meeting summary
+            user_id: ID of the user creating the summary
+            
+        Returns:
+            Created meeting summary
+        """
+        # Verify the meeting exists
+        meeting_id = summary_data.meeting_id
+        meeting = self.meetings.get(meeting_id)
+        
+        if not meeting:
+            raise ValueError(f"Meeting with ID {meeting_id} not found")
+        
+        # Create the summary
+        summary = MeetingSummary(
+            id=str(uuid.uuid4()),
+            meeting_id=meeting_id,
+            summary_type=summary_data.summary_type,
+            summary=summary_data.summary,
+            insights=summary_data.insights,
+            action_items=summary_data.action_items,
+            next_steps=summary_data.next_steps,
+            created_at=datetime.now(),
+            updated_at=datetime.now(),
+            created_by=user_id
+        )
+        
+        # In a real implementation, save to database
+        # For now, we'll store it in memory
+        if not hasattr(self, 'meeting_summaries'):
+            self.meeting_summaries = {}
+        
+        # Use a composite key of meeting_id and summary_type
+        key = f"{meeting_id}_{summary_data.summary_type.value}"
+        self.meeting_summaries[key] = summary
+        
+        # Also update the meeting with the summary data
+        if summary_data.summary_type == MeetingSummaryType.BASIC:
+            meeting.summary = summary_data.summary
+            meeting.action_items = summary_data.action_items
+        elif summary_data.summary_type == MeetingSummaryType.COMPREHENSIVE:
+            meeting.comprehensive_summary = {
+                "summary": summary_data.summary,
+                "insights": summary_data.insights,
+                "action_items": summary_data.action_items,
+                "next_steps": summary_data.next_steps
+            }
+        
+        return summary
+    
+    async def get_meeting_summary(
+        self, 
+        meeting_id: str, 
+        summary_type: MeetingSummaryType
+    ) -> Optional[MeetingSummary]:
+        """
+        Get a meeting summary
+        
+        Args:
+            meeting_id: ID of the meeting
+            summary_type: Type of summary to get
+            
+        Returns:
+            Meeting summary if found, None otherwise
+        """
+        if not hasattr(self, 'meeting_summaries'):
+            return None
+        
+        key = f"{meeting_id}_{summary_type.value}"
+        return self.meeting_summaries.get(key)
+    
+    async def update_meeting_summary(
+        self, 
+        meeting_id: str, 
+        summary_type: MeetingSummaryType,
+        update_data: MeetingSummaryUpdate,
+        user_id: str
+    ) -> Optional[MeetingSummary]:
+        """
+        Update a meeting summary
+        
+        Args:
+            meeting_id: ID of the meeting
+            summary_type: Type of summary to update
+            update_data: Data to update the summary with
+            user_id: ID of the user making the update
+            
+        Returns:
+            Updated meeting summary if found, None otherwise
+        """
+        if not hasattr(self, 'meeting_summaries'):
+            return None
+        
+        key = f"{meeting_id}_{summary_type.value}"
+        summary = self.meeting_summaries.get(key)
+        
+        if not summary:
+            return None
+        
+        # Update fields if provided
+        if update_data.summary is not None:
+            summary.summary = update_data.summary
+            
+        if update_data.insights is not None:
+            summary.insights = update_data.insights
+            
+        if update_data.action_items is not None:
+            summary.action_items = update_data.action_items
+            
+        if update_data.next_steps is not None:
+            summary.next_steps = update_data.next_steps
+        
+        # Update timestamp
+        summary.updated_at = datetime.now()
+        
+        # In a real implementation, save to database
+        self.meeting_summaries[key] = summary
+        
+        # Also update the meeting with the summary data
+        meeting = self.meetings.get(meeting_id)
+        if meeting:
+            if summary_type == MeetingSummaryType.BASIC:
+                meeting.summary = summary.summary
+                meeting.action_items = summary.action_items
+            elif summary_type == MeetingSummaryType.COMPREHENSIVE:
+                meeting.comprehensive_summary = {
+                    "summary": summary.summary,
+                    "insights": summary.insights,
+                    "action_items": summary.action_items,
+                    "next_steps": summary.next_steps
+                }
+        
+        return summary 

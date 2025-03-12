@@ -65,8 +65,8 @@ class InsightGeneratorState(AgentState):
 # Define tools for the InsightGenerator agent
 class FetchLeadDataTool(BaseTool):
     """Tool to fetch comprehensive lead data for analysis."""
-    name = "fetch_lead_data"
-    description = "Fetch comprehensive lead data including profile and custom fields."
+    name: str = "fetch_lead_data"
+    description: str = "Fetch comprehensive lead data including profile and custom fields."
     
     async def _arun(self, lead_id: int) -> str:
         """Fetch lead data from the database."""
@@ -101,8 +101,8 @@ class FetchLeadDataTool(BaseTool):
 
 class FetchCommunicationDataTool(BaseTool):
     """Tool to fetch all communication data for a lead."""
-    name = "fetch_communication_data"
-    description = "Fetch all emails, calls, SMS, and meetings for a lead."
+    name: str = "fetch_communication_data"
+    description: str = "Fetch all emails, calls, SMS, and meetings for a lead."
     
     async def _arun(self, lead_id: int) -> str:
         """Fetch communication data from the database."""
@@ -185,8 +185,8 @@ class FetchCommunicationDataTool(BaseTool):
 
 class CalculateLeadScoreTool(BaseTool):
     """Tool to calculate a lead score based on various factors."""
-    name = "calculate_lead_score"
-    description = "Calculate a lead score based on multiple factors."
+    name: str = "calculate_lead_score"
+    description: str = "Calculate a lead score based on multiple factors."
     
     async def _arun(self, input_json: str) -> str:
         """Calculate lead score based on input data."""
@@ -282,8 +282,8 @@ class CalculateLeadScoreTool(BaseTool):
 
 class GenerateInsightsTool(BaseTool):
     """Tool to generate insights and recommendations for a lead."""
-    name = "generate_insights"
-    description = "Generate insights and recommendations based on lead data and score."
+    name: str = "generate_insights"
+    description: str = "Generate insights and recommendations based on lead data and score."
     
     async def _arun(self, input_json: str) -> str:
         """Generate insights based on lead data and score."""

@@ -144,7 +144,7 @@ class DBCampaignLead(Base):
     added_at = Column(DateTime, default=datetime.utcnow)
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
     notes = Column(Text, nullable=True)
-    metadata = Column(JSON, default={})
+    meta_data = Column(JSON, default={})
     
     # Relationships
     campaign = relationship("DBCampaign", back_populates="leads")
@@ -191,7 +191,7 @@ class DBLLMUsageRecord(Base):
     request_id = Column(String(255), nullable=True)
     success = Column(Boolean, default=True)
     error_message = Column(Text, nullable=True)
-    metadata = Column(JSON, default={})
+    meta_data = Column(JSON, default={})
     
     # Relationships
     model = relationship("DBLLMModel", back_populates="usage_records")

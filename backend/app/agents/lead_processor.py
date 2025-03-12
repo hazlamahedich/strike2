@@ -52,8 +52,8 @@ class LeadProcessorState(AgentState):
 # Define tools for the LeadProcessor agent
 class ExtractEntitiesFromTextTool(BaseTool):
     """Tool to extract structured entities from unstructured text."""
-    name = "extract_entities_from_text"
-    description = "Extract structured entities like names, emails, phone numbers, etc. from text."
+    name: str = "extract_entities_from_text"
+    description: str = "Extract structured entities like names, emails, phone numbers, etc. from text."
     
     async def _arun(self, text: str) -> str:
         """Run entity extraction on the text."""
@@ -94,8 +94,8 @@ class ExtractEntitiesFromTextTool(BaseTool):
 
 class CategorizeLeadTool(BaseTool):
     """Tool to categorize and tag leads based on available information."""
-    name = "categorize_lead"
-    description = "Categorize and tag a lead based on the extracted information."
+    name: str = "categorize_lead"
+    description: str = "Categorize and tag a lead based on the extracted information."
     
     async def _arun(self, lead_data: str) -> str:
         """Categorize the lead based on available data."""
@@ -150,8 +150,8 @@ class CategorizeLeadTool(BaseTool):
 
 class EnrichLeadDataTool(BaseTool):
     """Tool to enrich lead data with additional information."""
-    name = "enrich_lead_data"
-    description = "Enrich lead data with additional information."
+    name: str = "enrich_lead_data"
+    description: str = "Enrich lead data with additional information."
     
     async def _arun(self, lead_data: str) -> str:
         """Enrich the lead data with additional information."""

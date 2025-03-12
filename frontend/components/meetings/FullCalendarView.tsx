@@ -2,7 +2,7 @@ import { useState, useEffect, useRef } from 'react';
 import { Meeting, MeetingStatus, MeetingType } from '@/lib/types/meeting';
 import { format, parseISO, addDays, isPast, differenceInMinutes } from 'date-fns';
 import { Button } from '@/components/ui/button';
-import { Clock, MapPin, User, Phone, Mail, MessageSquare, Video, Calendar, X, Edit, AlertTriangle } from 'lucide-react';
+import { Clock, MapPin, User, Phone, Mail, MessageSquare, Video, Calendar, X, Edit, AlertTriangle, ListChecks, Sparkles } from 'lucide-react';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from '@/components/ui/dialog';
 import { MeetingCard } from './MeetingCard';
 import { toast } from '@/components/ui/use-toast';
@@ -11,6 +11,8 @@ import { cn } from '@/lib/utils';
 import { Textarea } from '@/components/ui/textarea';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
+import { generateMeetingAgenda } from '@/lib/services/aiMeetingService';
+import { MeetingDetailsWrapper } from './MeetingDetailsWrapper';
 
 // FullCalendar imports
 import FullCalendar from '@fullcalendar/react';
@@ -47,7 +49,13 @@ const createTestEvents = () => {
     start: new Date(today.setHours(10, 0, 0, 0)).toISOString(),
     end: new Date(today.setHours(11, 30, 0, 0)).toISOString(),
     backgroundColor: '#3b82f6',
-    borderColor: '#3b82f6'
+    borderColor: '#3b82f6',
+    extendedProps: {
+      description: 'Discuss project requirements and timeline',
+      meeting_type: MeetingType.DISCOVERY,
+      lead_id: '1001',
+      location: 'Zoom Meeting'
+    }
   };
   events.push(todayEvent);
   
@@ -60,7 +68,13 @@ const createTestEvents = () => {
     start: new Date(tomorrow.setHours(14, 0, 0, 0)).toISOString(),
     end: new Date(tomorrow.setHours(15, 30, 0, 0)).toISOString(),
     backgroundColor: '#10b981',
-    borderColor: '#10b981'
+    borderColor: '#10b981',
+    extendedProps: {
+      description: 'Product demonstration for new features',
+      meeting_type: MeetingType.DEMO,
+      lead_id: '1002',
+      location: 'Google Meet'
+    }
   };
   events.push(tomorrowEvent);
   
@@ -73,7 +87,13 @@ const createTestEvents = () => {
     start: new Date(nextWeek.setHours(9, 0, 0, 0)).toISOString(),
     end: new Date(nextWeek.setHours(10, 0, 0, 0)).toISOString(),
     backgroundColor: '#f59e0b',
-    borderColor: '#f59e0b'
+    borderColor: '#f59e0b',
+    extendedProps: {
+      description: 'Follow-up on implementation progress',
+      meeting_type: MeetingType.FOLLOW_UP,
+      lead_id: '1003',
+      location: 'Microsoft Teams'
+    }
   };
   events.push(nextWeekEvent);
   
@@ -95,6 +115,7 @@ export function FullCalendarView() {
   const [emailSubject, setEmailSubject] = useState('');
   const [emailBody, setEmailBody] = useState('');
   const [noShowReason, setNoShowReason] = useState('');
+  const [isLoadingAgendaSuggestions, setIsLoadingAgendaSuggestions] = useState(false);
 
   // Function to change calendar view
   const changeView = (newView: 'dayGridMonth' | 'timeGridWeek' | 'timeGridDay') => {
@@ -107,7 +128,14 @@ export function FullCalendarView() {
   // Handle event click
   const handleEventClick = (clickInfo: EventClickArg) => {
     console.log('Event clicked:', clickInfo.event);
-    setSelectedMeeting({
+    console.log('Event ID:', clickInfo.event.id);
+    console.log('Event title:', clickInfo.event.title);
+    console.log('Event start:', clickInfo.event.start);
+    console.log('Event end:', clickInfo.event.end);
+    console.log('Event extendedProps:', clickInfo.event.extendedProps);
+    
+    // Create a meeting object from the event
+    const meetingData = {
       id: parseInt(clickInfo.event.id),
       title: clickInfo.event.title,
       start_time: clickInfo.event.start?.toISOString() || new Date().toISOString(),
@@ -115,13 +143,89 @@ export function FullCalendarView() {
       description: clickInfo.event.extendedProps?.description || 'No description available',
       status: MeetingStatus.SCHEDULED,
       location: clickInfo.event.extendedProps?.location || 'No location specified',
+      meeting_type: clickInfo.event.extendedProps?.meeting_type || MeetingType.OTHER,
+      lead_id: clickInfo.event.extendedProps?.lead_id || null,
+      agenda_items: clickInfo.event.extendedProps?.agenda_items || [],
       contact: {
         phone: '+1234567890',
         email: 'contact@example.com',
         name: 'John Doe'
-      }
-    });
+      },
+      created_at: new Date().toISOString(),
+      updated_at: new Date().toISOString()
+    };
+    
+    console.log('Created meeting object:', meetingData);
+    
+    // Set the selected meeting and show the dialog
+    setSelectedMeeting(meetingData);
     setShowMeetingDialog(true);
+    
+    // Show a toast for debugging
+    toast({
+      title: 'Meeting Selected',
+      description: `Opened meeting: ${meetingData.title}`,
+    });
+  };
+  
+  // Handle meeting update
+  const handleMeetingUpdate = (updatedMeeting: any) => {
+    console.log('Meeting updated:', updatedMeeting);
+    setSelectedMeeting(updatedMeeting);
+  };
+  
+  // Handle meeting dialog close
+  const handleMeetingDialogClose = () => {
+    setShowMeetingDialog(false);
+  };
+  
+  // Generate AI agenda suggestions
+  const generateAgendaSuggestions = async () => {
+    console.log('Generating agenda suggestions for meeting:', selectedMeeting);
+    setIsLoadingAgendaSuggestions(true);
+    try {
+      const requestData = {
+        lead_id: selectedMeeting.lead_id ? selectedMeeting.lead_id.toString() : undefined,
+        meeting_type: selectedMeeting.meeting_type || MeetingType.OTHER,
+        context: selectedMeeting.description
+      };
+      console.log('Request data for agenda suggestions:', requestData);
+      
+      const { data, error } = await generateMeetingAgenda(requestData);
+      
+      console.log('Agenda API response:', { data, error });
+      
+      if (error) {
+        throw new Error(error.message);
+      }
+      
+      // Ensure meeting.agenda_items is initialized
+      const currentAgendaItems = selectedMeeting.agenda_items || [];
+      
+      // Update the meeting with the suggested agenda items
+      const updatedAgendaItems = [...currentAgendaItems, ...data.agenda_items];
+      console.log('Updated agenda items:', updatedAgendaItems);
+      
+      // Update the selected meeting with the new agenda items
+      setSelectedMeeting({
+        ...selectedMeeting,
+        agenda_items: updatedAgendaItems
+      });
+      
+      toast({
+        title: 'Success',
+        description: 'AI agenda suggestions added',
+      });
+    } catch (error) {
+      console.error('Error generating agenda suggestions:', error);
+      toast({
+        title: 'Error',
+        description: 'Failed to generate agenda suggestions',
+        variant: 'destructive',
+      });
+    } finally {
+      setIsLoadingAgendaSuggestions(false);
+    }
   };
   
   // Check for meetings that have passed without being joined
@@ -516,120 +620,13 @@ export function FullCalendarView() {
 
       {/* Meeting Dialog */}
       <Dialog open={showMeetingDialog} onOpenChange={setShowMeetingDialog}>
-        <DialogContent className="max-w-3xl">
-          <DialogHeader>
-            <DialogTitle>
-              Meeting Details
-            </DialogTitle>
-          </DialogHeader>
-          
+        <DialogContent className="max-w-4xl">
           {selectedMeeting && (
-            <div className="grid grid-cols-1 gap-4">
-              <div className="p-4 border rounded-lg">
-                <h3 className="text-lg font-semibold mb-2">{selectedMeeting.title}</h3>
-                <p className="text-sm text-gray-600 mb-2">{selectedMeeting.description}</p>
-                <div className="flex items-center text-sm mb-1">
-                  <Clock className="mr-2 h-4 w-4 opacity-70" />
-                  <span>
-                    {format(parseISO(selectedMeeting.start_time), 'EEEE, MMMM d, yyyy')} at {format(parseISO(selectedMeeting.start_time), 'h:mm a')}
-                  </span>
-                </div>
-                {selectedMeeting.location && (
-                  <div className="flex items-center text-sm mb-3">
-                    <MapPin className="mr-2 h-4 w-4 opacity-70" />
-                    <span>{selectedMeeting.location}</span>
-                  </div>
-                )}
-                
-                {/* Contact information */}
-                {selectedMeeting.contact && (
-                  <div className="mt-3 pt-3 border-t">
-                    <h4 className="font-medium mb-2">Contact Information</h4>
-                    <div className="text-sm">{selectedMeeting.contact.name}</div>
-                    {selectedMeeting.contact.phone && (
-                      <div className="text-sm">{selectedMeeting.contact.phone}</div>
-                    )}
-                    {selectedMeeting.contact.email && (
-                      <div className="text-sm">{selectedMeeting.contact.email}</div>
-                    )}
-                  </div>
-                )}
-                
-                {/* Action buttons */}
-                <div className="mt-4 pt-3 border-t flex flex-wrap gap-2">
-                  {/* Primary actions */}
-                  <div className="flex flex-wrap gap-2 mb-2 w-full">
-                    <Button 
-                      variant="default" 
-                      size="sm" 
-                      onClick={handleJoinMeeting}
-                      className="bg-green-600 hover:bg-green-700"
-                    >
-                      <Video className="h-4 w-4 mr-1" />
-                      Join Meeting
-                    </Button>
-                    
-                    <Button 
-                      variant="outline" 
-                      size="sm" 
-                      onClick={handleRescheduleMeeting}
-                    >
-                      <Calendar className="h-4 w-4 mr-1" />
-                      Reschedule
-                    </Button>
-                    
-                    <Button 
-                      variant="destructive" 
-                      size="sm" 
-                      onClick={handleCancelMeeting}
-                    >
-                      <X className="h-4 w-4 mr-1" />
-                      Cancel Meeting
-                    </Button>
-                    
-                    <Button 
-                      variant="outline" 
-                      size="sm" 
-                      onClick={handleMarkNoShow}
-                      className="border-purple-500 text-purple-700 hover:bg-purple-50"
-                    >
-                      <AlertTriangle className="h-4 w-4 mr-1" />
-                      Mark as No-Show
-                    </Button>
-                  </div>
-                  
-                  {/* Communication actions */}
-                  <div className="flex flex-wrap gap-2 w-full">
-                    <Button 
-                      variant="outline" 
-                      size="sm" 
-                      onClick={handleCallContact}
-                    >
-                      <Phone className="h-4 w-4 mr-1" />
-                      Call
-                    </Button>
-                    
-                    <Button 
-                      variant="outline" 
-                      size="sm" 
-                      onClick={handleSendSMS}
-                    >
-                      <MessageSquare className="h-4 w-4 mr-1" />
-                      Send SMS
-                    </Button>
-                    
-                    <Button 
-                      variant="outline" 
-                      size="sm" 
-                      onClick={handleSendEmail}
-                    >
-                      <Mail className="h-4 w-4 mr-1" />
-                      Send Email
-                    </Button>
-                  </div>
-                </div>
-              </div>
-            </div>
+            <MeetingDetailsWrapper
+              meeting={selectedMeeting} 
+              onUpdate={handleMeetingUpdate}
+              onClose={handleMeetingDialogClose}
+            />
           )}
         </DialogContent>
       </Dialog>

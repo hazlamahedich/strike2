@@ -14,23 +14,26 @@ export interface User {
   updated_at?: string;
 }
 
+// Meeting type enum
 export enum MeetingType {
-  INITIAL_CALL = "initial_call",
-  DISCOVERY = "discovery",
-  DEMO = "demo",
-  PROPOSAL = "proposal",
-  NEGOTIATION = "negotiation",
-  FOLLOW_UP = "follow_up",
-  OTHER = "other"
+  INITIAL_CALL = 'INITIAL_CALL',
+  DISCOVERY = 'DISCOVERY',
+  DEMO = 'DEMO',
+  PROPOSAL = 'PROPOSAL',
+  NEGOTIATION = 'NEGOTIATION',
+  FOLLOW_UP = 'FOLLOW_UP',
+  ONBOARDING = 'ONBOARDING',
+  REVIEW = 'REVIEW',
+  OTHER = 'OTHER',
 }
 
+// Meeting status enum
 export enum MeetingStatus {
-  SCHEDULED = "scheduled",
-  CONFIRMED = "confirmed",
-  CANCELED = "canceled",
-  COMPLETED = "completed",
-  RESCHEDULED = "rescheduled",
-  NO_SHOW = "no_show"
+  SCHEDULED = 'SCHEDULED',
+  COMPLETED = 'COMPLETED',
+  CANCELLED = 'CANCELLED',
+  RESCHEDULED = 'RESCHEDULED',
+  NO_SHOW = 'NO_SHOW',
 }
 
 export enum MeetingLocationType {
@@ -64,58 +67,139 @@ export interface MeetingContact {
   phone?: string;
 }
 
+// Meeting interface
 export interface Meeting {
-  id: number;
-  lead_id: number;
+  id: string;
   title: string;
   description?: string;
   start_time: string;
   end_time: string;
   location?: string;
+  meeting_type: MeetingType;
   status: MeetingStatus;
-  notes?: string;
-  created_by?: string; // UUID of the user who created the meeting
-  
-  // These fields are not in the database but used in the frontend
-  timezone?: string;
-  meeting_type?: MeetingType;
-  user_id?: number;
-  calendar_id?: string;
-  meeting_url?: string;
-  created_at?: string;
-  updated_at?: string;
+  lead_id?: string;
   lead?: Lead;
-  organizer?: User;
-  attendees?: MeetingAttendee[];
-  contact?: MeetingContact;
+  notes?: string;
+  agenda_items?: string[];
+  created_at: string;
+  updated_at: string;
+  // Summary fields
+  summary?: string;
+  action_items?: string[];
+  // Comprehensive summary fields
+  comprehensive_summary?: {
+    summary: string;
+    insights: string[];
+    action_items: string[];
+    next_steps: string[];
+    company_analysis?: {
+      company_summary?: string;
+      industry?: string;
+      company_size_estimate?: string;
+      strengths?: string[];
+      potential_pain_points?: string[];
+    };
+  };
 }
 
+// Meeting summary type enum
+export enum MeetingSummaryType {
+  BASIC = 'basic',
+  COMPREHENSIVE = 'comprehensive',
+}
+
+// Meeting summary interface
+export interface MeetingSummary {
+  id: string;
+  meeting_id: string;
+  summary_type: MeetingSummaryType;
+  summary: string;
+  insights: string[];
+  action_items: string[];
+  next_steps: string[];
+  created_at: string;
+  updated_at: string;
+  created_by?: string;
+  company_analysis?: {
+    company_summary?: string;
+    industry?: string;
+    company_size_estimate?: string;
+    strengths?: string[];
+    potential_pain_points?: string[];
+  };
+}
+
+// Meeting summary create interface
+export interface MeetingSummaryCreate {
+  meeting_id: string;
+  summary_type: MeetingSummaryType;
+  summary: string;
+  insights: string[];
+  action_items: string[];
+  next_steps: string[];
+  company_analysis?: {
+    company_summary?: string;
+    industry?: string;
+    company_size_estimate?: string;
+    strengths?: string[];
+    potential_pain_points?: string[];
+  };
+}
+
+// Meeting summary update interface
+export interface MeetingSummaryUpdate {
+  summary?: string;
+  insights?: string[];
+  action_items?: string[];
+  next_steps?: string[];
+}
+
+// Meeting create interface
 export interface MeetingCreate {
-  lead_id: number;
+  lead_id?: string;
+  lead_email: string;
+  lead_phone?: string;
   title: string;
   description?: string;
   start_time: string;
   end_time: string;
+  timezone?: string;
+  meeting_type: MeetingType;
   location?: string;
   status?: MeetingStatus;
   notes?: string;
-  created_by?: string; // UUID of the user who created the meeting
-  
-  // Additional fields used in the frontend but not required by the database
-  timezone?: string;
-  meeting_type?: MeetingType;
-  lead_email?: string; // Used for sending invitations
+  agenda_items?: string[];
 }
 
+// Meeting update interface
 export interface MeetingUpdate {
   title?: string;
   description?: string;
   start_time?: string;
   end_time?: string;
-  timezone?: string;
-  meeting_type?: MeetingType;
   location?: string;
+  meeting_type?: MeetingType;
   status?: MeetingStatus;
+  lead_id?: string;
+  notes?: string;
+  agenda_items?: string[];
+  // Summary fields
+  summary?: string;
+  action_items?: string[];
+  // Comprehensive summary fields
+  comprehensive_summary?: {
+    summary: string;
+    insights: string[];
+    action_items: string[];
+    next_steps: string[];
+    company_analysis?: {
+      company_summary?: string;
+      industry?: string;
+      company_size_estimate?: string;
+      strengths?: string[];
+      potential_pain_points?: string[];
+    };
+  };
 }
 
 export interface TimeSlot {

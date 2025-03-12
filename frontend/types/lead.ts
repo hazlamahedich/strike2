@@ -4,8 +4,8 @@ export interface Lead {
   last_name: string;
   email?: string;
   phone?: string;
-  company_name?: string;
-  job_title?: string;
+  company?: string;
+  title?: string;
   status?: string;
   source?: string;
   notes?: string;
@@ -37,8 +37,8 @@ export interface LeadCreate {
   last_name: string;
   email?: string;
   phone?: string;
-  company_name?: string;
-  job_title?: string;
+  company?: string;
+  title?: string;
   status?: string;
   source?: string;
   notes?: string;
@@ -55,8 +55,8 @@ export interface LeadUpdate {
   last_name?: string;
   email?: string;
   phone?: string;
-  company_name?: string;
-  job_title?: string;
+  company?: string;
+  title?: string;
   status?: string;
   source?: string;
   notes?: string;
@@ -72,8 +72,8 @@ export interface LeadFormValues {
   last_name: string;
   email?: string;
   phone?: string;
-  company_name?: string;
-  job_title?: string;
+  company?: string;
+  title?: string;
   status?: string;
   source?: string;
   notes?: string;

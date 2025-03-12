@@ -20,7 +20,11 @@ from app.models.meeting import (
     AvailabilitySchedule,
     AvailabilityRequest,
     AvailabilityResponse,
-    TimeSlot
+    TimeSlot,
+    MeetingSummary,
+    MeetingSummaryCreate,
+    MeetingSummaryUpdate,
+    MeetingSummaryType
 )
 from app.services.meeting import MeetingService
 from app.core.security import get_current_active_user
@@ -277,25 +281,16 @@ async def update_meeting(
             "end_time": meeting.end_time,
             "status": meeting.status,
             "location": meeting.location,
-            "organizer": {
-                "id": meeting.organizer_id,
-                "name": "Organizer Name",  # Mock - would fetch from database
-                "email": "organizer@example.com"  # Mock - would fetch from database
-            },
-            "lead": {"id": meeting.lead_id} if meeting.lead_id else None,
-            "attendees": [
-                {
-                    "name": attendee.name,
-                    "email": attendee.email,
-                    "status": attendee.status
-                }
-                for attendee in meeting.attendees
-            ],
+            "meeting_type": meeting.meeting_type,
+            "user_id": meeting.organizer_id,
+            "lead_id": meeting.lead_id,
             "notes": meeting.notes,
-            "calendar_provider": meeting.calendar_provider,
             "agenda_items": meeting.agenda_items,
             "created_at": meeting.created_at,
-            "updated_at": meeting.updated_at
+            "updated_at": meeting.updated_at,
+            "summary": meeting.summary,
+            "action_items": meeting.action_items,
+            "comprehensive_summary": meeting.comprehensive_summary
         }
     except Exception as e:
         logger.error(f"Error updating meeting: {str(e)}")
@@ -448,4 +443,59 @@ async def create_availability_schedule(
         )
     
     created_schedule = await meeting_service.create_availability_schedule(schedule)
-    return created_schedule 
+    return created_schedule
+
+@router.post("/summaries", response_model=MeetingSummary)
+async def create_meeting_summary(
+    summary: MeetingSummaryCreate,
+    current_user: User = Depends(get_current_active_user),
+    meeting_service: MeetingService = Depends()
+):
+    """
+    Create a new meeting summary
+    """
+    try:
+        return await meeting_service.create_meeting_summary(summary, current_user.id)
+    except ValueError as e:
+        raise HTTPException(status_code=404, detail=str(e))
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to create meeting summary: {str(e)}")
+
+@router.get("/summaries/{meeting_id}/{summary_type}", response_model=MeetingSummary)
+async def get_meeting_summary(
+    meeting_id: str,
+    summary_type: MeetingSummaryType,
+    current_user: User = Depends(get_current_active_user),
+    meeting_service: MeetingService = Depends()
+):
+    """
+    Get a meeting summary by meeting ID and summary type
+    """
+    summary = await meeting_service.get_meeting_summary(meeting_id, summary_type)
+    if not summary:
+        raise HTTPException(
+            status_code=404, 
+            detail=f"No {summary_type.value} summary found for meeting {meeting_id}"
+        )
+    return summary
+
+@router.put("/summaries/{meeting_id}/{summary_type}", response_model=MeetingSummary)
+async def update_meeting_summary(
+    meeting_id: str,
+    summary_type: MeetingSummaryType,
+    update_data: MeetingSummaryUpdate,
+    current_user: User = Depends(get_current_active_user),
+    meeting_service: MeetingService = Depends()
+):
+    """
+    Update a meeting summary
+    """
+    summary = await meeting_service.update_meeting_summary(
+        meeting_id, summary_type, update_data, current_user.id
+    )
+    if not summary:
+        raise HTTPException(
+            status_code=404, 
+            detail=f"No {summary_type.value} summary found for meeting {meeting_id}"
+        )
+    return summary 

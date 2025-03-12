@@ -45,7 +45,10 @@ const apiClient = {
   async get<T>(endpoint: string, params?: Record<string, any>): Promise<ApiResponse<T>> {
     try {
       // Special handling for API routes
-      if (endpoint.startsWith('/notifications/') || endpoint.startsWith('/api/')) {
+      if (endpoint.startsWith('/notifications/') || 
+          endpoint.startsWith('/api/') || 
+          endpoint.startsWith('/api/v1/') || 
+          endpoint.startsWith('api/v1/')) {
         // Use fetch for API routes
         const url = new URL(endpoint, window.location.origin);
         
@@ -58,24 +61,61 @@ const apiClient = {
           });
         }
         
-        const response = await fetch(url.toString(), {
-          method: 'GET',
-          headers: {
-            'Content-Type': 'application/json',
-          },
-          credentials: 'include', // Include cookies for auth
-        });
+        console.log('Making API GET request to:', url.toString());
         
-        if (!response.ok) {
-          throw new Error(`API error: ${response.status} ${response.statusText}`);
+        try {
+          const response = await fetch(url.toString(), {
+            method: 'GET',
+            headers: {
+              'Content-Type': 'application/json',
+            },
+            credentials: 'include', // Include cookies for auth
+          });
+          
+          if (!response.ok) {
+            const errorData = await response.json().catch(() => ({ detail: `HTTP error ${response.status}` }));
+            console.error('API Error Response:', {
+              status: response.status,
+              statusText: response.statusText,
+              data: errorData,
+              url: endpoint
+            });
+            
+            let errorMessage = 'An error occurred while fetching data';
+            
+            // Provide more specific error messages based on status code
+            if (response.status === 401) {
+              errorMessage = 'You are not authenticated. Please log in again.';
+            } else if (response.status === 403) {
+              errorMessage = 'You do not have permission to access this resource.';
+            } else if (response.status === 404) {
+              errorMessage = 'The requested resource was not found.';
+            } else if (response.status >= 500) {
+              errorMessage = 'A server error occurred. Please try again later.';
+            }
+            
+            throw new Error(
+              errorData.detail || 
+              errorData.message || 
+              errorData.error ||
+              `${errorMessage} (${response.status})`
+            );
+          }
+          
+          const data = await response.json();
+          console.log('API GET response:', data);
+          
+          return {
+            data: data as T,
+            error: null
+          };
+        } catch (fetchError) {
+          console.error(`API GET error for ${endpoint}:`, fetchError);
+          return {
+            data: null as unknown as T,
+            error: fetchError instanceof Error ? fetchError : new Error('Unknown error occurred')
+          };
         }
-        
-        const data = await response.json();
-        
-        return {
-          data: data as T,
-          error: null
-        };
       }
       
       // Regular Supabase table handling
@@ -97,6 +137,10 @@ const apiClient = {
       
       const { data, error } = await query;
       
+      if (error) {
+        console.error(`Supabase error for ${endpoint}:`, error);
+      }
+      
       return {
         data: data as T,
         error: error
@@ -115,7 +159,35 @@ const apiClient = {
    */
   async post<T>(endpoint: string, body: any): Promise<ApiResponse<T>> {
     try {
-      // Use Supabase for API requests
+      // Special handling for API routes
+      if (endpoint.startsWith('/api/') || 
+          endpoint.startsWith('/notifications/') || 
+          endpoint.startsWith('api/v1/')) {
+        // Use fetch for API routes
+        const url = new URL(endpoint, window.location.origin);
+        
+        const response = await fetch(url.toString(), {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify(body),
+          credentials: 'include', // Include cookies for auth
+        });
+        
+        if (!response.ok) {
+          throw new Error(`API error: ${response.status} ${response.statusText}`);
+        }
+        
+        const data = await response.json();
+        
+        return {
+          data: data as T,
+          error: null
+        };
+      }
+      
+      // Use Supabase for database requests
       const { data, error } = await supabase
         .from(endpoint.replace('/api/', ''))
         .insert(body)
@@ -139,7 +211,54 @@ const apiClient = {
    */
   async put<T>(endpoint: string, body: any): Promise<ApiResponse<T>> {
     try {
-      // Use Supabase for API requests
+      // Ensure endpoint starts with a slash
+      const normalizedEndpoint = endpoint.startsWith('/') ? endpoint : `/${endpoint}`;
+      
+      // Special handling for API routes
+      if (normalizedEndpoint.startsWith('/api/') || 
+          normalizedEndpoint.startsWith('/notifications/') || 
+          normalizedEndpoint.startsWith('/api/v1/') ||
+          normalizedEndpoint.startsWith('/api/v1/')) {
+        // Use fetch for API routes
+        const url = new URL(normalizedEndpoint, window.location.origin);
+        
+        console.log('Making API PUT request to:', url.toString(), 'with body:', body);
+        try {
+          const response = await fetch(url.toString(), {
+            method: 'PUT',
+            headers: {
+              'Content-Type': 'application/json',
+            },
+            body: JSON.stringify(body),
+            credentials: 'include', // Include cookies for auth
+          });
+          
+          if (!response.ok) {
+            const errorText = await response.text();
+            console.error(`API error: ${response.status} ${response.statusText}`, errorText);
+            return {
+              data: null as unknown as T,
+              error: new Error(`API error: ${response.status} ${response.statusText}`)
+            };
+          }
+          
+          const data = await response.json();
+          console.log('API PUT response:', data);
+          
+          return {
+            data: data as T,
+            error: null
+          };
+        } catch (fetchError) {
+          console.error('Fetch error in PUT request:', fetchError);
+          return {
+            data: null as unknown as T,
+            error: fetchError instanceof Error ? fetchError : new Error('Unknown fetch error occurred')
+          };
+        }
+      }
+      
+      // Use Supabase for database requests
       const { data, error } = await supabase
         .from(endpoint.replace('/api/', ''))
         .update(body)

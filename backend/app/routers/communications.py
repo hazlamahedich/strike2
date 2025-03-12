@@ -32,7 +32,8 @@ from app.services.communication import CommunicationService
 from app.core.security import get_current_active_user
 from app.models.user import User
 from app.services.ai import AIService
-from app.db.supabase import update_row, fetch_one, insert_row, insert_related_activity, get_call_activity_id
+from app.core.database import update_row, fetch_one, insert_row
+from app.db.supabase import insert_related_activity, get_call_activity_id
 
 # Configure logger for this module
 logger = logging.getLogger(__name__)

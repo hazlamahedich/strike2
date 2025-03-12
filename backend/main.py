@@ -3,7 +3,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from contextlib import asynccontextmanager
 
 # Import our routers
-from app.routers import auth, leads, tasks, communications, meetings, analytics, campaigns, notifications, agents, chatbot, company_analysis
+from app.routers import auth, leads, tasks, communications, meetings, analytics, campaigns, notifications, agents, chatbot, company_analysis, ai_meetings
 from app.routers.low_probability_workflow import router as low_probability_workflow_router
 from app.core.config import settings
 from app.core.security import get_current_active_user
@@ -41,6 +41,8 @@ app.add_middleware(
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
+    expose_headers=["Content-Type", "X-CSRFToken"],
+    max_age=600,  # Cache preflight requests for 10 minutes
 )
 
 # Add RBAC middleware
@@ -113,11 +115,22 @@ app.include_router(
     tags=["Company Analysis"], 
     dependencies=[Depends(get_current_active_user)]
 )
+app.include_router(
+    ai_meetings.router, 
+    prefix="/api/v1/ai/meetings",
+    tags=["AI Meetings"], 
+    dependencies=[Depends(get_current_active_user)]
+)
 
 @app.get("/api/health")
 async def health_check():
     """Health check endpoint"""
     return {"status": "healthy"}
+
+@app.get("/api/simple-health")
+async def simple_health_check():
+    """Simple health check endpoint that doesn't depend on any other components"""
+    return {"status": "healthy", "message": "Simple health check passed"}
 
 if __name__ == "__main__":
     import uvicorn

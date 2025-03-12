@@ -61,8 +61,8 @@ class TaskOrchestratorState(AgentState):
 # Define tools for the TaskOrchestrator agent
 class FetchLeadWithInsightsTool(BaseTool):
     """Tool to fetch lead information with insights."""
-    name = "fetch_lead_with_insights"
-    description = "Fetch lead information along with insights and scoring."
+    name: str = "fetch_lead_with_insights"
+    description: str = "Fetch lead information along with insights and scoring."
     
     async def _arun(self, lead_id: int) -> str:
         """Fetch lead information with insights from the database."""
@@ -179,8 +179,8 @@ class FetchLeadWithInsightsTool(BaseTool):
 
 class FetchUserCalendarTool(BaseTool):
     """Tool to fetch the user's calendar for scheduling."""
-    name = "fetch_user_calendar"
-    description = "Fetch the user's calendar to find availability for tasks."
+    name: str = "fetch_user_calendar"
+    description: str = "Fetch the user's calendar to find availability for tasks."
     
     async def _arun(self, user_id: int) -> str:
         """Fetch the user's calendar from the database."""
@@ -226,8 +226,8 @@ class FetchUserCalendarTool(BaseTool):
 
 class FetchExistingTasksTool(BaseTool):
     """Tool to fetch existing tasks for a lead."""
-    name = "fetch_existing_tasks"
-    description = "Fetch existing tasks associated with a lead."
+    name: str = "fetch_existing_tasks"
+    description: str = "Fetch existing tasks associated with a lead."
     
     async def _arun(self, lead_id: int) -> str:
         """Fetch existing tasks from the database."""
@@ -263,8 +263,8 @@ class FetchExistingTasksTool(BaseTool):
 
 class GenerateFollowUpSuggestionsTool(BaseTool):
     """Tool to generate follow-up suggestions for a lead."""
-    name = "generate_follow_up_suggestions"
-    description = "Generate personalized follow-up suggestions for a lead."
+    name: str = "generate_follow_up_suggestions"
+    description: str = "Generate personalized follow-up suggestions for a lead."
     
     async def _arun(self, input_json: str) -> str:
         """Generate follow-up suggestions based on lead data and insights."""
@@ -350,8 +350,8 @@ class GenerateFollowUpSuggestionsTool(BaseTool):
 
 class CreateTaskPlanTool(BaseTool):
     """Tool to create a comprehensive task plan for a lead."""
-    name = "create_task_plan"
-    description = "Create a comprehensive task plan for a lead based on follow-up suggestions and calendar."
+    name: str = "create_task_plan"
+    description: str = "Create a comprehensive task plan for a lead based on follow-up suggestions and calendar."
     
     async def _arun(self, input_json: str) -> str:
         """Create a task plan based on suggestions and calendar availability."""

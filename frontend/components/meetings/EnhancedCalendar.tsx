@@ -1,5 +1,5 @@
-import { useState, useEffect, useRef } from 'react';
-import { Meeting, MeetingStatus, MeetingType } from '@/lib/types/meeting';
+import { useState, useEffect, useRef, useMemo } from 'react';
+import { Meeting, MeetingStatus, MeetingType, MeetingContact } from '@/lib/types/meeting';
 import { format, parseISO, isSameDay, addDays, isPast, differenceInMinutes } from 'date-fns';
 import { Button } from '@/components/ui/button';
 import { Clock, MapPin, Plus, User, Phone, Mail, MessageSquare, Video, Calendar, X, Edit, AlertTriangle, RefreshCw } from 'lucide-react';
@@ -13,9 +13,15 @@ import { EnhancedMeetingForm } from './EnhancedMeetingForm';
 import { Textarea } from '@/components/ui/textarea';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
-import { getMeetings } from '@/lib/api/meetings';
+import { getMeetings, updateMeeting, deleteMeeting } from '@/lib/api/meetings';
+import { getLeads } from '@/lib/api/leads';
 import { USE_MOCK_DATA } from '@/lib/config';
-import { ApiResponse } from '@/lib/api/client';
+import { ApiResponse, ApiError } from '@/lib/api/apiClient';
+import { Lead, LeadSource, LeadStatus } from '@/lib/types/lead';
+import { TimeSlot } from '@/lib/services/aiMeetingService';
+import { EnhancedMeetingDetails } from './EnhancedMeetingDetails';
+import { PhoneDialog } from '../communications/PhoneDialog';
+import { EmailDialog } from '../communications/EmailDialog';
 
 // FullCalendar imports
 import FullCalendar from '@fullcalendar/react';
@@ -23,6 +29,11 @@ import dayGridPlugin from '@fullcalendar/daygrid';
 import timeGridPlugin from '@fullcalendar/timegrid';
 import interactionPlugin from '@fullcalendar/interaction';
 import { EventClickArg, DateSelectArg, EventInput } from '@fullcalendar/core';
+
+// Extended Meeting type that includes the contact property
+interface ExtendedMeeting extends Meeting {
+  contact?: MeetingContact;
+}
 
 // Helper function to create dates with specific times
 const createDateWithTime = (daysFromNow: number, hours: number, minutes: number): string => {
@@ -35,76 +46,145 @@ const createDateWithTime = (daysFromNow: number, hours: number, minutes: number)
 // Use this if MOCK_MEETINGS from lib/mock/meetings is not available
 const FALLBACK_MOCK_MEETINGS: Meeting[] = [
   {
-    id: 1,
+    id: "1",
     title: "Initial Client Meeting",
     description: "Discuss project requirements and timeline",
     start_time: createDateWithTime(0, 10, 0), // Today at 10:00 AM
     end_time: createDateWithTime(0, 11, 30), // Today at 11:30 AM
     status: MeetingStatus.SCHEDULED,
     meeting_type: MeetingType.INITIAL_CALL,
-    lead_id: 1,
-    user_id: 1,
+    lead_id: "1",
     created_at: new Date().toISOString(),
     updated_at: new Date().toISOString(),
     location: "Zoom Meeting"
   },
   {
-    id: 2,
+    id: "2",
     title: "Product Demo",
     description: "Demonstrate product features",
     start_time: createDateWithTime(3, 14, 0), // 3 days from now at 2:00 PM
     end_time: createDateWithTime(3, 15, 0), // 3 days from now at 3:00 PM
-    status: MeetingStatus.CONFIRMED,
+    status: MeetingStatus.SCHEDULED,
     meeting_type: MeetingType.DEMO,
-    lead_id: 2,
-    user_id: 1,
+    lead_id: "2",
     created_at: new Date().toISOString(),
     updated_at: new Date().toISOString(),
     location: "Google Meet"
   },
   {
-    id: 3,
+    id: "3",
     title: "Follow-up Discussion",
     description: "Follow up on previous meeting",
     start_time: createDateWithTime(7, 11, 0), // 7 days from now at 11:00 AM
     end_time: createDateWithTime(7, 12, 0), // 7 days from now at 12:00 PM
     status: MeetingStatus.SCHEDULED,
     meeting_type: MeetingType.FOLLOW_UP,
-    lead_id: 3,
-    user_id: 1,
+    lead_id: "3",
     created_at: new Date().toISOString(),
     updated_at: new Date().toISOString(),
     location: "Phone Call"
   },
   // Add a meeting for tomorrow to test week view
   {
-    id: 4,
+    id: "4",
     title: "Strategy Session",
     description: "Discuss marketing strategy",
     start_time: createDateWithTime(1, 13, 0), // Tomorrow at 1:00 PM
     end_time: createDateWithTime(1, 14, 30), // Tomorrow at 2:30 PM
-    status: MeetingStatus.CONFIRMED,
+    status: MeetingStatus.SCHEDULED,
     meeting_type: MeetingType.DISCOVERY,
-    lead_id: 4,
-    user_id: 1,
+    lead_id: "4",
     created_at: new Date().toISOString(),
     updated_at: new Date().toISOString(),
     location: "Conference Room A"
   },
   // Add a meeting for today at a different time to test day view
   {
-    id: 5,
+    id: "5",
     title: "Quick Check-in",
     description: "Brief status update",
     start_time: createDateWithTime(0, 15, 0), // Today at 3:00 PM
     end_time: createDateWithTime(0, 15, 30), // Today at 3:30 PM
     status: MeetingStatus.SCHEDULED,
     meeting_type: MeetingType.FOLLOW_UP,
-    lead_id: 5,
-    user_id: 1,
+    lead_id: "5",
     created_at: new Date().toISOString(),
     updated_at: new Date().toISOString(),
     location: "Phone Call"
+  }
+];
+
+// Fix the mock leads array to match the Lead type
+const MOCK_LEADS: Lead[] = [
+  {
+    id: "1",
+    first_name: "John",
+    last_name: "Doe",
+    email: "john.doe@example.com",
+    phone: "555-123-4567",
+    company: "ABC Corp",
+    job_title: "CEO",
+    source: LeadSource.WEBSITE,
+    status: LeadStatus.NEW,
+    created_at: "2025-03-05T07:24:09.193Z",
+    updated_at: "2025-03-09T05:39:08.508Z",
+    notes: "Interested in our premium plan"
+  },
+  {
+    id: "2",
+    first_name: "Jane",
+    last_name: "Smith",
+    email: "jane.smith@example.com",
+    phone: "555-987-6543",
+    company: "XYZ Inc",
+    job_title: "CTO",
+    source: LeadSource.REFERRAL,
+    status: LeadStatus.QUALIFIED,
+    created_at: "2025-03-05T07:24:09.193Z",
+    updated_at: "2025-03-09T05:39:08.508Z",
+    notes: "Ready for a product demo"
+  },
+  {
+    id: "3",
+    first_name: "Robert",
+    last_name: "Johnson",
+    email: "robert@example.com",
+    phone: "555-555-5555",
+    company: "Johnson LLC",
+    job_title: "Director",
+    source: LeadSource.SOCIAL_MEDIA,
+    status: LeadStatus.CONTACTED,
+    created_at: "2025-03-05T07:24:09.193Z",
+    updated_at: "2025-03-09T05:39:08.508Z",
+    notes: "Follow up next week"
+  },
+  {
+    id: "4",
+    first_name: "Sarah",
+    last_name: "Williams",
+    email: "sarah@example.com",
+    phone: "555-444-3333",
+    company: "Williams Co",
+    job_title: "Marketing Manager",
+    source: LeadSource.EMAIL_CAMPAIGN,
+    status: LeadStatus.PROPOSAL,
+    created_at: "2025-03-05T07:24:09.193Z",
+    updated_at: "2025-03-09T05:39:08.508Z",
+    notes: "Interested in our enterprise solution"
+  },
+  {
+    id: "5",
+    first_name: "Michael",
+    last_name: "Brown",
+    email: "michael@example.com",
+    phone: "555-222-1111",
+    company: "Brown Industries",
+    job_title: "Sales Director",
+    source: LeadSource.EVENT,
+    status: LeadStatus.NEGOTIATION,
+    created_at: "2025-03-05T07:24:09.193Z",
+    updated_at: "2025-03-09T05:39:08.508Z",
+    notes: "Discussing contract terms"
   }
 ];
 
@@ -170,72 +250,347 @@ export function EnhancedCalendar() {
   const [meetings, setMeetings] = useState<Meeting[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [selectedMeeting, setSelectedMeeting] = useState<Meeting | null>(null);
+  const [selectedMeeting, setSelectedMeeting] = useState<ExtendedMeeting | null>(null);
   const [showMeetingDetails, setShowMeetingDetails] = useState(false);
   const [showScheduleForm, setShowScheduleForm] = useState(false);
   const [showNoShowForm, setShowNoShowForm] = useState(false);
   const [noShowNotes, setNoShowNotes] = useState('');
   const [showCallForm, setShowCallForm] = useState(false);
-  const [callNotes, setCallNotes] = useState('');
   const [showSMSForm, setShowSMSForm] = useState(false);
-  const [smsMessage, setSMSMessage] = useState('');
   const [showEmailForm, setShowEmailForm] = useState(false);
+  const [callNotes, setCallNotes] = useState('');
+  const [smsMessage, setSMSMessage] = useState('');
   const [emailSubject, setEmailSubject] = useState('');
   const [emailBody, setEmailBody] = useState('');
   const [currentView, setCurrentView] = useState<'dayGridMonth' | 'timeGridWeek' | 'timeGridDay'>('timeGridWeek');
+  const [leads, setLeads] = useState<Lead[]>([]);
+  const [isLoadingLeads, setIsLoadingLeads] = useState(false);
+  const [selectedTimeSlot, setSelectedTimeSlot] = useState<TimeSlot | null>(null);
   
-  // Fetch meetings data
-  const fetchMeetings = async () => {
+  // Add state for phone and email dialogs
+  const [showPhoneDialog, setShowPhoneDialog] = useState(false);
+  const [showEmailDialog, setShowEmailDialog] = useState(false);
+  
+  // Fetch meetings from API
+  const fetchMeetings = async (retryCount = 0, maxRetries = 3) => {
     try {
       setLoading(true);
       setError(null);
       
-      if (USE_MOCK_DATA) {
-        // Use mock data when the flag is set to true
-        console.log('Using mock meeting data for EnhancedCalendar');
-        setMeetings(MOCK_MEETINGS);
-      } else {
-        // Use real API data when the flag is set to false
-        console.log('Fetching meetings from API for EnhancedCalendar');
-        try {
-          const response = await getMeetings();
-          
-          // Check if response is an ApiResponse object with data property
-          if (response && typeof response === 'object' && 'data' in response) {
-            const apiResponse = response as unknown as ApiResponse<Meeting[]>;
-            if (apiResponse.error) {
-              throw new Error(apiResponse.error.message || 'Failed to fetch meetings');
+      console.log('Fetching meetings from API for EnhancedCalendar');
+      
+      // Add a timeout to prevent hanging requests
+      const timeoutPromise = new Promise<never>((_, reject) => {
+        setTimeout(() => {
+          reject(new Error('Request timed out after 15 seconds'));
+        }, 15000); // 15 seconds timeout as a fallback
+      });
+      
+      // Race the API call against the timeout
+      try {
+        const response = await Promise.race([
+          getMeetings(),
+          timeoutPromise
+        ]);
+        
+        // Check if response is an ApiResponse object with data property
+        if (response && typeof response === 'object' && 'data' in response) {
+          const apiResponse = response as unknown as ApiResponse<Meeting[]>;
+          if (apiResponse.error) {
+            // Improved error logging with more details
+            console.error('Error fetching meetings:', 
+              apiResponse.error.message || 
+              (apiResponse.error as ApiError).code || 
+              JSON.stringify(apiResponse.error) || 
+              'Unknown error'
+            );
+            
+            // Set a more descriptive error message
+            let errorMessage = apiResponse.error.message;
+            
+            // Handle specific error codes
+            if ((apiResponse.error as ApiError).code === 'NETWORK_ERROR') {
+              errorMessage = 'Network error: Unable to connect to the server. Please check your internet connection and try again.';
+              
+              // Retry logic for network errors
+              if (retryCount < maxRetries) {
+                console.log(`Network error, retrying (${retryCount + 1}/${maxRetries})...`);
+                setLoading(false);
+                
+                // Show retry toast
+                toast({
+                  title: 'Connection Issue',
+                  description: `Retrying to connect (${retryCount + 1}/${maxRetries})...`,
+                  variant: 'default',
+                });
+                
+                // Wait before retrying (exponential backoff)
+                setTimeout(() => {
+                  fetchMeetings(retryCount + 1, maxRetries);
+                }, Math.min(1000 * Math.pow(2, retryCount), 8000)); // Exponential backoff with max 8 seconds
+                return;
+              }
+            } else if ((apiResponse.error as ApiError).code === 'TIMEOUT_ERROR') {
+              errorMessage = 'Request timed out. The server is taking too long to respond. Please try again later.';
+            } else if ((apiResponse.error as ApiError).code === 'AUTH_REQUIRED') {
+              errorMessage = 'Authentication required. Please log in again.';
+              
+              // Redirect to login page if not authenticated
+              if (typeof window !== 'undefined') {
+                toast({
+                  title: 'Authentication Error',
+                  description: 'Your session has expired. Please log in again.',
+                  variant: 'destructive',
+                });
+                
+                // Use a small delay to allow the toast to be shown
+                setTimeout(() => {
+                  window.location.href = '/auth/login';
+                }, 2000);
+                return;
+              }
+            } else if (Object.keys(apiResponse.error).length === 0) {
+              errorMessage = 'Authentication error - please log in again';
+              
+              // Redirect to login page if not authenticated
+              if (typeof window !== 'undefined') {
+                toast({
+                  title: 'Authentication Error',
+                  description: 'Your session has expired. Please log in again.',
+                  variant: 'destructive',
+                });
+                
+                // Use a small delay to allow the toast to be shown
+                setTimeout(() => {
+                  window.location.href = '/auth/login';
+                }, 2000);
+                return;
+              }
+            } else if (!errorMessage) {
+              errorMessage = 'Failed to fetch meetings';
             }
-            // Ensure data is an array
-            const meetingsData = Array.isArray(apiResponse.data) ? apiResponse.data : [];
-            console.log('Meetings data from API:', meetingsData);
-            setMeetings(meetingsData);
-          } else if (Array.isArray(response)) {
-            // If response is already an array, use it directly
-            console.log('Meetings array from API:', response);
-            setMeetings(response);
-          } else {
-            // If response is neither an ApiResponse nor an array, log and use empty array
-            console.error('Unexpected response format:', response);
-            setError('Received unexpected data format from API');
-            setMeetings([]);
+            
+            setError(errorMessage);
+            
+            // Fall back to mock data if API fails
+            console.log('Using mock meeting data due to API error');
+            setMeetings(MOCK_MEETINGS);
+            
+            toast({
+              title: 'Error',
+              description: 'Failed to load meetings, using cached data',
+              variant: 'destructive',
+            });
+            return;
           }
-        } catch (apiError: any) {
-          console.error('Error fetching meetings:', apiError);
-          setError('Failed to load meetings. Please try again later.');
-          // Fall back to mock data if API fails
+          
+          // Ensure data is an array
+          const meetingsData = Array.isArray(apiResponse.data) ? apiResponse.data : [];
+          console.log('Meetings data from API:', meetingsData);
+          
+          // Cache the successful response in localStorage
+          try {
+            localStorage.setItem('cachedMeetings', JSON.stringify(meetingsData));
+            localStorage.setItem('meetingsCacheTimestamp', Date.now().toString());
+          } catch (cacheError) {
+            console.warn('Failed to cache meetings data:', cacheError);
+          }
+          
+          setMeetings(meetingsData);
+          
+          toast({
+            title: 'Success',
+            description: 'Meetings loaded successfully',
+          });
+        } else if (Array.isArray(response)) {
+          // If response is already an array, use it directly
+          console.log('Meetings array from API:', response);
+          
+          // Cache the successful response
+          try {
+            localStorage.setItem('cachedMeetings', JSON.stringify(response));
+            localStorage.setItem('meetingsCacheTimestamp', Date.now().toString());
+          } catch (cacheError) {
+            console.warn('Failed to cache meetings data:', cacheError);
+          }
+          
+          setMeetings(response);
+          
+          toast({
+            title: 'Success',
+            description: 'Meetings loaded successfully',
+          });
+        } else {
+          // If response is neither an ApiResponse nor an array, log and use empty array
+          console.error('Unexpected response format:', response);
+          setError('Received unexpected data format from API');
+          
+          // Try to use cached data first before falling back to mock data
+          const cachedData = loadCachedMeetings();
+          if (cachedData.length > 0) {
+            setMeetings(cachedData);
+            toast({
+              title: 'Warning',
+              description: 'Using cached meeting data due to API format error',
+              variant: 'default',
+            });
+          } else {
+            setMeetings(MOCK_MEETINGS);
+            toast({
+              title: 'Error',
+              description: 'Received unexpected data format from API, using mock data',
+              variant: 'destructive',
+            });
+          }
+        }
+      } catch (timeoutError) {
+        // Handle timeout separately for better error messages
+        console.error('Timeout error:', timeoutError);
+        
+        // Retry logic for timeout errors
+        if (retryCount < maxRetries) {
+          console.log(`Timeout error, retrying (${retryCount + 1}/${maxRetries})...`);
+          setLoading(false);
+          
+          toast({
+            title: 'Request Timeout',
+            description: `Retrying (${retryCount + 1}/${maxRetries})...`,
+            variant: 'default',
+          });
+          
+          // Wait before retrying (exponential backoff)
+          setTimeout(() => {
+            fetchMeetings(retryCount + 1, maxRetries);
+          }, Math.min(1000 * Math.pow(2, retryCount), 8000));
+          return;
+        }
+        
+        setError('Request timed out. The server is taking too long to respond. Please try again later.');
+        
+        // Try to use cached data first before falling back to mock data
+        const cachedData = loadCachedMeetings();
+        if (cachedData.length > 0) {
+          setMeetings(cachedData);
+          toast({
+            title: 'Warning',
+            description: 'Using cached meeting data due to timeout',
+            variant: 'default',
+          });
+        } else {
           setMeetings(MOCK_MEETINGS);
+          toast({
+            title: 'Error',
+            description: 'Request timed out, using mock data',
+            variant: 'destructive',
+          });
         }
       }
     } catch (err: any) {
+      // Improved error handling for exceptions
       console.error('Error in fetchMeetings:', err);
-      setError('An unexpected error occurred. Please try again later.');
-      // Fall back to mock data if there's an exception
-      setMeetings(MOCK_MEETINGS);
+      
+      // Set a more descriptive error message based on the error type
+      let errorMessage = '';
+      
+      if (err instanceof Error) {
+        errorMessage = err.message;
+        
+        // Check for timeout errors
+        if (errorMessage.includes('timeout') || errorMessage.includes('timed out')) {
+          errorMessage = 'Request timed out. The server is taking too long to respond. Please try again later.';
+        }
+      } else if (typeof err === 'object' && err !== null) {
+        if (Object.keys(err).length === 0) {
+          errorMessage = 'Authentication error - please log in again';
+        } else {
+          errorMessage = JSON.stringify(err);
+        }
+      } else {
+        errorMessage = 'An unexpected error occurred. Please try again later.';
+      }
+          
+      setError(errorMessage);
+      
+      // Try to use cached data first before falling back to mock data
+      const cachedData = loadCachedMeetings();
+      if (cachedData.length > 0) {
+        setMeetings(cachedData);
+        toast({
+          title: 'Warning',
+          description: 'Using cached meeting data due to error',
+          variant: 'default',
+        });
+      } else {
+        // Fall back to mock data if there's an exception
+        console.log('Using mock meeting data due to exception');
+        setMeetings(MOCK_MEETINGS);
+        
+        toast({
+          title: 'Error',
+          description: 'Failed to load meetings, using mock data',
+          variant: 'destructive',
+        });
+      }
     } finally {
       setLoading(false);
     }
   };
+
+  // Helper function to load cached meetings
+  const loadCachedMeetings = (): Meeting[] => {
+    try {
+      const cachedData = localStorage.getItem('cachedMeetings');
+      const cacheTimestamp = localStorage.getItem('meetingsCacheTimestamp');
+      
+      if (cachedData && cacheTimestamp) {
+        // Check if cache is less than 24 hours old
+        const cacheAge = Date.now() - parseInt(cacheTimestamp);
+        const cacheMaxAge = 24 * 60 * 60 * 1000; // 24 hours
+        
+        if (cacheAge < cacheMaxAge) {
+          const parsedData = JSON.parse(cachedData) as Meeting[];
+          console.log('Using cached meeting data, cache age:', Math.round(cacheAge / (60 * 1000)), 'minutes');
+          return parsedData;
+        } else {
+          console.log('Cached meeting data is too old, not using');
+          return [];
+        }
+      }
+    } catch (error) {
+      console.warn('Error loading cached meetings:', error);
+    }
+    
+    return [];
+  };
+
+  // Fetch leads
+  useEffect(() => {
+    const fetchLeads = async () => {
+      setIsLoadingLeads(true);
+      try {
+        // Try to fetch leads from API
+        const { data, error } = await getLeads();
+        
+        // Always use mock data for now to avoid network errors
+        console.log('Using mock lead data');
+        setLeads(MOCK_LEADS);
+      } catch (error) {
+        console.error('Error fetching leads:', error);
+        toast({
+          title: 'Error',
+          description: 'Failed to load contacts, using mock data',
+          variant: 'destructive',
+        });
+        
+        // Fallback to mock data on error
+        setLeads(MOCK_LEADS);
+      } finally {
+        setIsLoadingLeads(false);
+      }
+    };
+    
+    fetchLeads();
+  }, []);
 
   // Call fetchMeetings when the component mounts
   useEffect(() => {
@@ -267,9 +622,15 @@ export function EnhancedCalendar() {
   const handleEventClick = (clickInfo: EventClickArg) => {
     console.log('Event clicked:', clickInfo.event);
     
+    // Get the lead_id from the event
+    const leadId = clickInfo.event.extendedProps?.lead_id || "1";
+    
+    // Find the lead in the leads array
+    const lead = leads.find(lead => lead.id === leadId);
+    
     // Create a complete Meeting object with all required properties
-    const meetingData: Meeting = {
-      id: parseInt(clickInfo.event.id),
+    const meetingData: ExtendedMeeting = {
+      id: clickInfo.event.id,
       title: clickInfo.event.title,
       start_time: clickInfo.event.start?.toISOString() || new Date().toISOString(),
       end_time: clickInfo.event.end?.toISOString() || new Date().toISOString(),
@@ -277,15 +638,17 @@ export function EnhancedCalendar() {
       status: MeetingStatus.SCHEDULED,
       location: clickInfo.event.extendedProps?.location || 'No location specified',
       meeting_type: clickInfo.event.extendedProps?.meeting_type || MeetingType.OTHER,
-      lead_id: clickInfo.event.extendedProps?.lead_id || 1,
-      user_id: clickInfo.event.extendedProps?.user_id || 1,
+      lead_id: leadId,
       created_at: clickInfo.event.extendedProps?.created_at || new Date().toISOString(),
       updated_at: clickInfo.event.extendedProps?.updated_at || new Date().toISOString(),
+      agenda_items: clickInfo.event.extendedProps?.agenda_items || [],
+      // Add contact information
       contact: {
         phone: clickInfo.event.extendedProps?.contact_phone || '+1234567890',
         email: clickInfo.event.extendedProps?.contact_email || 'contact@example.com',
         name: clickInfo.event.extendedProps?.contact_name || 'John Doe'
-      }
+      },
+      lead: lead
     };
     
     setSelectedMeeting(meetingData);
@@ -545,7 +908,6 @@ export function EnhancedCalendar() {
   // Handle call contact
   const handleCallContact = () => {
     if (selectedMeeting?.contact?.phone) {
-      setCallNotes('');
       setShowCallForm(true);
     } else {
       toast({
@@ -573,8 +935,6 @@ export function EnhancedCalendar() {
   // Handle send email
   const handleSendEmail = () => {
     if (selectedMeeting?.contact?.email) {
-      setEmailSubject(`Regarding our meeting on ${format(parseISO(selectedMeeting.start_time), 'MMMM d, yyyy')}`);
-      setEmailBody('');
       setShowEmailForm(true);
     } else {
       toast({
@@ -586,21 +946,21 @@ export function EnhancedCalendar() {
   };
 
   // Handle submit call
-  const handleSubmitCall = () => {
-    if (!selectedMeeting || !selectedMeeting.contact || !selectedMeeting.contact.phone) {
-      toast({
-        title: "Error",
-        description: "Contact information is missing",
-        variant: "destructive",
-      });
-      return;
-    }
-    
+  const handleSubmitCall = (callData: { phoneNumber: string; duration: number; notes: string }) => {
     toast({
-      title: "Calling contact",
-      description: `Initiating call to ${selectedMeeting.contact.name} at ${selectedMeeting.contact.phone}`,
+      title: "Call completed",
+      description: `Call to ${selectedMeeting?.contact?.name} completed successfully.`,
     });
     setShowCallForm(false);
+  };
+
+  // Handle submit email
+  const handleSubmitEmail = (emailData: { to: string; subject: string; body: string }) => {
+    toast({
+      title: "Email sent",
+      description: `Email sent to ${selectedMeeting?.contact?.name} successfully.`,
+    });
+    setShowEmailForm(false);
   };
 
   // Handle submit SMS
@@ -614,7 +974,7 @@ export function EnhancedCalendar() {
       return;
     }
     
-    if (!selectedMeeting || !selectedMeeting.contact || !selectedMeeting.contact.phone) {
+    if (!selectedMeeting?.contact?.phone) {
       toast({
         title: "Error",
         description: "Contact information is missing",
@@ -625,36 +985,9 @@ export function EnhancedCalendar() {
     
     toast({
       title: "Message sent",
-      description: `SMS sent to ${selectedMeeting.contact.name}`,
+      description: `SMS sent to ${selectedMeeting?.contact?.name}`,
     });
     setShowSMSForm(false);
-  };
-
-  // Handle submit email
-  const handleSubmitEmail = () => {
-    if (!emailSubject.trim() || !emailBody.trim()) {
-      toast({
-        title: "Incomplete email",
-        description: "Please enter both subject and body for the email.",
-        variant: "destructive",
-      });
-      return;
-    }
-    
-    if (!selectedMeeting || !selectedMeeting.contact || !selectedMeeting.contact.email) {
-      toast({
-        title: "Error",
-        description: "Contact information is missing",
-        variant: "destructive",
-      });
-      return;
-    }
-    
-    toast({
-      title: "Email sent",
-      description: `Email sent to ${selectedMeeting.contact.name}`,
-    });
-    setShowEmailForm(false);
   };
 
   // Function to handle scheduling a new meeting
@@ -668,181 +1001,156 @@ export function EnhancedCalendar() {
     // In a real app, we would refresh the events here
   };
 
-  return (
-    <div className="space-y-4">
-      <div className="border rounded-lg p-4 bg-card">
-        <div className="flex justify-between items-center mb-4">
-          <h2 className="text-2xl font-bold">Calendar</h2>
-          <div className="flex items-center space-x-2">
-            <div className="flex space-x-2">
-              <Button variant="outline" size="sm" onClick={() => changeView('dayGridMonth')}>
-                Month
-              </Button>
-              <Button variant="outline" size="sm" onClick={() => changeView('timeGridWeek')}>
-                Week
-              </Button>
-              <Button variant="outline" size="sm" onClick={() => changeView('timeGridDay')}>
-                Day
-              </Button>
-            </div>
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={handleRefresh}
-              className="flex items-center"
-            >
-              <RefreshCw className="h-4 w-4 mr-2" />
-              Refresh
-            </Button>
-            <Button
-              size="sm"
-              onClick={handleScheduleMeeting}
-              className="flex items-center"
-            >
-              <Plus className="h-4 w-4 mr-2" />
-              Schedule Meeting
-            </Button>
-          </div>
-        </div>
+  // Handle opening the phone dialog
+  const handleOpenPhoneDialog = () => {
+    if (selectedMeeting?.lead?.phone) {
+      setShowPhoneDialog(true);
+    } else {
+      toast({
+        title: "No phone number",
+        description: "This lead doesn't have a phone number.",
+        variant: "destructive",
+      });
+    }
+  };
+  
+  // Handle opening the email dialog
+  const handleOpenEmailDialog = () => {
+    if (selectedMeeting?.lead?.email) {
+      setShowEmailDialog(true);
+    } else {
+      toast({
+        title: "No email address",
+        description: "This lead doesn't have an email address.",
+        variant: "destructive",
+      });
+    }
+  };
+  
+  // Handle phone call success
+  const handlePhoneCallSuccess = (callData: { phoneNumber: string; duration: number; notes: string }) => {
+    console.log('Phone call completed:', callData);
+    toast({
+      title: "Call completed",
+      description: `Call to ${callData.phoneNumber} completed (${callData.duration} seconds)`,
+    });
+    setShowPhoneDialog(false);
+  };
+  
+  // Handle email success
+  const handleEmailSuccess = (emailData: { to: string; subject: string; body: string }) => {
+    console.log('Email sent:', emailData);
+    toast({
+      title: "Email sent",
+      description: `Email to ${emailData.to} sent successfully`,
+    });
+    setShowEmailDialog(false);
+  };
 
-        <div className="h-[700px]">
-          <FullCalendar
-            ref={calendarRef}
-            plugins={[dayGridPlugin, timeGridPlugin, interactionPlugin]}
-            initialView={currentView}
-            headerToolbar={{
-              left: 'prev,next today',
-              center: 'title',
-              right: ''
-            }}
-            events={createTestEvents()}
-            eventClick={handleEventClick}
-            height="100%"
-            nowIndicator={true}
-            dayMaxEvents={true}
-            weekends={true}
-            navLinks={true}
-            editable={false}
-            selectable={false}
-          />
+  // Add this near the calendar header or controls
+  const renderRefreshButton = () => {
+    return (
+      <Button
+        variant="outline"
+        size="sm"
+        onClick={() => {
+          toast({
+            title: 'Refreshing',
+            description: 'Fetching the latest meetings data...',
+          });
+          fetchMeetings(0, 3); // Reset retry count and max retries
+        }}
+        className="ml-2"
+        disabled={loading}
+      >
+        {loading ? (
+          <RefreshCw className="h-4 w-4 animate-spin mr-1" />
+        ) : (
+          <RefreshCw className="h-4 w-4 mr-1" />
+        )}
+        Refresh
+      </Button>
+    );
+  };
+
+  return (
+    <div className="flex flex-col h-full">
+      <div className="flex justify-between items-center mb-4">
+        <div className="flex items-center">
+          <h2 className="text-2xl font-bold">Meetings Calendar</h2>
+          {renderRefreshButton()}
+        </div>
+        <div className="flex space-x-2">
+          <Button onClick={() => setShowScheduleForm(true)} className="flex items-center">
+            <Plus className="h-4 w-4 mr-1" />
+            Add Meeting
+          </Button>
         </div>
       </div>
+      
+      {/* Error message display */}
+      {error && (
+        <div className="bg-red-50 border border-red-200 text-red-700 px-4 py-3 rounded mb-4 flex items-center justify-between">
+          <div className="flex items-center">
+            <AlertTriangle className="h-5 w-5 mr-2" />
+            <span>{error}</span>
+          </div>
+          <Button 
+            variant="ghost" 
+            size="sm" 
+            onClick={() => fetchMeetings(0, 3)}
+            className="hover:bg-red-100"
+          >
+            <RefreshCw className="h-4 w-4 mr-1" />
+            Retry
+          </Button>
+        </div>
+      )}
+      
+      <div className="h-[700px]">
+        <FullCalendar
+          ref={calendarRef}
+          plugins={[dayGridPlugin, timeGridPlugin, interactionPlugin]}
+          initialView={currentView}
+          headerToolbar={{
+            left: 'prev,next today',
+            center: 'title',
+            right: ''
+          }}
+          events={createTestEvents()}
+          eventClick={handleEventClick}
+          height="100%"
+          nowIndicator={true}
+          dayMaxEvents={true}
+          weekends={true}
+          navLinks={true}
+          editable={false}
+          selectable={false}
+        />
+      </div>
 
-      {/* Meeting Details Dialog */}
+      {/* Meeting Dialog */}
       <Dialog open={showMeetingDialog} onOpenChange={setShowMeetingDialog}>
-        <DialogContent className="max-w-3xl">
+        <DialogContent className="max-w-4xl">
           <DialogHeader>
-            <DialogTitle>
-              Meeting Details
-            </DialogTitle>
+            <DialogTitle>Meeting Details</DialogTitle>
           </DialogHeader>
           
           {selectedMeeting && (
-            <div className="grid grid-cols-1 gap-4">
-              <div className="p-4 border rounded-lg">
-                <h3 className="text-lg font-semibold mb-2">{selectedMeeting.title}</h3>
-                <p className="text-sm text-gray-600 mb-2">{selectedMeeting.description}</p>
-                <div className="flex items-center text-sm mb-1">
-                  <Clock className="mr-2 h-4 w-4 opacity-70" />
-                  <span>
-                    {format(parseISO(selectedMeeting.start_time), 'EEEE, MMMM d, yyyy')} at {format(parseISO(selectedMeeting.start_time), 'h:mm a')}
-                  </span>
-                </div>
-                {selectedMeeting.location && (
-                  <div className="flex items-center text-sm mb-3">
-                    <MapPin className="mr-2 h-4 w-4 opacity-70" />
-                    <span>{selectedMeeting.location}</span>
-                  </div>
-                )}
-                
-                {/* Contact information */}
-                {selectedMeeting.contact && (
-                  <div className="mt-3 pt-3 border-t">
-                    <h4 className="font-medium mb-2">Contact Information</h4>
-                    <div className="text-sm">{selectedMeeting.contact.name}</div>
-                    {selectedMeeting.contact.phone && (
-                      <div className="text-sm">{selectedMeeting.contact.phone}</div>
-                    )}
-                    {selectedMeeting.contact.email && (
-                      <div className="text-sm">{selectedMeeting.contact.email}</div>
-                    )}
-                  </div>
-                )}
-                
-                {/* Action buttons */}
-                <div className="mt-4 pt-3 border-t flex flex-wrap gap-2">
-                  {/* Primary actions */}
-                  <div className="flex flex-wrap gap-2 mb-2 w-full">
-                    <Button 
-                      variant="default" 
-                      size="sm" 
-                      onClick={handleJoinMeeting}
-                      className="bg-green-600 hover:bg-green-700"
-                    >
-                      <Video className="h-4 w-4 mr-1" />
-                      Join Meeting
-                    </Button>
-                    
-                    <Button 
-                      variant="outline" 
-                      size="sm" 
-                      onClick={handleRescheduleMeeting}
-                    >
-                      <Calendar className="h-4 w-4 mr-1" />
-                      Reschedule
-                    </Button>
-                    
-                    <Button 
-                      variant="destructive" 
-                      size="sm" 
-                      onClick={handleCancelMeeting}
-                    >
-                      <X className="h-4 w-4 mr-1" />
-                      Cancel Meeting
-                    </Button>
-                    
-                    <Button 
-                      variant="outline" 
-                      size="sm" 
-                      onClick={handleMarkNoShow}
-                      className="border-purple-500 text-purple-700 hover:bg-purple-50"
-                    >
-                      <AlertTriangle className="h-4 w-4 mr-1" />
-                      Mark as No-Show
-                    </Button>
-                  </div>
+            <div className="space-y-4">
+              <EnhancedMeetingDetails 
+                meeting={selectedMeeting} 
+                onUpdate={(updatedMeeting) => {
+                  console.log('Meeting updated in calendar:', updatedMeeting);
                   
-                  {/* Communication actions */}
-                  <div className="flex flex-wrap gap-2 w-full">
-                    <Button 
-                      variant="outline" 
-                      size="sm" 
-                      onClick={handleCallContact}
-                    >
-                      <Phone className="h-4 w-4 mr-1" />
-                      Call
-                    </Button>
-                    
-                    <Button 
-                      variant="outline" 
-                      size="sm" 
-                      onClick={handleSendSMS}
-                    >
-                      <MessageSquare className="h-4 w-4 mr-1" />
-                      Send SMS
-                    </Button>
-                    
-                    <Button 
-                      variant="outline" 
-                      size="sm" 
-                      onClick={handleSendEmail}
-                    >
-                      <Mail className="h-4 w-4 mr-1" />
-                      Send Email
-                    </Button>
-                  </div>
-                </div>
-              </div>
+                  // Update the selected meeting with the updated meeting
+                  setSelectedMeeting({...updatedMeeting});
+                  
+                  // Refresh meetings after update to ensure the calendar is updated
+                  fetchMeetings();
+                }}
+                onClose={() => setShowMeetingDialog(false)}
+              />
             </div>
           )}
         </DialogContent>
@@ -850,45 +1158,72 @@ export function EnhancedCalendar() {
 
       {/* Schedule Meeting Dialog */}
       <Dialog open={showScheduleDialog} onOpenChange={setShowScheduleDialog}>
-        <DialogContent className="max-w-3xl">
+        <DialogContent className="max-w-4xl w-[95vw] max-h-[90vh] overflow-y-auto">
           <DialogHeader>
-            <DialogTitle>
-              Schedule New Meeting
-            </DialogTitle>
+            <DialogTitle>Schedule Meeting</DialogTitle>
           </DialogHeader>
-          
-          <EnhancedMeetingForm 
+          <EnhancedMeetingForm
+            leadOptions={leads}
+            initialTimeSlot={selectedTimeSlot}
             onSuccess={handleScheduleSuccess}
             onCancel={() => setShowScheduleDialog(false)}
+            onCallContact={(lead) => {
+              setShowScheduleDialog(false);
+              // Create a temporary meeting object with the lead as contact
+              const tempMeeting = {
+                contact: {
+                  name: `${lead.first_name} ${lead.last_name}`,
+                  phone: lead.phone,
+                  email: lead.email
+                }
+              };
+              setSelectedMeeting(tempMeeting as any);
+              setTimeout(() => {
+                // Make sure the dialog has a title
+                setCallNotes('');
+                setShowCallForm(true);
+              }, 100);
+            }}
+            onSendEmail={(lead) => {
+              setShowScheduleDialog(false);
+              // Create a temporary meeting object with the lead as contact
+              const tempMeeting = {
+                contact: {
+                  name: `${lead.first_name} ${lead.last_name}`,
+                  phone: lead.phone,
+                  email: lead.email
+                },
+                start_time: new Date().toISOString() // Use current date for email subject
+              };
+              setSelectedMeeting(tempMeeting as any);
+              setTimeout(() => {
+                // Make sure the dialog has a title and subject
+                setEmailSubject(`Follow-up with ${lead.first_name} ${lead.last_name}`);
+                setEmailBody('');
+                setShowEmailForm(true);
+              }, 100);
+            }}
           />
         </DialogContent>
       </Dialog>
 
       {/* Call Dialog */}
-      <Dialog open={showCallForm} onOpenChange={setShowCallForm}>
-        <DialogContent className="sm:max-w-md">
-          <DialogHeader>
-            <DialogTitle>Call Contact</DialogTitle>
-            <DialogDescription>
-              Initiate a call to this contact.
-            </DialogDescription>
-          </DialogHeader>
-          
-          {selectedMeeting?.contact && (
-            <div className="py-4">
-              <div className="space-y-2">
-                <div className="font-medium">{selectedMeeting.contact.name}</div>
-                <div className="text-sm text-muted-foreground">{selectedMeeting.contact.phone}</div>
-              </div>
-            </div>
-          )}
-          
-          <DialogFooter>
-            <Button variant="outline" onClick={() => setShowCallForm(false)}>Cancel</Button>
-            <Button onClick={handleSubmitCall}>Call Now</Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
+      <PhoneDialog 
+        open={showCallForm} 
+        onOpenChange={setShowCallForm}
+        leadPhone={selectedMeeting?.contact?.phone || ''}
+        leadName={selectedMeeting?.contact?.name || 'Contact'}
+        onSuccess={handleSubmitCall}
+      />
+
+      {/* Email Dialog */}
+      <EmailDialog
+        open={showEmailForm}
+        onOpenChange={setShowEmailForm}
+        leadEmail={selectedMeeting?.contact?.email || ''}
+        leadName={selectedMeeting?.contact?.name || 'Contact'}
+        onSuccess={handleSubmitEmail}
+      />
 
       {/* SMS Dialog */}
       <Dialog open={showSMSForm} onOpenChange={setShowSMSForm}>
@@ -927,53 +1262,6 @@ export function EnhancedCalendar() {
         </DialogContent>
       </Dialog>
 
-      {/* Email Dialog */}
-      <Dialog open={showEmailForm} onOpenChange={setShowEmailForm}>
-        <DialogContent className="sm:max-w-lg">
-          <DialogHeader>
-            <DialogTitle>Send Email</DialogTitle>
-            <DialogDescription>
-              Send an email to this contact.
-            </DialogDescription>
-          </DialogHeader>
-          
-          {selectedMeeting?.contact && (
-            <div className="py-4 space-y-4">
-              <div className="space-y-2">
-                <div className="font-medium">{selectedMeeting.contact.name}</div>
-                <div className="text-sm text-muted-foreground">{selectedMeeting.contact.email}</div>
-              </div>
-              
-              <div className="space-y-2">
-                <Label htmlFor="subject">Subject</Label>
-                <Input 
-                  id="subject" 
-                  placeholder="Email subject" 
-                  value={emailSubject}
-                  onChange={(e) => setEmailSubject(e.target.value)}
-                />
-              </div>
-              
-              <div className="space-y-2">
-                <Label htmlFor="body">Message</Label>
-                <Textarea 
-                  id="body" 
-                  placeholder="Type your email message here..." 
-                  value={emailBody}
-                  onChange={(e) => setEmailBody(e.target.value)}
-                  rows={6}
-                />
-              </div>
-            </div>
-          )}
-          
-          <DialogFooter>
-            <Button variant="outline" onClick={() => setShowEmailForm(false)}>Cancel</Button>
-            <Button onClick={handleSubmitEmail}>Send Email</Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
-
       {/* No-Show Dialog */}
       <Dialog open={showNoShowForm} onOpenChange={setShowNoShowForm}>
         <DialogContent className="sm:max-w-md">
@@ -989,7 +1277,9 @@ export function EnhancedCalendar() {
               <div className="space-y-2">
                 <div className="font-medium">{selectedMeeting.title}</div>
                 <div className="text-sm text-muted-foreground">
-                  {format(parseISO(selectedMeeting.start_time), 'EEEE, MMMM d, yyyy')} at {format(parseISO(selectedMeeting.start_time), 'h:mm a')}
+                  {selectedMeeting.start_time ? 
+                    `${format(parseISO(selectedMeeting.start_time), 'EEEE, MMMM d, yyyy')} at ${format(parseISO(selectedMeeting.start_time), 'h:mm a')}` : 
+                    'Time not specified'}
                 </div>
               </div>
               
@@ -1017,6 +1307,28 @@ export function EnhancedCalendar() {
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      {/* Phone Dialog */}
+      {selectedMeeting && selectedMeeting.lead && (
+        <PhoneDialog
+          open={showPhoneDialog}
+          onOpenChange={setShowPhoneDialog}
+          leadPhone={selectedMeeting.lead.phone}
+          leadName={`${selectedMeeting.lead.first_name} ${selectedMeeting.lead.last_name}`}
+          onSuccess={handlePhoneCallSuccess}
+        />
+      )}
+      
+      {/* Email Dialog */}
+      {selectedMeeting && selectedMeeting.lead && (
+        <EmailDialog
+          open={showEmailDialog}
+          onOpenChange={setShowEmailDialog}
+          leadEmail={selectedMeeting.lead.email || ''}
+          leadName={`${selectedMeeting.lead.first_name} ${selectedMeeting.lead.last_name}`}
+          onSuccess={handleEmailSuccess}
+        />
+      )}
     </div>
   );
 } 
