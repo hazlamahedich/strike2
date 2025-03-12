@@ -620,7 +620,14 @@ export function EnhancedMeetingDetails({
       // Check if the response contains an error
       if (result.error) {
         console.error('Error from API response:', result.error);
-        throw new Error(`API error: ${result.error}`);
+        
+        // Check if the error is an empty object
+        if (typeof result.error === 'object' && Object.keys(result.error).length === 0) {
+          console.log('Empty error object received, using fallback summary');
+          throw new Error('Empty error response from API');
+        }
+        
+        throw new Error(`API error: ${JSON.stringify(result.error)}`);
       }
       
       // Check if we have data
@@ -670,6 +677,8 @@ export function EnhancedMeetingDetails({
           errorMessage = 'Network error. Please check your internet connection and try again.';
         } else if (error.message.includes('Unauthorized') || error.message.includes('401')) {
           errorMessage = 'Authentication error. Please log in again and try.';
+        } else if (error.message.includes('Empty error response')) {
+          errorMessage = 'Could not connect to the summary service. Using fallback summary.';
         } else {
           errorMessage = `Error: ${error.message}`;
         }
@@ -690,7 +699,7 @@ export function EnhancedMeetingDetails({
   };
   
   return (
-    <Card className="w-full">
+    <Card className="w-full max-w-full overflow-visible">
       <CardHeader>
         <CardTitle className="flex items-center justify-between">
           <span>{meeting.title}</span>
@@ -699,7 +708,7 @@ export function EnhancedMeetingDetails({
           </Badge>
         </CardTitle>
       </CardHeader>
-      <CardContent>
+      <CardContent className="overflow-x-auto overflow-y-visible">
         {/* Lead Information Section */}
         {meeting.lead && (
           <div className="p-4 mb-4 border rounded-lg bg-muted/30">
@@ -782,7 +791,7 @@ export function EnhancedMeetingDetails({
           </div>
         )}
 
-        <Tabs value={activeTab} onValueChange={setActiveTab}>
+        <Tabs value={activeTab} onValueChange={setActiveTab} className="overflow-visible">
           <TabsList className="mb-4">
             <TabsTrigger value="details">Details</TabsTrigger>
             <TabsTrigger value="notes">Notes</TabsTrigger>
@@ -792,7 +801,7 @@ export function EnhancedMeetingDetails({
             </TabsTrigger>
           </TabsList>
           
-          <TabsContent value="details" className="space-y-4">
+          <TabsContent value="details" className="space-y-4 overflow-x-auto styled-scrollbar min-w-full">
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               <div className="space-y-3">
                 <div className="flex items-center text-sm">
@@ -919,7 +928,7 @@ export function EnhancedMeetingDetails({
             </div>
           </TabsContent>
           
-          <TabsContent value="notes">
+          <TabsContent value="notes" className="space-y-4 overflow-x-auto styled-scrollbar min-w-full">
             <div className="space-y-4">
               <Textarea
                 value={notes}
@@ -939,7 +948,7 @@ export function EnhancedMeetingDetails({
             </div>
           </TabsContent>
           
-          <TabsContent value="summary">
+          <TabsContent value="summary" className="overflow-x-auto styled-scrollbar min-w-full" style={{ maxHeight: '60vh', overflowY: 'auto' }}>
             {isLoadingSummary || isLoadingComprehensiveSummary ? (
               <div className="space-y-4">
                 <Skeleton className="h-8 w-full" />
@@ -948,120 +957,124 @@ export function EnhancedMeetingDetails({
                 <Skeleton className="h-24 w-full" />
               </div>
             ) : comprehensiveSummary ? (
-              <div className="space-y-4">
-                <div>
-                  <h3 className="text-sm font-medium mb-2">Comprehensive Meeting Summary</h3>
-                  <div className="p-3 bg-gray-50 rounded-md text-sm">
-                    {comprehensiveSummary.summary}
-                  </div>
-                </div>
-                
-                {comprehensiveSummary.insights && comprehensiveSummary.insights.length > 0 && (
+              <div className="space-y-4 overflow-x-auto overflow-y-visible flex flex-col">
+                <div className="overflow-y-auto styled-scrollbar flex-grow" style={{ maxHeight: '50vh' }}>
                   <div>
-                    <h3 className="text-sm font-medium mb-2">Key Insights</h3>
-                    <ul className="space-y-2">
-                      {comprehensiveSummary.insights.map((item, index) => (
-                        <li key={index} className="flex items-start">
-                          <Sparkles className="h-4 w-4 text-purple-500 mt-0.5 mr-2" />
-                          <span className="text-sm">{item}</span>
-                        </li>
-                      ))}
-                    </ul>
+                    <h3 className="text-sm font-medium mb-2">Comprehensive Meeting Summary</h3>
+                    <div className="p-3 bg-gray-50 rounded-md text-sm overflow-x-auto whitespace-normal break-words" style={{ maxHeight: '50vh', overflowY: 'auto' }}>
+                      {comprehensiveSummary.summary}
+                    </div>
                   </div>
-                )}
-                
-                {comprehensiveSummary.action_items && comprehensiveSummary.action_items.length > 0 && (
-                  <div>
-                    <h3 className="text-sm font-medium mb-2">Action Items</h3>
-                    <ul className="space-y-2">
-                      {comprehensiveSummary.action_items.map((item, index) => (
-                        <li key={index} className="flex items-start">
-                          <CheckCircle className="h-4 w-4 text-green-500 mt-0.5 mr-2" />
-                          <span className="text-sm">{item}</span>
-                        </li>
-                      ))}
-                    </ul>
-                  </div>
-                )}
-                
-                {comprehensiveSummary.next_steps && comprehensiveSummary.next_steps.length > 0 && (
-                  <div>
-                    <h3 className="text-sm font-medium mb-2">Recommended Next Steps</h3>
-                    <ul className="space-y-2">
-                      {comprehensiveSummary.next_steps.map((item, index) => (
-                        <li key={index} className="flex items-start">
-                          <ArrowRight className="h-4 w-4 text-blue-500 mt-0.5 mr-2" />
-                          <span className="text-sm">{item}</span>
-                        </li>
-                      ))}
-                    </ul>
-                  </div>
-                )}
-                
-                {/* Add this section to display company analysis data in the comprehensive summary tab */}
-                {comprehensiveSummary?.company_analysis && (
-                  <div className="mt-6 border-t pt-4">
-                    <h3 className="text-sm font-medium mb-2">Company Analysis</h3>
-                    
-                    {comprehensiveSummary.company_analysis.company_summary && (
-                      <div className="mb-3">
-                        <h4 className="text-xs font-medium text-gray-500 mb-1">Company Summary</h4>
-                        <p className="text-sm">{comprehensiveSummary.company_analysis.company_summary}</p>
-                      </div>
-                    )}
-                    
-                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mt-3">
-                      {comprehensiveSummary.company_analysis.industry && (
-                        <div>
-                          <h4 className="text-xs font-medium text-gray-500 mb-1">Industry</h4>
-                          <p className="text-sm">{comprehensiveSummary.company_analysis.industry}</p>
+                  
+                  {comprehensiveSummary.insights && comprehensiveSummary.insights.length > 0 && (
+                    <div>
+                      <h3 className="text-sm font-medium mb-2">Key Insights</h3>
+                      <ul className="space-y-2">
+                        {comprehensiveSummary.insights.map((item, index) => (
+                          <li key={index} className="flex items-start">
+                            <Sparkles className="h-4 w-4 text-purple-500 mt-0.5 mr-2 flex-shrink-0" />
+                            <span className="text-sm overflow-x-auto whitespace-normal break-words">{item}</span>
+                          </li>
+                        ))}
+                      </ul>
+                    </div>
+                  )}
+                  
+                  {comprehensiveSummary.action_items && comprehensiveSummary.action_items.length > 0 && (
+                    <div>
+                      <h3 className="text-sm font-medium mb-2">Action Items</h3>
+                      <ul className="space-y-2">
+                        {comprehensiveSummary.action_items.map((item, index) => (
+                          <li key={index} className="flex items-start">
+                            <CheckCircle className="h-4 w-4 text-green-500 mt-0.5 mr-2 flex-shrink-0" />
+                            <span className="text-sm overflow-x-auto whitespace-normal break-words">{item}</span>
+                          </li>
+                        ))}
+                      </ul>
+                    </div>
+                  )}
+                  
+                  {comprehensiveSummary.next_steps && comprehensiveSummary.next_steps.length > 0 && (
+                    <div>
+                      <h3 className="text-sm font-medium mb-2">Recommended Next Steps</h3>
+                      <ul className="space-y-2">
+                        {comprehensiveSummary.next_steps.map((item, index) => (
+                          <li key={index} className="flex items-start">
+                            <ArrowRight className="h-4 w-4 text-blue-500 mt-0.5 mr-2 flex-shrink-0" />
+                            <span className="text-sm overflow-x-auto whitespace-normal break-words">{item}</span>
+                          </li>
+                        ))}
+                      </ul>
+                    </div>
+                  )}
+                  
+                  {/* Add this section to display company analysis data in the comprehensive summary tab */}
+                  {comprehensiveSummary?.company_analysis && (
+                    <div className="mt-6 border-t pt-4">
+                      <h3 className="text-sm font-medium mb-2">Company Analysis</h3>
+                      
+                      {comprehensiveSummary.company_analysis.company_summary && (
+                        <div className="mb-3">
+                          <h4 className="text-xs font-medium text-gray-500 mb-1">Company Summary</h4>
+                          <p className="text-sm overflow-x-auto whitespace-normal break-words">{comprehensiveSummary.company_analysis.company_summary}</p>
                         </div>
                       )}
                       
-                      {comprehensiveSummary.company_analysis.company_size_estimate && (
-                        <div>
-                          <h4 className="text-xs font-medium text-gray-500 mb-1">Company Size</h4>
-                          <p className="text-sm">{comprehensiveSummary.company_analysis.company_size_estimate}</p>
+                      <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mt-3">
+                        {comprehensiveSummary.company_analysis.industry && (
+                          <div>
+                            <h4 className="text-xs font-medium text-gray-500 mb-1">Industry</h4>
+                            <p className="text-sm overflow-x-auto whitespace-normal break-words">{comprehensiveSummary.company_analysis.industry}</p>
+                          </div>
+                        )}
+                        
+                        {comprehensiveSummary.company_analysis.company_size_estimate && (
+                          <div>
+                            <h4 className="text-xs font-medium text-gray-500 mb-1">Company Size</h4>
+                            <p className="text-sm overflow-x-auto whitespace-normal break-words">{comprehensiveSummary.company_analysis.company_size_estimate}</p>
+                          </div>
+                        )}
+                      </div>
+                      
+                      {comprehensiveSummary.company_analysis.strengths && comprehensiveSummary.company_analysis.strengths.length > 0 && (
+                        <div className="mt-3">
+                          <h4 className="text-xs font-medium text-gray-500 mb-1">Strengths</h4>
+                          <ul className="space-y-1">
+                            {comprehensiveSummary.company_analysis.strengths.map((strength, index) => (
+                              <li key={index} className="flex items-start">
+                                <span className="text-green-500 mr-2 flex-shrink-0">•</span>
+                                <span className="text-sm overflow-x-auto whitespace-normal break-words">{strength}</span>
+                              </li>
+                            ))}
+                          </ul>
+                        </div>
+                      )}
+                      
+                      {comprehensiveSummary.company_analysis.potential_pain_points && comprehensiveSummary.company_analysis.potential_pain_points.length > 0 && (
+                        <div className="mt-3">
+                          <h4 className="text-xs font-medium text-gray-500 mb-1">Potential Pain Points</h4>
+                          <ul className="space-y-1">
+                            {comprehensiveSummary.company_analysis.potential_pain_points.map((painPoint, index) => (
+                              <li key={index} className="flex items-start">
+                                <span className="text-amber-500 mr-2 flex-shrink-0">•</span>
+                                <span className="text-sm overflow-x-auto whitespace-normal break-words">{painPoint}</span>
+                              </li>
+                            ))}
+                          </ul>
                         </div>
                       )}
                     </div>
-                    
-                    {comprehensiveSummary.company_analysis.strengths && comprehensiveSummary.company_analysis.strengths.length > 0 && (
-                      <div className="mt-3">
-                        <h4 className="text-xs font-medium text-gray-500 mb-1">Strengths</h4>
-                        <ul className="space-y-1">
-                          {comprehensiveSummary.company_analysis.strengths.map((strength, index) => (
-                            <li key={index} className="flex items-start">
-                              <span className="text-green-500 mr-2">•</span>
-                              <span className="text-sm">{strength}</span>
-                            </li>
-                          ))}
-                        </ul>
-                      </div>
-                    )}
-                    
-                    {comprehensiveSummary.company_analysis.potential_pain_points && comprehensiveSummary.company_analysis.potential_pain_points.length > 0 && (
-                      <div className="mt-3">
-                        <h4 className="text-xs font-medium text-gray-500 mb-1">Potential Pain Points</h4>
-                        <ul className="space-y-1">
-                          {comprehensiveSummary.company_analysis.potential_pain_points.map((painPoint, index) => (
-                            <li key={index} className="flex items-start">
-                              <span className="text-amber-500 mr-2">•</span>
-                              <span className="text-sm">{painPoint}</span>
-                            </li>
-                          ))}
-                        </ul>
-                      </div>
-                    )}
-                  </div>
-                )}
+                  )}
+                </div>
                 
-                <div className="flex justify-end space-x-2">
+                {/* Sticky footer with follow-up button */}
+                <div className="sticky bottom-0 bg-white pt-2 pb-1 border-t mt-4 flex justify-end">
                   <Button
-                    variant="outline"
+                    variant="default"
                     size="sm"
                     onClick={generateFollowUp}
                     disabled={isLoadingFollowUp}
+                    className="shadow-md hover:shadow-lg transition-all"
                   >
                     <MessageSquare className="mr-1 h-4 w-4" />
                     {isLoadingFollowUp ? 'Generating...' : 'Generate Follow-up'}
@@ -1069,34 +1082,38 @@ export function EnhancedMeetingDetails({
                 </div>
               </div>
             ) : meetingSummary ? (
-              <div className="space-y-4">
-                <div>
-                  <h3 className="text-sm font-medium mb-2">Meeting Summary</h3>
-                  <div className="p-3 bg-gray-50 rounded-md text-sm">
-                    {meetingSummary.summary}
+              <div className="space-y-4 overflow-x-auto overflow-y-visible flex flex-col">
+                <div className="overflow-y-auto styled-scrollbar flex-grow" style={{ maxHeight: '50vh' }}>
+                  <div>
+                    <h3 className="text-sm font-medium mb-2">Meeting Summary</h3>
+                    <div className="p-3 bg-gray-50 rounded-md text-sm overflow-x-auto whitespace-normal break-words">
+                      {meetingSummary.summary}
+                    </div>
                   </div>
+                  
+                  {meetingSummary.action_items.length > 0 && (
+                    <div>
+                      <h3 className="text-sm font-medium mb-2">Action Items</h3>
+                      <ul className="space-y-2">
+                        {meetingSummary.action_items.map((item, index) => (
+                          <li key={index} className="flex items-start">
+                            <CheckCircle className="h-4 w-4 text-green-500 mt-0.5 mr-2 flex-shrink-0" />
+                            <span className="text-sm overflow-x-auto whitespace-normal break-words">{item}</span>
+                          </li>
+                        ))}
+                      </ul>
+                    </div>
+                  )}
                 </div>
                 
-                {meetingSummary.action_items.length > 0 && (
-                  <div>
-                    <h3 className="text-sm font-medium mb-2">Action Items</h3>
-                    <ul className="space-y-2">
-                      {meetingSummary.action_items.map((item, index) => (
-                        <li key={index} className="flex items-start">
-                          <CheckCircle className="h-4 w-4 text-green-500 mt-0.5 mr-2" />
-                          <span className="text-sm">{item}</span>
-                        </li>
-                      ))}
-                    </ul>
-                  </div>
-                )}
-                
-                <div className="flex justify-end space-x-2">
+                {/* Sticky footer with follow-up button */}
+                <div className="sticky bottom-0 bg-white pt-2 pb-1 border-t mt-4 flex justify-end">
                   <Button
-                    variant="outline"
+                    variant="default"
                     size="sm"
                     onClick={generateFollowUp}
                     disabled={isLoadingFollowUp}
+                    className="shadow-md hover:shadow-lg transition-all"
                   >
                     <MessageSquare className="mr-1 h-4 w-4" />
                     {isLoadingFollowUp ? 'Generating...' : 'Generate Follow-up'}
@@ -1126,7 +1143,7 @@ export function EnhancedMeetingDetails({
       
       {/* Follow-up Dialog */}
       <Dialog open={showFollowUpDialog} onOpenChange={setShowFollowUpDialog}>
-        <DialogContent className="max-w-3xl">
+        <DialogContent className="max-w-3xl w-[95vw] max-h-[90vh] overflow-y-auto overflow-x-auto styled-scrollbar">
           <DialogHeader>
             <DialogTitle>AI-Generated Follow-up</DialogTitle>
           </DialogHeader>
@@ -1141,18 +1158,20 @@ export function EnhancedMeetingDetails({
               </div>
             </div>
           ) : followUpMessage ? (
-            <div className="space-y-4">
-              <div>
-                <h3 className="text-sm font-medium mb-2">Subject</h3>
-                <div className="p-3 bg-gray-50 rounded-md text-sm">
-                  {followUpMessage.subject}
+            <div className="space-y-4 overflow-x-auto">
+              <div className="overflow-y-auto styled-scrollbar" style={{ maxHeight: '60vh' }}>
+                <div>
+                  <h3 className="text-sm font-medium mb-2">Subject</h3>
+                  <div className="p-3 bg-gray-50 rounded-md text-sm overflow-x-auto whitespace-normal break-words">
+                    {followUpMessage.subject}
+                  </div>
                 </div>
-              </div>
-              
-              <div>
-                <h3 className="text-sm font-medium mb-2">Message</h3>
-                <div className="p-3 bg-gray-50 rounded-md text-sm whitespace-pre-line">
-                  {followUpMessage.message}
+                
+                <div>
+                  <h3 className="text-sm font-medium mb-2">Message</h3>
+                  <div className="p-3 bg-gray-50 rounded-md text-sm whitespace-pre-line overflow-x-auto break-words">
+                    {followUpMessage.message}
+                  </div>
                 </div>
               </div>
               
@@ -1209,7 +1228,7 @@ export function EnhancedMeetingDetails({
       
       {/* Reschedule Dialog */}
       <Dialog open={showRescheduleDialog} onOpenChange={setShowRescheduleDialog}>
-        <DialogContent className="max-w-4xl w-[95vw] max-h-[90vh] overflow-y-auto">
+        <DialogContent className="max-w-4xl w-[95vw] max-h-[90vh] overflow-y-auto overflow-x-auto styled-scrollbar">
           <DialogHeader>
             <DialogTitle>Reschedule Meeting</DialogTitle>
           </DialogHeader>

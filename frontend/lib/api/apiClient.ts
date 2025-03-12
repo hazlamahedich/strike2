@@ -166,6 +166,9 @@ const handleAxiosError = <T>(error: AxiosError): ApiResponse<T> => {
 // Generic GET request
 const get = async <T>(url: string, params?: any): Promise<ApiResponse<T>> => {
   try {
+    // NextAuth handles authentication through cookies, not localStorage
+    // So we don't need to check for auth_token here
+    
     const response = await apiClient.get<T>(url, { params });
     return {
       data: response.data,
@@ -189,6 +192,8 @@ const get = async <T>(url: string, params?: any): Promise<ApiResponse<T>> => {
 // Generic POST request
 const post = async <T>(url: string, data?: any): Promise<ApiResponse<T>> => {
   try {
+    // NextAuth handles authentication through cookies, not localStorage
+    
     const response = await apiClient.post<T>(url, data);
     return {
       data: response.data,
@@ -212,6 +217,8 @@ const post = async <T>(url: string, data?: any): Promise<ApiResponse<T>> => {
 // Generic PUT request
 const put = async <T>(url: string, data?: any): Promise<ApiResponse<T>> => {
   try {
+    // NextAuth handles authentication through cookies, not localStorage
+    
     const response = await apiClient.put<T>(url, data);
     return {
       data: response.data,
@@ -235,6 +242,8 @@ const put = async <T>(url: string, data?: any): Promise<ApiResponse<T>> => {
 // Generic DELETE request
 const del = async <T>(url: string): Promise<ApiResponse<T>> => {
   try {
+    // NextAuth handles authentication through cookies, not localStorage
+    
     const response = await apiClient.delete<T>(url);
     return {
       data: response.data,

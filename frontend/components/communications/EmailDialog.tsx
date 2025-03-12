@@ -213,7 +213,7 @@ export function EmailDialog({ open, onOpenChange, leadEmail, leadName, onSuccess
   
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="sm:max-w-[800px] max-h-[90vh] overflow-hidden flex flex-col">
+      <DialogContent className="sm:max-w-[800px] max-h-[90vh] overflow-hidden overflow-x-auto flex flex-col">
         <DialogHeader>
           <DialogTitle>Email Communication with {leadName}</DialogTitle>
         </DialogHeader>

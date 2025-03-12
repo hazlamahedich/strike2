@@ -2,7 +2,7 @@ import { useState, useEffect, useRef, useMemo } from 'react';
 import { Meeting, MeetingStatus, MeetingType, MeetingContact } from '@/lib/types/meeting';
 import { format, parseISO, isSameDay, addDays, isPast, differenceInMinutes } from 'date-fns';
 import { Button } from '@/components/ui/button';
-import { Clock, MapPin, Plus, User, Phone, Mail, MessageSquare, Video, Calendar, X, Edit, AlertTriangle, RefreshCw } from 'lucide-react';
+import { Clock, MapPin, Plus, User, Phone, Mail, MessageSquare, Video, Calendar, X, Edit, AlertTriangle, RefreshCw, Bug } from 'lucide-react';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from '@/components/ui/dialog';
 import { MeetingCard } from './MeetingCard';
 import { toast } from '@/components/ui/use-toast';
@@ -22,6 +22,7 @@ import { TimeSlot } from '@/lib/services/aiMeetingService';
 import { EnhancedMeetingDetails } from './EnhancedMeetingDetails';
 import { PhoneDialog } from '../communications/PhoneDialog';
 import { EmailDialog } from '../communications/EmailDialog';
+import { enableMockDataMode } from '@/lib/utils/mockDataUtils';
 
 // FullCalendar imports
 import FullCalendar from '@fullcalendar/react';
@@ -266,6 +267,7 @@ export function EnhancedCalendar() {
   const [leads, setLeads] = useState<Lead[]>([]);
   const [isLoadingLeads, setIsLoadingLeads] = useState(false);
   const [selectedTimeSlot, setSelectedTimeSlot] = useState<TimeSlot | null>(null);
+  const [useMockData, setUseMockData] = useState(process.env.NODE_ENV === 'development');
   
   // Add state for phone and email dialogs
   const [showPhoneDialog, setShowPhoneDialog] = useState(false);
@@ -278,6 +280,14 @@ export function EnhancedCalendar() {
       setError(null);
       
       console.log('Fetching meetings from API for EnhancedCalendar');
+      
+      // In development mode, use mock data by default to avoid authentication issues
+      if (useMockData) {
+        console.log('Using mock meeting data');
+        setMeetings(MOCK_MEETINGS);
+        setLoading(false);
+        return;
+      }
       
       // Add a timeout to prevent hanging requests
       const timeoutPromise = new Promise<never>((_, reject) => {
@@ -332,7 +342,7 @@ export function EnhancedCalendar() {
               }
             } else if ((apiResponse.error as ApiError).code === 'TIMEOUT_ERROR') {
               errorMessage = 'Request timed out. The server is taking too long to respond. Please try again later.';
-            } else if ((apiResponse.error as ApiError).code === 'AUTH_REQUIRED') {
+            } else if ('code' in apiResponse.error && apiResponse.error.code === 'AUTH_REQUIRED') {
               errorMessage = 'Authentication required. Please log in again.';
               
               // Redirect to login page if not authenticated
@@ -568,12 +578,51 @@ export function EnhancedCalendar() {
     const fetchLeads = async () => {
       setIsLoadingLeads(true);
       try {
+        // In development mode, use mock data by default to avoid authentication issues
+        if (useMockData) {
+          console.log('Using mock lead data');
+          setLeads(MOCK_LEADS);
+          setIsLoadingLeads(false);
+          return;
+        }
+        
         // Try to fetch leads from API
         const { data, error } = await getLeads();
         
-        // Always use mock data for now to avoid network errors
-        console.log('Using mock lead data');
-        setLeads(MOCK_LEADS);
+        if (error) {
+          console.error('Error fetching leads:', error);
+          
+          // Check if it's an authentication error
+          if ('code' in error && error.code === 'AUTH_REQUIRED') {
+            toast({
+              title: 'Authentication Error',
+              description: 'Your session has expired. Please log in again.',
+              variant: 'destructive',
+            });
+            
+            // Redirect to login page after a short delay
+            setTimeout(() => {
+              window.location.href = '/auth/login';
+            }, 2000);
+            return;
+          }
+          
+          toast({
+            title: 'Error',
+            description: 'Failed to load contacts, using mock data',
+            variant: 'destructive',
+          });
+          
+          // Fallback to mock data on error
+          setLeads(MOCK_LEADS);
+        } else if (data) {
+          // Use the data from the API
+          setLeads(data);
+        } else {
+          // Fallback to mock data if no data and no error
+          console.log('No data returned from API, using mock lead data');
+          setLeads(MOCK_LEADS);
+        }
       } catch (error) {
         console.error('Error fetching leads:', error);
         toast({
@@ -590,12 +639,12 @@ export function EnhancedCalendar() {
     };
     
     fetchLeads();
-  }, []);
+  }, [useMockData]);
 
   // Call fetchMeetings when the component mounts
   useEffect(() => {
     fetchMeetings();
-  }, []);
+  }, [useMockData]);
 
   // Handle refresh button click
   const handleRefresh = () => {
@@ -1050,26 +1099,50 @@ export function EnhancedCalendar() {
   // Add this near the calendar header or controls
   const renderRefreshButton = () => {
     return (
-      <Button
-        variant="outline"
-        size="sm"
-        onClick={() => {
-          toast({
-            title: 'Refreshing',
-            description: 'Fetching the latest meetings data...',
-          });
-          fetchMeetings(0, 3); // Reset retry count and max retries
-        }}
-        className="ml-2"
-        disabled={loading}
-      >
-        {loading ? (
-          <RefreshCw className="h-4 w-4 animate-spin mr-1" />
-        ) : (
-          <RefreshCw className="h-4 w-4 mr-1" />
+      <div className="flex space-x-2">
+        <Button
+          variant="outline"
+          size="sm"
+          onClick={() => {
+            toast({
+              title: 'Refreshing',
+              description: 'Fetching the latest meetings data...',
+            });
+            fetchMeetings(0, 3); // Reset retry count and max retries
+          }}
+          className="ml-2"
+          disabled={loading}
+        >
+          {loading ? (
+            <RefreshCw className="h-4 w-4 animate-spin mr-1" />
+          ) : (
+            <RefreshCw className="h-4 w-4 mr-1" />
+          )}
+          Refresh
+        </Button>
+        
+        {process.env.NODE_ENV === 'development' && (
+          <Button
+            variant={useMockData ? "default" : "outline"}
+            size="sm"
+            onClick={() => {
+              setUseMockData(!useMockData);
+              toast({
+                title: useMockData ? 'Using Real Data' : 'Using Mock Data',
+                description: useMockData ? 'Switching to real API data...' : 'Switching to mock data...',
+              });
+              // Refresh data after toggling
+              setTimeout(() => {
+                fetchMeetings(0, 3);
+              }, 100);
+            }}
+            className="ml-2"
+          >
+            <Bug className="h-4 w-4 mr-1" />
+            {useMockData ? 'Using Mock Data' : 'Use Mock Data'}
+          </Button>
         )}
-        Refresh
-      </Button>
+      </div>
     );
   };
 

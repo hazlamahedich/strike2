@@ -1,5 +1,9 @@
+import { apiClient } from './apiClient';
 import { get, post, put, del } from './apiClient';
+import { ApiResponse, ApiError } from './apiClient';
 import { Lead, LeadCreate, LeadUpdate } from '@/types/lead';
+import { getMockDataStatus } from '@/lib/utils/mockDataUtils';
+import axios from 'axios';
 
 const API_ENDPOINT = '/api/v1/leads';
 
@@ -27,16 +31,132 @@ const mapDatabaseLeadToFrontend = (dbLead: any): Lead => {
 };
 
 // Get all leads
-export const getLeads = async () => {
-  const response = await get<any[]>(API_ENDPOINT);
-  
-  if (response.data) {
-    // Map each lead to the frontend Lead type
-    const mappedLeads = response.data.map(mapDatabaseLeadToFrontend);
-    return { data: mappedLeads, error: null };
+export const getLeads = async (): Promise<ApiResponse<Lead[]>> => {
+  try {
+    // Check if we're in development mode and should use mock data
+    if (process.env.NEXT_PUBLIC_USE_MOCK_DATA === 'true' || 
+        (typeof window !== 'undefined' && getMockDataStatus())) {
+      console.log('Using mock data for leads (client-side)');
+      
+      // Return mock data
+      const mockLeads = [
+        {
+          id: "1",
+          first_name: "John",
+          last_name: "Doe",
+          email: "john@example.com",
+          phone: "+1234567890",
+          company: "Acme Inc",
+          job_title: "CEO",
+          status: "NEW",
+          source: "WEBSITE",
+          notes: "Interested in our enterprise plan",
+          created_at: new Date(Date.now() - 86400000).toISOString(),
+          updated_at: new Date().toISOString(),
+          lead_score: 85,
+          owner_id: "1"
+        },
+        {
+          id: "2",
+          first_name: "Jane",
+          last_name: "Smith",
+          email: "jane@example.com",
+          phone: "+1987654321",
+          company: "XYZ Corp",
+          job_title: "CTO",
+          status: "CONTACTED",
+          source: "REFERRAL",
+          notes: "Looking for custom solutions",
+          created_at: new Date(Date.now() - 172800000).toISOString(),
+          updated_at: new Date().toISOString(),
+          lead_score: 70,
+          owner_id: "2"
+        }
+      ];
+      
+      // Map each lead to the frontend Lead type
+      const mappedLeads = mockLeads.map(mapDatabaseLeadToFrontend);
+      return {
+        data: mappedLeads,
+        error: null
+      };
+    }
+    
+    const response = await get<any[]>(API_ENDPOINT);
+    
+    if (response.data) {
+      // Map each lead to the frontend Lead type
+      const mappedLeads = response.data.map(mapDatabaseLeadToFrontend);
+      return { data: mappedLeads, error: null };
+    }
+    
+    return response;
+  } catch (error) {
+    console.error('Error in getLeads:', error);
+    
+    // Check if it's an authentication error
+    if (axios.isAxiosError(error) && error.response?.status === 401) {
+      return {
+        data: null as unknown as Lead[],
+        error: {
+          message: 'Authentication required. Please log in again.',
+          code: 'AUTH_REQUIRED',
+          status: 401,
+          details: { isAuthError: true }
+        } as ApiError
+      };
+    }
+    
+    // Return mock data on error in development
+    if (process.env.NODE_ENV === 'development') {
+      console.log('Returning mock data due to API error');
+      
+      const mockLeads = [
+        {
+          id: "1",
+          first_name: "John",
+          last_name: "Doe",
+          email: "john@example.com",
+          phone: "+1234567890",
+          company: "Acme Inc",
+          job_title: "CEO",
+          status: "NEW",
+          source: "WEBSITE",
+          notes: "Interested in our enterprise plan",
+          created_at: new Date(Date.now() - 86400000).toISOString(),
+          updated_at: new Date().toISOString(),
+          lead_score: 85,
+          owner_id: "1"
+        },
+        {
+          id: "2",
+          first_name: "Jane",
+          last_name: "Smith",
+          email: "jane@example.com",
+          phone: "+1987654321",
+          company: "XYZ Corp",
+          job_title: "CTO",
+          status: "CONTACTED",
+          source: "REFERRAL",
+          notes: "Looking for custom solutions",
+          created_at: new Date(Date.now() - 172800000).toISOString(),
+          updated_at: new Date().toISOString(),
+          lead_score: 70,
+          owner_id: "2"
+        }
+      ];
+      
+      // Map each lead to the frontend Lead type
+      const mappedLeads = mockLeads.map(mapDatabaseLeadToFrontend);
+      return { data: mappedLeads, error: null };
+    }
+    
+    // Return the error for production
+    return {
+      data: null as unknown as Lead[],
+      error: error instanceof Error ? error : new Error('Unknown error in getLeads')
+    };
   }
-  
-  return response;
 };
 
 // Get a specific lead by ID
