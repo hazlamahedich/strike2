@@ -139,7 +139,17 @@ export const updateMeeting = async (id: string | number, meeting: Partial<Meetin
   try {
     // Ensure id is a string
     const meetingId = String(id);
-    const response = await apiClient.put<Meeting>(`/meetings/${meetingId}`, meeting);
+    
+    // Check if we're updating notes and should create a version
+    const shouldCreateVersion = meeting.notes !== undefined;
+    
+    // Add a flag to indicate if we should create a version
+    const meetingWithVersionFlag = {
+      ...meeting,
+      _create_version: shouldCreateVersion
+    };
+    
+    const response = await apiClient.put<Meeting>(`/meetings/${meetingId}`, meetingWithVersionFlag);
     return {
       data: response.data,
       error: null

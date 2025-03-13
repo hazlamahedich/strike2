@@ -9,7 +9,7 @@ import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from '
 import { useForm } from 'react-hook-form';
 import { z } from 'zod';
 import { zodResolver } from '@hookform/resolvers/zod';
-import { Loader2, Send, FileText, Sparkles } from 'lucide-react';
+import { Loader2, Send, FileText, Sparkles, Paperclip, X } from 'lucide-react';
 import { useToast } from '../ui/use-toast';
 import { 
   sendEmail, 
@@ -48,6 +48,7 @@ export function EmailDialog({ open, onOpenChange, leadEmail, leadName, onSuccess
   const [receivedEmails, setReceivedEmails] = useState<ReceivedEmail[]>([]);
   const [sentEmails, setSentEmails] = useState<ReceivedEmail[]>([]);
   const [isLoading, setIsLoading] = useState(false);
+  const [attachments, setAttachments] = useState<File[]>([]);
   
   // Initialize the form
   const form = useForm<EmailFormValues>({
@@ -95,11 +96,39 @@ export function EmailDialog({ open, onOpenChange, leadEmail, leadName, onSuccess
     console.log('Sending email:', data);
     
     try {
+      // Process attachments if any
+      const processedAttachments = await Promise.all(
+        attachments.map(async (file) => {
+          return new Promise<{
+            filename: string;
+            content: string;
+            content_type: string;
+            size: number;
+          }>((resolve, reject) => {
+            const reader = new FileReader();
+            reader.onload = () => {
+              const base64content = reader.result as string;
+              // Remove the data URL prefix (e.g., "data:application/pdf;base64,")
+              const base64Data = base64content.split(',')[1];
+              resolve({
+                filename: file.name,
+                content: base64Data,
+                content_type: file.type,
+                size: file.size,
+              });
+            };
+            reader.onerror = reject;
+            reader.readAsDataURL(file);
+          });
+        })
+      );
+      
       // Call the email service to send the email
       const response = await sendEmail({
         to: data.to,
         subject: data.subject,
         content: data.content,
+        attachments: processedAttachments,
       });
       
       toast({
@@ -107,12 +136,13 @@ export function EmailDialog({ open, onOpenChange, leadEmail, leadName, onSuccess
         description: `Your email to ${data.to} has been sent.`,
       });
       
-      // Reset the form
+      // Reset the form and attachments
       form.reset({
         to: leadEmail,
         subject: '',
         content: '',
       });
+      setAttachments([]);
       
       // Refresh emails to show the newly sent email
       fetchEmails();
@@ -211,6 +241,69 @@ export function EmailDialog({ open, onOpenChange, leadEmail, leadName, onSuccess
     form.setValue('content', replyContent);
   };
   
+  // Handle file selection
+  const handleFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
+    if (e.target.files && e.target.files.length > 0) {
+      // Convert FileList to array and add to attachments
+      const newFiles = Array.from(e.target.files);
+      
+      // Check file sizes (SendGrid limit is 30MB total, but we'll limit individual files to 10MB)
+      const oversizedFiles = newFiles.filter(file => file.size > 10 * 1024 * 1024);
+      if (oversizedFiles.length > 0) {
+        toast({
+          title: 'File size exceeded',
+          description: `${oversizedFiles.length > 1 ? 'Some files are' : 'One file is'} larger than 10MB and cannot be attached.`,
+          variant: 'destructive',
+        });
+        
+        // Filter out oversized files
+        const validFiles = newFiles.filter(file => file.size <= 10 * 1024 * 1024);
+        if (validFiles.length > 0) {
+          setAttachments([...attachments, ...validFiles]);
+          
+          // Show success toast for valid files
+          toast({
+            title: 'Files attached',
+            description: `${validFiles.length} ${validFiles.length === 1 ? 'file' : 'files'} attached successfully.`,
+          });
+        }
+      } else {
+        // All files are valid
+        setAttachments([...attachments, ...newFiles]);
+        
+        // Show success toast
+        toast({
+          title: 'Files attached',
+          description: `${newFiles.length} ${newFiles.length === 1 ? 'file' : 'files'} attached successfully: ${newFiles.map(f => f.name).join(', ')}`,
+        });
+      }
+      
+      // Clear the input value so the same file can be selected again
+      e.target.value = '';
+    }
+  };
+  
+  // Handle file removal
+  const handleRemoveFile = (index: number) => {
+    const newAttachments = [...attachments];
+    const removedFile = newAttachments[index];
+    newAttachments.splice(index, 1);
+    setAttachments(newAttachments);
+    
+    // Show toast for removed file
+    toast({
+      title: 'File removed',
+      description: `Removed ${removedFile.name}`,
+    });
+  };
+  
+  // Format file size
+  const formatFileSize = (bytes: number): string => {
+    if (bytes < 1024) return bytes + ' bytes';
+    else if (bytes < 1048576) return (bytes / 1024).toFixed(1) + ' KB';
+    else return (bytes / 1048576).toFixed(1) + ' MB';
+  };
+  
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="sm:max-w-[800px] max-h-[90vh] overflow-hidden overflow-x-auto flex flex-col">
@@ -274,6 +367,67 @@ export function EmailDialog({ open, onOpenChange, leadEmail, leadName, onSuccess
                     </FormItem>
                   )}
                 />
+                
+                {/* File Attachments */}
+                <div className="space-y-2">
+                  <div className="flex items-center justify-between">
+                    <FormLabel>Attachments</FormLabel>
+                    <div className="text-sm text-muted-foreground">
+                      {attachments.length > 0 
+                        ? attachments.length === 1 
+                          ? `1 file attached: ${attachments[0].name}` 
+                          : `${attachments.length} files attached: ${attachments.map(file => file.name).join(', ')}`
+                        : 'No files attached'
+                      }
+                    </div>
+                  </div>
+                  
+                  <div className="flex items-center space-x-2">
+                    <Input
+                      type="file"
+                      id="file-upload"
+                      className="hidden"
+                      onChange={handleFileSelect}
+                      multiple
+                    />
+                    <label
+                      htmlFor="file-upload"
+                      className="cursor-pointer inline-flex items-center justify-center rounded-md text-sm font-medium ring-offset-background transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:pointer-events-none disabled:opacity-50 border border-input bg-background hover:bg-accent hover:text-accent-foreground h-10 px-4 py-2"
+                    >
+                      <Paperclip className="mr-2 h-4 w-4" />
+                      Attach Files
+                    </label>
+                  </div>
+                  
+                  <div className="text-xs text-muted-foreground mt-1">
+                    <p>SendGrid supports most common file types (PDF, DOC, DOCX, XLS, XLSX, PPT, PPTX, JPG, PNG, GIF, etc.)</p>
+                    <p>Maximum file size: 10MB per file, 30MB total. Executable files (.exe, .bat, etc.) are not allowed.</p>
+                  </div>
+                  
+                  {attachments.length > 0 && (
+                    <div className="border rounded-md p-2 space-y-2 max-h-[150px] overflow-y-auto">
+                      {attachments.map((file, index) => (
+                        <div key={index} className="flex items-center justify-between bg-accent/50 rounded-md p-2">
+                          <div className="flex items-center space-x-2 overflow-hidden">
+                            <Paperclip className="h-4 w-4 flex-shrink-0" />
+                            <span className="text-sm truncate">{file.name}</span>
+                            <span className="text-xs text-muted-foreground">{formatFileSize(file.size)}</span>
+                          </div>
+                          <Button
+                            type="button"
+                            variant="ghost"
+                            size="sm"
+                            onClick={() => handleRemoveFile(index)}
+                            className="h-6 w-6 p-0"
+                          >
+                            <X className="h-4 w-4" />
+                            <span className="sr-only">Remove</span>
+                          </Button>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
                 
                 <div className="flex justify-between pt-4">
                   <div className="space-x-2">

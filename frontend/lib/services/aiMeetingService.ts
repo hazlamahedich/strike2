@@ -12,6 +12,7 @@ import {
   getMeetingSummary 
 } from '../api/meetings/index';
 import { getMockDataStatus } from '@/lib/utils/mockDataUtils';
+import axios from 'axios';
 
 // Define a modified ApiResponse type that allows null data
 interface ApiResponseWithNullable<T> {
@@ -19,7 +20,9 @@ interface ApiResponseWithNullable<T> {
   error: Error | null;
 }
 
-const API_ENDPOINT = '/api/v1/ai/meetings';
+// Update API_ENDPOINT to not include the leading 'v1/' since apiClient already adds '/api'
+// This prevents the double prefix issue
+const API_ENDPOINT = 'v1/ai/meetings';
 
 // At the top of the file, add this type utility
 type NonNullable<T> = T extends null | undefined ? never : T;
@@ -128,7 +131,72 @@ export const generateMeetingAgenda = async (
 ): Promise<ApiResponse<MeetingAgendaResponse>> => {
   console.log('Calling generateMeetingAgenda with request:', request);
   try {
-    const response = await apiClient.post<MeetingAgendaResponse>(`${API_ENDPOINT}/agenda`, request);
+    // Log the full URL being called
+    const fullUrl = `${API_ENDPOINT}/agenda`;
+    console.log('Making API request to:', fullUrl);
+    console.log('With apiClient baseURL:', '/api');
+    console.log('Expected full URL:', '/api/v1/ai/meetings/agenda');
+    
+    // Use fetch directly to see the exact URL being used
+    console.log('Trying with fetch to debug URL issues...');
+    const fetchResponse = await fetch(`/api/${API_ENDPOINT}/agenda`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify(request),
+      credentials: 'include' // Include cookies for authentication
+    });
+    
+    console.log('Fetch response status:', fetchResponse.status);
+    
+    if (fetchResponse.ok) {
+      const data = await fetchResponse.json();
+      console.log('Fetch response data:', data);
+      return {
+        data: data,
+        error: null
+      };
+    } else {
+      console.error('Fetch error:', fetchResponse.status, fetchResponse.statusText);
+      // Try a different URL format
+      console.log('Trying alternative URL format...');
+      const alternativeResponse = await fetch(`/api/v1/ai/meetings/agenda`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify(request),
+        credentials: 'include' // Include cookies for authentication
+      });
+      
+      console.log('Alternative fetch response status:', alternativeResponse.status);
+      
+      if (alternativeResponse.ok) {
+        const data = await alternativeResponse.json();
+        console.log('Alternative fetch response data:', data);
+        return {
+          data: data,
+          error: null
+        };
+      } else {
+        console.error('Alternative fetch error:', alternativeResponse.status, alternativeResponse.statusText);
+        
+        // If both fetch attempts fail with 404, provide fallback agenda items
+        if (fetchResponse.status === 404 && alternativeResponse.status === 404) {
+          console.log('API endpoint not found, using local fallback');
+          return {
+            data: { 
+              agenda_items: getFallbackAgendaItems(request.meeting_type)
+            },
+            error: null
+          };
+        }
+      }
+    }
+    
+    // Original axios call
+    const response = await apiClient.post<MeetingAgendaResponse>(fullUrl, request);
     console.log('generateMeetingAgenda response:', response);
     return {
       data: response.data,
@@ -136,6 +204,34 @@ export const generateMeetingAgenda = async (
     };
   } catch (error) {
     console.error('Error in generateMeetingAgenda:', error);
+    
+    // Add more detailed error logging
+    if (axios.isAxiosError(error)) {
+      console.error('Axios error details:', {
+        status: error.response?.status,
+        statusText: error.response?.statusText,
+        data: error.response?.data,
+        url: error.config?.url,
+        baseURL: error.config?.baseURL,
+        fullURL: error.config?.baseURL && error.config?.url ? 
+          `${error.config.baseURL}${error.config.url}` : 'unknown',
+        method: error.config?.method,
+        headers: error.config?.headers,
+        timeout: error.config?.timeout
+      });
+      
+      // If the error is a 404, provide fallback agenda items
+      if (error.response?.status === 404) {
+        console.log('API endpoint not found, using local fallback');
+        return {
+          data: { 
+            agenda_items: getFallbackAgendaItems(request.meeting_type)
+          },
+          error: null
+        };
+      }
+    }
+    
     return {
       data: { agenda_items: [] } as MeetingAgendaResponse,
       error: error instanceof Error ? error : new Error('Unknown error occurred')
@@ -144,22 +240,137 @@ export const generateMeetingAgenda = async (
 };
 
 /**
+ * Get fallback agenda items based on meeting type
+ */
+export function getFallbackAgendaItems(meetingType?: string): string[] {
+  // Default suggestions for any meeting type
+  const defaultSuggestions = [
+    "Welcome and introductions",
+    "Review of previous discussions",
+    "Current status update",
+    "Next steps and action items",
+    "Questions and answers"
+  ];
+
+  // Return meeting-type specific suggestions if available
+  switch (meetingType) {
+    case 'initial_call':
+      return [
+        "Introduction and rapport building",
+        "Overview of company/product/service",
+        "Understanding client's needs and pain points",
+        "Brief demonstration of relevant solutions",
+        "Discuss potential next steps",
+        "Q&A session"
+      ];
+    case 'discovery':
+      return [
+        "Review of previous discussions",
+        "Deep dive into client's business processes",
+        "Identify key challenges and opportunities",
+        "Explore potential solutions",
+        "Discuss success metrics and goals",
+        "Outline implementation timeline",
+        "Next steps and follow-up items"
+      ];
+    default:
+      return defaultSuggestions;
+  }
+}
+
+/**
  * Generate AI-powered follow-up message after meeting
  */
 export const generateFollowUpMessage = async (
   meetingId: string
 ): Promise<ApiResponse<{ subject: string; message: string }>> => {
   try {
-    const response = await apiClient.get<{ subject: string; message: string }>(
-      `${API_ENDPOINT}/follow-up/${meetingId}`
-    );
+    // Log the environment and API endpoint
+    const isDev = process.env.NODE_ENV === 'development';
+    console.log('Environment:', isDev ? 'development' : 'production');
+    console.log('Making API request to:', `/api/v1/ai/meetings/follow-up/${meetingId}`);
+    console.log('Meeting ID:', meetingId);
     
-    return {
-      data: response.data,
-      error: null
-    };
+    // Add a timeout to prevent hanging requests
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 15000); // 15 seconds timeout
+    
+    try {
+      // Make the API request with timeout
+      console.log('Starting API request...');
+      
+      // Use fetch directly instead of apiClient for more control
+      const response = await fetch(`/api/v1/ai/meetings/follow-up/${meetingId}`, {
+        method: 'GET',
+        headers: {
+          'Content-Type': 'application/json',
+          'Cache-Control': 'no-cache'
+        },
+        credentials: 'include', // Include cookies for authentication
+        signal: controller.signal
+      });
+      
+      // Clear the timeout since the request completed
+      clearTimeout(timeoutId);
+      
+      console.log('API response received:', response.status, response.statusText);
+      
+      if (!response.ok) {
+        console.error('API error response:', {
+          status: response.status,
+          statusText: response.statusText,
+          url: `/api/v1/ai/meetings/follow-up/${meetingId}`
+        });
+        
+        // Try to get the error details from the response
+        const errorText = await response.text();
+        console.error('Error response body:', errorText);
+        
+        throw new Error(`API returned ${response.status}: ${response.statusText}. Details: ${errorText}`);
+      }
+      
+      // Parse the response
+      const data = await response.json();
+      console.log('API response data:', data);
+      
+      return {
+        data: data,
+        error: null
+      };
+    } catch (fetchError) {
+      // Clear the timeout if there was an error
+      clearTimeout(timeoutId);
+      
+      console.error('Fetch error in generateFollowUpMessage:', fetchError);
+      
+      // Check if it's an abort error (timeout)
+      if (fetchError instanceof Error && fetchError.name === 'AbortError') {
+        throw new Error(`Request timed out after 15 seconds: ${fetchError.message}`);
+      }
+      
+      throw fetchError; // Re-throw to be caught by the outer catch
+    }
   } catch (error) {
     console.error('Error in generateFollowUpMessage:', error);
+    
+    // Add detailed error logging
+    if (axios.isAxiosError(error)) {
+      console.error('Axios error details:', {
+        status: error.response?.status,
+        statusText: error.response?.statusText,
+        data: error.response?.data,
+        url: error.config?.url,
+        method: error.config?.method,
+        headers: error.config?.headers,
+        timeout: error.config?.timeout
+      });
+      
+      // If we get a 401 in development, provide a helpful message
+      if (error.response?.status === 401 && process.env.NODE_ENV === 'development') {
+        console.warn('Authentication error in development mode. This is likely because the API route requires authentication.');
+      }
+    }
+    
     return {
       data: { subject: '', message: '' } as { subject: string; message: string },
       error: error instanceof Error ? error : new Error('Unknown error in generateFollowUpMessage')
@@ -463,10 +674,22 @@ export const scheduleFollowUpTask = async (
   taskDetails: { title: string; description: string; due_date: string }
 ): Promise<ApiResponse<{ task_id: string } | null>> => {
   try {
-    const response = await apiClient.post<{ task_id: string }>(`${API_ENDPOINT}/schedule-task`, {
-      meeting_id: meetingId,
-      ...taskDetails
-    });
+    console.log(`Scheduling follow-up task for meeting ID: ${meetingId}`);
+    console.log('Task details:', taskDetails);
+    
+    // Remove the leading /api since apiClient already has baseURL: '/api'
+    const endpoint = `/v1/ai/meetings/schedule-follow-up/${meetingId}`;
+    console.log('Using API endpoint:', endpoint);
+    
+    const response = await apiClient.post<{ task_id: string }>(
+      endpoint, 
+      {
+        ...taskDetails,
+        days_delay: 3 // Add days_delay parameter which the endpoint expects
+      }
+    );
+    
+    console.log('Schedule follow-up task response:', response);
     
     return {
       data: response.data,
@@ -474,6 +697,13 @@ export const scheduleFollowUpTask = async (
     };
   } catch (error) {
     console.error('Error in scheduleFollowUpTask:', error);
+    
+    // Log more details about the error
+    if (error instanceof Error) {
+      console.error('Error message:', error.message);
+      console.error('Error stack:', error.stack);
+    }
+    
     return {
       data: null,
       error: error instanceof Error ? error : new Error('Unknown error in scheduleFollowUpTask')

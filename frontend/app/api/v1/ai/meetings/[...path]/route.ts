@@ -10,7 +10,9 @@ export async function GET(
   { params }: { params: { path: string[] } }
 ) {
   try {
-    const path = params.path.join('/');
+    // Fix: Properly await params before accessing its properties
+    const paramsResolved = await params;
+    const path = Array.isArray(paramsResolved.path) ? paramsResolved.path.join('/') : '';
     console.log(`Received GET request for v1/ai/meetings/${path}`);
     
     // Check authentication
@@ -65,7 +67,9 @@ export async function POST(
   { params }: { params: { path: string[] } }
 ) {
   try {
-    const path = params.path.join('/');
+    // Fix: Properly await params before accessing its properties
+    const paramsResolved = await params;
+    const path = Array.isArray(paramsResolved.path) ? paramsResolved.path.join('/') : '';
     console.log(`Received POST request for v1/ai/meetings/${path}`);
     
     // Check authentication
@@ -117,7 +121,9 @@ export async function PUT(
   { params }: { params: { path: string[] } }
 ) {
   try {
-    const path = params.path.join('/');
+    // Fix: Properly await params before accessing its properties
+    const paramsResolved = await params;
+    const path = Array.isArray(paramsResolved.path) ? paramsResolved.path.join('/') : '';
     console.log(`Received PUT request for v1/ai/meetings/${path}`);
     
     // Check authentication
@@ -169,7 +175,9 @@ export async function DELETE(
   { params }: { params: { path: string[] } }
 ) {
   try {
-    const path = params.path.join('/');
+    // Fix: Properly await params before accessing its properties
+    const paramsResolved = await params;
+    const path = Array.isArray(paramsResolved.path) ? paramsResolved.path.join('/') : '';
     console.log(`Received DELETE request for v1/ai/meetings/${path}`);
     
     // Check authentication

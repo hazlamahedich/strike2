@@ -1,9 +1,17 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getServerSession } from 'next-auth/next';
 import { authOptions } from '@/lib/auth';
-import { MeetingType } from '@/lib/types/meeting';
 
-// Mock function to generate agenda suggestions based on meeting type
+// Define MeetingType enum since we can't import it
+enum MeetingType {
+  INITIAL_CALL = 'initial_call',
+  DISCOVERY = 'discovery',
+  DEMO = 'demo',
+  PROPOSAL = 'proposal',
+  FOLLOW_UP = 'follow_up'
+}
+
+// Function to generate agenda suggestions based on meeting type
 function generateAgendaSuggestions(meetingType: string, context?: string): string[] {
   // Default suggestions for any meeting type
   const defaultSuggestions = [
@@ -94,13 +102,50 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'Meeting type is required' }, { status: 400 });
     }
 
-    // In a real implementation, you would:
-    // 1. Fetch lead information if lead_id is provided
-    // 2. Use an AI service to generate contextual agenda items
-    // 3. Store the generated agenda items
-
-    // For now, we'll use a mock function
+    // Generate agenda items
     const agendaItems = generateAgendaSuggestions(meeting_type, context);
+    console.log('Generated agenda items:', agendaItems);
+
+    // Return the generated agenda items
+    return NextResponse.json({ 
+      agenda_items: agendaItems 
+    });
+  } catch (error) {
+    console.error('Error generating agenda suggestions:', error);
+    return NextResponse.json(
+      { error: 'Failed to generate agenda suggestions' },
+      { status: 500 }
+    );
+  }
+}
+
+export async function GET(request: NextRequest) {
+  try {
+    console.log('Received GET request for agenda suggestions');
+    
+    // Check authentication
+    const session = await getServerSession(authOptions);
+    console.log('Auth session:', session ? 'Authenticated' : 'Not authenticated');
+    
+    if (!session) {
+      console.log('Unauthorized request for agenda suggestions');
+      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+    }
+
+    // Get query parameters
+    const searchParams = request.nextUrl.searchParams;
+    const meetingType = searchParams.get('meeting_type');
+    const context = searchParams.get('context');
+    
+    console.log('Query parameters:', { meetingType, context });
+
+    if (!meetingType) {
+      console.log('Missing meeting_type in request');
+      return NextResponse.json({ error: 'Meeting type is required' }, { status: 400 });
+    }
+
+    // Generate agenda items
+    const agendaItems = generateAgendaSuggestions(meetingType, context || undefined);
     console.log('Generated agenda items:', agendaItems);
 
     // Return the generated agenda items

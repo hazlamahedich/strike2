@@ -86,6 +86,24 @@ export interface Meeting {
   // Summary fields
   summary?: string;
   action_items?: string[];
+  // Attachments
+  attachments?: Array<{
+    filename: string;
+    path: string;
+    content_type: string;
+    size: number;
+  }>;
+  // Display attachments (for UI only)
+  displayAttachments?: Array<{
+    id: string;
+    filename: string;
+    path: string;
+    content_type: string;
+    size: number;
+    url?: string;
+  }>;
+  // Version tracking
+  current_note_version_id?: string;
   // Comprehensive summary fields
   comprehensive_summary?: {
     summary: string;
@@ -186,6 +204,15 @@ export interface MeetingUpdate {
   // Summary fields
   summary?: string;
   action_items?: string[];
+  // Attachments
+  attachments?: Array<{
+    filename: string;
+    path: string;
+    content_type: string;
+    size: number;
+  }>;
+  // Version tracking
+  current_note_version_id?: string;
   // Comprehensive summary fields
   comprehensive_summary?: {
     summary: string;

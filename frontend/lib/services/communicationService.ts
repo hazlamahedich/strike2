@@ -15,6 +15,12 @@ export interface SendEmailParams {
   content: string;
   from?: string;
   lead_id?: number;
+  attachments?: Array<{
+    filename: string;
+    content: string; // Base64 encoded file content
+    content_type: string;
+    size?: number;
+  }>;
 }
 
 export interface EmailResponse {
@@ -145,6 +151,7 @@ export async function sendEmail(params: SendEmailParams): Promise<EmailResponse>
         to: params.to,
         subject: params.subject,
         sentAt: new Date().toISOString(),
+        attachments: params.attachments ? params.attachments.map(a => a.filename) : [],
       },
     };
   } else {
@@ -161,6 +168,7 @@ export async function sendEmail(params: SendEmailParams): Promise<EmailResponse>
           subject: params.subject,
           body: params.content,
           lead_id: params.lead_id,
+          attachments: params.attachments || [],
         }),
       });
       

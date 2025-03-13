@@ -2,7 +2,7 @@ import axios, { AxiosError, AxiosResponse } from 'axios';
 
 // Base API client configuration
 const apiClient = axios.create({
-  baseURL: process.env.NEXT_PUBLIC_API_URL || '/api',
+  baseURL: '/api', // Force using relative path to ensure we hit the same server
   headers: {
     'Content-Type': 'application/json',
   },
@@ -49,20 +49,32 @@ apiClient.interceptors.response.use(
       console.error('API Error Response:', {
         status: error.response.status,
         statusText: error.response.statusText,
-        data: error.response.data,
-        url: error.config?.url,
+        data: error.response.data || 'Empty response body',
+        url: error.config?.url || 'Unknown URL',
+        baseURL: error.config?.baseURL || 'Unknown baseURL',
+        fullURL: error.config?.baseURL && error.config?.url ? 
+          `${error.config.baseURL}${error.config.url}` : 'Unknown full URL',
       });
       
       // Handle empty error response
       if (error.response.status === 401 && (!error.response.data || Object.keys(error.response.data).length === 0)) {
         console.error('Authentication error: Empty error response with 401 status');
         error.isAuthError = true;
+        error.message = 'Authentication required. Please log in again.';
+      } else if (error.response.status === 404) {
+        console.error('Resource not found error');
+        error.isNotFoundError = true;
+        error.message = 'The requested resource was not found.';
+      } else if (!error.response.data || Object.keys(error.response.data).length === 0) {
+        console.error('Empty error response with status:', error.response.status);
+        error.message = `API Error: ${error.response.status} ${error.response.statusText}`;
       }
     } else if (error.request) {
       console.error('API Error Request:', {
         message: error.message,
         code: error.code,
-        url: error.config?.url,
+        url: error.config?.url || 'Unknown URL',
+        baseURL: error.config?.baseURL || 'Unknown baseURL',
       });
     } else {
       console.error('API Error Setup:', error.message);

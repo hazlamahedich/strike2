@@ -1,7 +1,8 @@
 import { get, post, put, del } from './apiClient';
 import { Meeting, MeetingUpdate } from '@/lib/types/meeting';
 
-const API_ENDPOINT = '/api/v1/meetings';
+// Update API_ENDPOINT to not include the leading '/api' since apiClient already adds it
+const API_ENDPOINT = 'v1/meetings';
 
 // Get all meetings
 export const getMeetings = async () => {

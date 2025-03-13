@@ -1,11 +1,14 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { 
-  checkAuthentication, 
-  createBadRequestResponse, 
-  createServerErrorResponse, 
-  createSuccessResponse,
-  handleOptionsRequest
-} from '@/lib/utils/apiAuthUtils';
+import { getServerSession } from 'next-auth/next';
+import { authOptions } from '@/lib/auth';
+
+// Helper function to add CORS headers to a response
+function addCorsHeaders(response: NextResponse): NextResponse {
+  response.headers.set('Access-Control-Allow-Origin', '*');
+  response.headers.set('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
+  response.headers.set('Access-Control-Allow-Headers', 'Content-Type, Authorization');
+  return response;
+}
 
 // Mock function to schedule a follow-up task
 function scheduleFollowUpTask(meetingId: string, taskDetails: any, daysDelay: number = 3): {
@@ -31,24 +34,34 @@ function scheduleFollowUpTask(meetingId: string, taskDetails: any, daysDelay: nu
 
 export async function POST(
   request: NextRequest,
-  context: { params: { meetingId: string } }
+  { params }: { params: { meetingId: string } }
 ) {
   try {
-    const { meetingId } = await Promise.resolve(context.params);
+    // Fix: Properly access meetingId from params (await it to avoid the error)
+    const meetingId = params.meetingId;
     console.log('Received schedule follow-up request for meeting:', meetingId);
     
-    // Check authentication with our utility function
-    const { isAuthenticated, shouldBypass } = await checkAuthentication(request);
+    // Check if we're in development mode
+    const isDev = process.env.NODE_ENV === 'development';
+    console.log('Environment:', isDev ? 'development' : 'production');
     
-    // If not authenticated and not in development mode, return unauthorized
-    if (!isAuthenticated && !shouldBypass) {
+    // Check authentication
+    const session = await getServerSession(authOptions);
+    console.log('Auth session:', session ? 'Authenticated' : 'Not authenticated');
+    
+    // In development mode, bypass authentication
+    if (!session && !isDev) {
       console.log('Unauthorized request for scheduling follow-up');
-      return createBadRequestResponse('Unauthorized');
+      return addCorsHeaders(
+        NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+      );
     }
 
     if (!meetingId) {
       console.log('Missing meetingId in request');
-      return createBadRequestResponse('Meeting ID is required');
+      return addCorsHeaders(
+        NextResponse.json({ error: 'Meeting ID is required' }, { status: 400 })
+      );
     }
 
     // Parse request body
@@ -69,8 +82,10 @@ export async function POST(
     const taskData = scheduleFollowUpTask(meetingId, taskDetails, daysDelay);
     console.log('Scheduled follow-up task:', taskData);
 
-    // Return the task data with success response
-    return createSuccessResponse({ task_id: taskData.task_id });
+    // Return the task data with CORS headers
+    return addCorsHeaders(
+      NextResponse.json({ task_id: taskData.task_id })
+    );
   } catch (error) {
     console.error('Error scheduling follow-up task:', error);
     
@@ -80,11 +95,20 @@ export async function POST(
       console.error('Error stack:', error.stack);
     }
     
-    return createServerErrorResponse('Failed to schedule follow-up task');
+    return addCorsHeaders(
+      NextResponse.json(
+        { error: 'Failed to schedule follow-up task' },
+        { status: 500 }
+      )
+    );
   }
 }
 
 // Handle OPTIONS requests for CORS preflight
 export async function OPTIONS(request: NextRequest) {
-  return handleOptionsRequest(request);
+  console.log('OPTIONS request received for CORS preflight');
+  
+  // Create a response with CORS headers
+  const response = new NextResponse(null, { status: 204 });
+  return addCorsHeaders(response);
 } 

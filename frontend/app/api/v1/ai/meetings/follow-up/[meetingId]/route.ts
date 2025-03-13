@@ -1,6 +1,11 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { getServerSession } from 'next-auth/next';
-import { authOptions } from '@/lib/auth';
+import { 
+  checkAuthentication, 
+  createBadRequestResponse, 
+  createServerErrorResponse, 
+  createSuccessResponse,
+  handleOptionsRequest
+} from '@/lib/utils/apiAuthUtils';
 
 // Mock function to generate a follow-up message
 function generateFollowUpMessage(meetingId: string): {
@@ -36,25 +41,29 @@ Best regards,
 
 export async function GET(
   request: NextRequest,
-  { params }: { params: { meetingId: string } }
+  context: { params: { meetingId: string } }
 ) {
+  console.log('GET request received for follow-up message');
+  console.log('Request URL:', request.url);
+  console.log('Request headers:', Object.fromEntries(request.headers.entries()));
+  
   try {
-    console.log('Received follow-up message request for meeting:', params.meetingId);
+    // Fix: Properly await and destructure the meetingId from params
+    const { meetingId } = await Promise.resolve(context.params);
+    console.log('Received follow-up message request for meeting:', meetingId);
     
-    // Check authentication
-    const session = await getServerSession(authOptions);
-    console.log('Auth session:', session ? 'Authenticated' : 'Not authenticated');
+    // Check authentication with our utility function
+    const { isAuthenticated, shouldBypass } = await checkAuthentication(request);
     
-    if (!session) {
+    // If not authenticated and not in development mode, return unauthorized
+    if (!isAuthenticated && !shouldBypass) {
       console.log('Unauthorized request for follow-up message');
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+      return createBadRequestResponse('Unauthorized');
     }
-
-    const meetingId = params.meetingId;
     
     if (!meetingId) {
       console.log('Missing meetingId in request');
-      return NextResponse.json({ error: 'Meeting ID is required' }, { status: 400 });
+      return createBadRequestResponse('Meeting ID is required');
     }
 
     // In a real implementation, you would:
@@ -67,13 +76,25 @@ export async function GET(
     const messageData = generateFollowUpMessage(meetingId);
     console.log('Generated follow-up message:', messageData);
 
-    // Return the generated message
-    return NextResponse.json(messageData);
+    // Create a success response with the message data
+    return createSuccessResponse(messageData);
   } catch (error) {
     console.error('Error generating follow-up message:', error);
-    return NextResponse.json(
-      { error: 'Failed to generate follow-up message' },
-      { status: 500 }
-    );
+    
+    // Create a detailed error response
+    const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+    const errorStack = error instanceof Error ? error.stack : '';
+    
+    console.error('Error details:', {
+      message: errorMessage,
+      stack: errorStack
+    });
+    
+    return createServerErrorResponse('Failed to generate follow-up message');
   }
+}
+
+// Handle OPTIONS requests for CORS preflight
+export async function OPTIONS(request: NextRequest) {
+  return handleOptionsRequest(request);
 } 

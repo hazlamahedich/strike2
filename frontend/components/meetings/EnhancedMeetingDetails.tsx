@@ -3,7 +3,8 @@ import { format, parseISO, addDays } from 'date-fns';
 import { 
   Clock, MapPin, User, Calendar, FileText, 
   CheckCircle, XCircle, MessageSquare, Sparkles,
-  ClipboardList, Send, ListChecks, Phone, Mail, X, AlertTriangle, ArrowRight
+  ClipboardList, Send, ListChecks, Phone, Mail, X, AlertTriangle, ArrowRight,
+  Building, Tag, Paperclip, Download
 } from 'lucide-react';
 
 import { Button } from '@/components/ui/button';
@@ -11,9 +12,11 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Badge } from '@/components/ui/badge';
 import { Textarea } from '@/components/ui/textarea';
-import { toast } from '@/components/ui/use-toast';
+import { toast } from 'sonner';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog';
 import { Skeleton } from '@/components/ui/skeleton';
+import { Input } from '@/components/ui/input';
+import RichTextEditor from '../communications/RichTextEditor';
 
 import { Meeting, MeetingStatus, MeetingUpdate } from '@/lib/types/meeting';
 import { updateMeeting } from '@/lib/api/meetings';
@@ -24,12 +27,17 @@ import {
   scheduleFollowUpTask,
   generateMeetingAgenda,
   getComprehensiveMeetingSummary,
-  updateMeetingWithSummary
+  updateMeetingWithSummary,
+  getFallbackAgendaItems
 } from '@/lib/services/aiMeetingService';
+import { sendEmail } from '@/lib/services/communicationService';
 import { PhoneDialog } from '../communications/PhoneDialog';
 import { EmailDialog } from '../communications/EmailDialog';
 import { EnhancedMeetingForm } from './EnhancedMeetingForm';
 import supabase from '@/lib/supabase/client';
+import { useSession } from 'next-auth/react';
+import { VersionHistory } from '@/components/meetings/VersionHistory';
+import { useToast } from '@/components/ui/use-toast';
 
 // Extend the Meeting type to include agenda_items
 interface EnhancedMeeting extends Meeting {
@@ -48,6 +56,9 @@ export function EnhancedMeetingDetails({
   onClose 
 }: EnhancedMeetingDetailsProps) {
   console.log('EnhancedMeetingDetails received meeting:', meeting);
+  
+  // Get the authenticated user's session
+  const { data: session } = useSession();
   
   // Early return if meeting is null or undefined
   if (!meeting) {
@@ -69,16 +80,18 @@ export function EnhancedMeetingDetails({
   const [showPhoneDialog, setShowPhoneDialog] = useState(false);
   const [showEmailDialog, setShowEmailDialog] = useState(false);
   const [showRescheduleDialog, setShowRescheduleDialog] = useState(false);
+  const [isRescheduling, setIsRescheduling] = useState(false);
+  
+  // Add state for showing version history
+  const [showVersionHistory, setShowVersionHistory] = useState(false);
   
   // Handle opening the phone dialog
   const handleOpenPhoneDialog = () => {
     if (meeting?.lead?.phone) {
       setShowPhoneDialog(true);
     } else {
-      toast({
-        title: "No phone number",
+      toast.error("No phone number", {
         description: "This lead doesn't have a phone number.",
-        variant: "destructive",
       });
     }
   };
@@ -88,10 +101,8 @@ export function EnhancedMeetingDetails({
     if (meeting?.lead?.email) {
       setShowEmailDialog(true);
     } else {
-      toast({
-        title: "No email address",
+      toast.error("No email address", {
         description: "This lead doesn't have an email address.",
-        variant: "destructive",
       });
     }
   };
@@ -104,36 +115,180 @@ export function EnhancedMeetingDetails({
   // Log activity function
   const logActivity = async (activityType: string, metadata: any) => {
     try {
-      if (meeting.lead?.id) {
-        const activityData = {
-          lead_id: meeting.lead.id,
-          activity_type: "meeting_update",
-          metadata: {
-            meeting_id: meeting.id,
-            action: activityType,
-            previous_status: meeting.status,
-            ...metadata,
-            timestamp: new Date().toISOString()
-          },
-          created_at: new Date().toISOString()
-        };
-        
-        // Insert the activity into the activities table
-        const { error } = await supabase.from('activities').insert(activityData);
-        
-        if (error) {
-          console.error(`Error logging ${activityType} activity:`, error);
-        } else {
-          console.log(`${activityType} activity logged for meeting ${meeting.id}`);
-        }
+      if (!meeting.lead?.id) {
+        console.log(`Skipping activity log for ${activityType}: No lead ID available`);
+        return;
       }
+
+      // Validate that meeting ID exists
+      if (!meeting.id) {
+        console.warn(`Cannot log ${activityType} activity: Meeting ID is missing`);
+        return;
+      }
+      
+      const activityData = {
+        lead_id: meeting.lead.id,
+        activity_type: "meeting_update",
+        metadata: {
+          meeting_id: meeting.id,
+          action: activityType,
+          previous_status: meeting.status,
+          ...metadata,
+          timestamp: new Date().toISOString()
+        },
+        created_at: new Date().toISOString(),
+        // Include session user ID if available
+        user_id: session?.user?.id
+      };
+      
+      console.log(`Logging ${activityType} activity for meeting ${meeting.id}:`, activityData);
+      
+      // Instead of directly inserting to Supabase, use our server-side API
+      const response = await fetch('/api/v1/activities', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify(activityData),
+        credentials: 'include', // Include cookies for auth
+      });
+      
+      if (!response.ok) {
+        const errorData = await response.json().catch(() => ({ detail: `HTTP error ${response.status}` }));
+        throw new Error(`API error: ${response.status} ${response.statusText} - ${
+          typeof errorData.error === 'string' ? errorData.error : 
+          errorData.detail || 'Unknown error'
+        }`);
+      }
+      
+      const result = await response.json();
+      console.log(`${activityType} activity logged successfully via API:`, result);
     } catch (error) {
-      console.error(`Error logging ${activityType} activity:`, error);
+      // Better error logging with error type checking
+      console.error(`Error in logActivity(${activityType}):`);
+      
+      if (error instanceof Error) {
+        console.error(`Error message: ${error.message}`);
+        console.error(`Error stack: ${error.stack}`);
+      } else {
+        console.error(`Unknown error type:`, error);
+      }
+      
+      // Re-throw the error to be handled by the caller
+      throw error;
+    }
+  };
+  
+  // Send calendar invite after rescheduling
+  const sendCalendarInvite = async (rescheduledMeeting: Meeting) => {
+    if (!meeting.lead?.email) {
+      console.error('Cannot send calendar invite: Lead has no email address');
+      return {
+        success: false,
+        message: 'Lead has no email address'
+      };
+    }
+    
+    try {
+      // Format the meeting details for the email body
+      const meetingDate = format(parseISO(rescheduledMeeting.start_time), 'EEEE, MMMM d, yyyy');
+      const meetingTime = format(parseISO(rescheduledMeeting.start_time), 'h:mm a');
+      const endTime = format(parseISO(rescheduledMeeting.end_time), 'h:mm a');
+      const location = rescheduledMeeting.location || 'Virtual meeting';
+      
+      // Create calendar invite in iCalendar format
+      const startDate = new Date(rescheduledMeeting.start_time);
+      const endDate = new Date(rescheduledMeeting.end_time);
+      
+      // Format dates for iCalendar (YYYYMMDDTHHMMSSZ format)
+      const formatDateForICal = (date: Date) => {
+        return date.toISOString().replace(/[-:]/g, '').replace(/\.\d{3}/g, '');
+      };
+      
+      const icalStartDate = formatDateForICal(startDate);
+      const icalEndDate = formatDateForICal(endDate);
+      
+      // Generate a unique ID for the event
+      const eventUid = `meeting-${rescheduledMeeting.id}-${Date.now()}@yourdomain.com`;
+      
+      // Create the iCalendar content
+      const icalContent = `BEGIN:VCALENDAR
+VERSION:2.0
+PRODID:-//Your Company//Your App//EN
+CALSCALE:GREGORIAN
+METHOD:REQUEST
+BEGIN:VEVENT
+DTSTART:${icalStartDate}
+DTEND:${icalEndDate}
+DTSTAMP:${formatDateForICal(new Date())}
+ORGANIZER;CN=Your Name:mailto:your-email@example.com
+UID:${eventUid}
+ATTENDEE;PARTSTAT=NEEDS-ACTION;RSVP=TRUE;CN=${meeting.lead.first_name} ${meeting.lead.last_name}:mailto:${meeting.lead.email}
+DESCRIPTION:${rescheduledMeeting.description || 'No description available'}
+LOCATION:${location}
+SEQUENCE:1
+STATUS:CONFIRMED
+SUMMARY:${rescheduledMeeting.title}
+TRANSP:OPAQUE
+END:VEVENT
+END:VCALENDAR`;
+      
+      // Create a Blob and convert to base64
+      const blob = new Blob([icalContent], { type: 'text/calendar' });
+      const reader = new FileReader();
+      
+      const base64Content = await new Promise<string>((resolve, reject) => {
+        reader.onload = () => {
+          const base64content = reader.result as string;
+          // Remove the data URL prefix
+          const base64Data = base64content.split(',')[1];
+          resolve(base64Data);
+        };
+        reader.onerror = reject;
+        reader.readAsDataURL(blob);
+      });
+      
+      // Prepare email body
+      const emailBody = `
+        <div>
+          <p>Hello ${meeting.lead.first_name},</p>
+          <p>Your meeting has been rescheduled.</p>
+          <p><strong>Meeting:</strong> ${rescheduledMeeting.title}</p>
+          <p><strong>Date:</strong> ${meetingDate}</p>
+          <p><strong>Time:</strong> ${meetingTime} - ${endTime}</p>
+          <p><strong>Location:</strong> ${location}</p>
+          ${rescheduledMeeting.description ? `<p><strong>Description:</strong> ${rescheduledMeeting.description}</p>` : ''}
+          <p>This invitation contains an updated calendar event. Please add it to your calendar.</p>
+          <p>Thank you,</p>
+          <p>Your Name</p>
+        </div>
+      `;
+      
+      // Send the email with the calendar attachment
+      const response = await sendEmail({
+        to: meeting.lead.email,
+        subject: `Updated: ${rescheduledMeeting.title} - ${meetingDate}`,
+        content: emailBody,
+        attachments: [{
+          filename: 'meeting.ics',
+          content: base64Content,
+          content_type: 'text/calendar',
+          size: blob.size
+        }]
+      });
+      
+      return response;
+    } catch (error) {
+      console.error('Error sending calendar invite:', error);
+      return {
+        success: false,
+        message: error instanceof Error ? error.message : 'Failed to send calendar invite'
+      };
     }
   };
   
   // Handle reschedule success
-  const handleRescheduleSuccess = (rescheduledMeeting: Meeting) => {
+  const handleRescheduleSuccess = async (rescheduledMeeting: Meeting) => {
     console.log('Meeting rescheduled:', rescheduledMeeting);
     
     // Update the meeting status to rescheduled
@@ -152,18 +307,53 @@ export function EnhancedMeetingDetails({
       onUpdate(updatedMeeting as EnhancedMeeting);
     }
     
-    // Log the activity
-    logActivity('rescheduled', {
-      new_start_time: rescheduledMeeting.start_time,
-      new_end_time: rescheduledMeeting.end_time,
-      new_location: rescheduledMeeting.location,
-      new_meeting_type: rescheduledMeeting.meeting_type
-    });
+    // Try to log the activity but don't let it block the process
+    try {
+      await logActivity('meeting_rescheduled', {
+        meeting_id: meeting.id,
+        new_start_time: rescheduledMeeting.start_time,
+        new_end_time: rescheduledMeeting.end_time,
+        description: rescheduledMeeting.start_time ? 
+          `Meeting has been rescheduled to ${format(parseISO(rescheduledMeeting.start_time), 'EEEE, MMMM d, yyyy h:mm a')}` :
+          'Meeting has been rescheduled',
+      });
+    } catch (error) {
+      // Log but continue with the process
+      console.error('Failed to log meeting reschedule activity:', error);
+    }
     
-    toast({
-      title: "Meeting Rescheduled",
-      description: `Meeting has been rescheduled to ${format(parseISO(rescheduledMeeting.start_time), 'EEEE, MMMM d, yyyy h:mm a')}`,
-    });
+    // Send calendar invite
+    if (meeting.lead?.email) {
+      try {
+        const inviteResponse = await sendCalendarInvite(rescheduledMeeting);
+        
+        if (inviteResponse.success) {
+          toast.success("Meeting Rescheduled", {
+            description: `Meeting has been rescheduled to ${format(parseISO(rescheduledMeeting.start_time), 'EEEE, MMMM d, yyyy h:mm a')}. Calendar invite sent to ${meeting.lead.first_name} ${meeting.lead.last_name} (${meeting.lead.email}).`,
+          });
+        } else {
+          toast.success("Meeting Rescheduled", {
+            description: `Meeting has been rescheduled to ${format(parseISO(rescheduledMeeting.start_time), 'EEEE, MMMM d, yyyy h:mm a')}, but failed to send calendar invite.`,
+          });
+          
+          toast.error("Failed to send calendar invite", {
+            description: `Could not send calendar invite to ${meeting.lead.email}: ${inviteResponse.message}`,
+          });
+        }
+      } catch (emailError) {
+        console.error('Error sending calendar invite:', emailError);
+        toast.success("Meeting Rescheduled", {
+          description: `Meeting has been rescheduled to ${format(parseISO(rescheduledMeeting.start_time), 'EEEE, MMMM d, yyyy h:mm a')}`,
+        });
+        toast.error("Failed to send calendar invite", {
+          description: `An unexpected error occurred while sending the calendar invite.`,
+        });
+      }
+    } else {
+      toast.success("Meeting Rescheduled", {
+        description: `Meeting has been rescheduled to ${format(parseISO(rescheduledMeeting.start_time), 'EEEE, MMMM d, yyyy h:mm a')}`,
+      });
+    }
     
     setShowRescheduleDialog(false);
     
@@ -176,8 +366,7 @@ export function EnhancedMeetingDetails({
   // Handle phone call success
   const handlePhoneCallSuccess = (callData: { phoneNumber: string; duration: number; notes: string }) => {
     console.log('Phone call completed:', callData);
-    toast({
-      title: "Call completed",
+    toast.success("Call completed", {
       description: `Call to ${callData.phoneNumber} completed (${callData.duration} seconds)`,
     });
     setShowPhoneDialog(false);
@@ -186,8 +375,7 @@ export function EnhancedMeetingDetails({
   // Handle email success
   const handleEmailSuccess = (emailData: { to: string; subject: string; body: string }) => {
     console.log('Email sent:', emailData);
-    toast({
-      title: "Email sent",
+    toast.success("Email sent", {
       description: `Email to ${emailData.to} sent successfully`,
     });
     setShowEmailDialog(false);
@@ -209,8 +397,7 @@ export function EnhancedMeetingDetails({
         new_status: MeetingStatus.CANCELLED
       });
       
-      toast({
-        title: 'Meeting Canceled',
+      toast.success('Meeting Canceled', {
         description: 'The meeting has been canceled successfully.',
       });
       
@@ -223,10 +410,8 @@ export function EnhancedMeetingDetails({
       }
     } catch (error) {
       console.error('Error canceling meeting:', error);
-      toast({
-        title: 'Error',
+      toast.error('Error', {
         description: 'Failed to cancel the meeting',
-        variant: 'destructive',
       });
     }
   };
@@ -247,8 +432,7 @@ export function EnhancedMeetingDetails({
         new_status: MeetingStatus.NO_SHOW
       });
       
-      toast({
-        title: 'Marked as No-Show',
+      toast.success('Marked as No-Show', {
         description: 'The meeting has been marked as a no-show.',
       });
       
@@ -261,10 +445,8 @@ export function EnhancedMeetingDetails({
       }
     } catch (error) {
       console.error('Error marking meeting as no-show:', error);
-      toast({
-        title: 'Error',
+      toast.error('Error', {
         description: 'Failed to mark the meeting as a no-show',
-        variant: 'destructive',
       });
     }
   };
@@ -278,10 +460,13 @@ export function EnhancedMeetingDetails({
     null
   );
   const [isLoadingSummary, setIsLoadingSummary] = useState(false);
-  const [followUpMessage, setFollowUpMessage] = useState<{ subject: string; message: string } | null>(null);
+  const [followUpMessage, setFollowUpMessage] = useState<string | null>(null);
+  const [editableSubject, setEditableSubject] = useState('');
+  const [editableMessage, setEditableMessage] = useState('');
   const [isLoadingFollowUp, setIsLoadingFollowUp] = useState(false);
   const [showFollowUpDialog, setShowFollowUpDialog] = useState(false);
   const [isSchedulingFollowUp, setIsSchedulingFollowUp] = useState(false);
+  const [isSendingEmail, setIsSendingEmail] = useState(false);
   const [isLoadingAgendaSuggestions, setIsLoadingAgendaSuggestions] = useState(false);
   const [isLoadingComprehensiveSummary, setIsLoadingComprehensiveSummary] = useState(false);
   const [comprehensiveSummary, setComprehensiveSummary] = useState<{
@@ -298,6 +483,22 @@ export function EnhancedMeetingDetails({
     };
   } | null>(meeting.comprehensive_summary || null);
   const [comprehensiveSummaryError, setComprehensiveSummaryError] = useState<string | null>(null);
+  const [scheduledTaskDetails, setScheduledTaskDetails] = useState<{
+    task_id: string;
+    scheduled_date: string;
+    title: string;
+    description: string;
+  } | null>(null);
+  const [showTaskConfirmation, setShowTaskConfirmation] = useState(false);
+  const [attachments, setAttachments] = useState<File[]>([]);
+  const [existingAttachments, setExistingAttachments] = useState<Array<{
+    id: string;
+    filename: string;
+    path: string;
+    content_type: string;
+    size: number;
+    url?: string;
+  }>>([]);
 
   // Initialize state from meeting data when it changes
   useEffect(() => {
@@ -319,6 +520,24 @@ export function EnhancedMeetingDetails({
       });
     }
     
+    // Initialize existing attachments from meeting
+    if (meeting.displayAttachments && meeting.displayAttachments.length > 0) {
+      setExistingAttachments(meeting.displayAttachments);
+    } else if (meeting.attachments && meeting.attachments.length > 0) {
+      // Convert attachments to displayAttachments format
+      const displayAttachments = meeting.attachments.map((attachment, index) => ({
+        id: `existing-${index}`,
+        filename: attachment.filename,
+        path: attachment.path,
+        content_type: attachment.content_type,
+        size: attachment.size,
+        url: attachment.path // Assuming path contains the URL to access the file
+      }));
+      setExistingAttachments(displayAttachments);
+    } else {
+      setExistingAttachments([]);
+    }
+    
     // Initialize comprehensive summary from meeting
     if (meeting.comprehensive_summary) {
       console.log('Setting comprehensive summary from meeting:', meeting.comprehensive_summary);
@@ -337,28 +556,78 @@ export function EnhancedMeetingDetails({
   const saveNotes = async () => {
     setIsLoading(true);
     try {
+      // Process new file attachments if any
+      let processedAttachments: Array<{
+        filename: string;
+        path?: string;
+        content?: string;
+        content_type: string;
+        size: number;
+      }> = [];
+      
+      // Add existing attachments that haven't been removed
+      if (existingAttachments.length > 0) {
+        processedAttachments = existingAttachments.map(attachment => ({
+          filename: attachment.filename,
+          path: attachment.path,
+          content_type: attachment.content_type,
+          size: attachment.size
+        }));
+      }
+      
+      // Process new file uploads
+      if (attachments.length > 0) {
+        const newAttachments = await Promise.all(
+          attachments.map(async (file) => {
+            return new Promise<{
+              filename: string;
+              content: string;
+              content_type: string;
+              size: number;
+            }>((resolve, reject) => {
+              const reader = new FileReader();
+              reader.onload = () => {
+                const base64content = reader.result as string;
+                // Remove the data URL prefix (e.g., "data:application/pdf;base64,")
+                const base64Data = base64content.split(',')[1];
+                resolve({
+                  filename: file.name,
+                  content: base64Data,
+                  content_type: file.type,
+                  size: file.size,
+                });
+              };
+              reader.onerror = reject;
+              reader.readAsDataURL(file);
+            });
+          })
+        );
+        
+        // Add new attachments to processed attachments
+        processedAttachments = [...processedAttachments, ...newAttachments];
+      }
+      
       const { data, error } = await updateMeeting(meeting.id.toString(), { 
-        notes
+        notes,
+        attachments: processedAttachments.length > 0 ? processedAttachments : undefined
       } as MeetingUpdate);
       
       if (error) {
         throw new Error(error.message);
       }
       
-      toast({
-        title: 'Success',
-        description: 'Meeting notes saved successfully',
-      });
+      toast.success('Meeting notes saved successfully');
+      
+      // Clear new file uploads after successful save
+      setAttachments([]);
       
       if (onUpdate && data) {
         onUpdate({...data, agenda_items: meeting.agenda_items} as EnhancedMeeting);
       }
     } catch (error) {
       console.error('Error saving notes:', error);
-      toast({
-        title: 'Error',
+      toast.error('Error', {
         description: 'Failed to save meeting notes',
-        variant: 'destructive',
       });
     } finally {
       setIsLoading(false);
@@ -382,20 +651,15 @@ export function EnhancedMeetingDetails({
         new_status: MeetingStatus.COMPLETED
       });
       
-      toast({
-        title: 'Success',
-        description: 'Meeting marked as completed',
-      });
+      toast.success('Meeting marked as completed');
       
       if (onUpdate && data) {
         onUpdate({...data, agenda_items: meeting.agenda_items} as EnhancedMeeting);
       }
     } catch (error) {
       console.error('Error updating meeting status:', error);
-      toast({
-        title: 'Error',
+      toast.error('Error', {
         description: 'Failed to update meeting status',
-        variant: 'destructive',
       });
     } finally {
       setIsLoading(false);
@@ -424,10 +688,8 @@ export function EnhancedMeetingDetails({
         
         if (updateError) {
           console.error('Error saving summary to meeting:', updateError);
-          toast({
-            title: "Warning",
+          toast.error("Warning", {
             description: "Summary generated but could not be saved to the meeting record.",
-            variant: "destructive"
           });
         } else if (onUpdate && updatedMeeting) {
           // Preserve existing comprehensive summary if present
@@ -438,26 +700,18 @@ export function EnhancedMeetingDetails({
           };
           onUpdate(updatedMeetingWithComprehensive as EnhancedMeeting);
           
-          toast({
-            title: "Success",
-            description: "Summary generated and saved.",
-            variant: "default"
-          });
+          toast.success("Summary generated and saved.");
         }
       } catch (innerError) {
         console.error('Error saving summary to meeting:', innerError);
-        toast({
-          title: "Warning",
+        toast.error("Warning", {
           description: "Summary generated but could not be saved to the meeting record.",
-          variant: "destructive"
         });
       }
     } catch (error) {
       console.error('Error generating meeting summary:', error);
-      toast({
-        title: 'Error',
+      toast.error('Error', {
         description: 'Failed to generate meeting summary',
-        variant: 'destructive',
       });
     } finally {
       setIsLoadingSummary(false);
@@ -467,21 +721,93 @@ export function EnhancedMeetingDetails({
   // Generate follow-up message
   const generateFollowUp = async () => {
     setIsLoadingFollowUp(true);
+    // Reset task confirmation state to ensure we show the message dialog first
+    setShowTaskConfirmation(false);
     try {
-      const { data, error } = await generateFollowUpMessage(meeting.id.toString());
+      console.log('Generating follow-up for meeting ID:', meeting.id.toString());
       
-      if (error) {
-        throw new Error(error.message);
+      // Check if meeting ID is valid
+      if (!meeting.id) {
+        throw new Error('Meeting ID is missing or invalid');
       }
       
-      setFollowUpMessage(data);
+      // Log the meeting object for debugging
+      console.log('Meeting object:', meeting);
+      
+      const { data, error } = await generateFollowUpMessage(meeting.id.toString());
+      
+      console.log('Follow-up API response:', { data, error });
+      
+      if (error) {
+        console.error('Error details:', error);
+        throw error;
+      }
+      
+      if (!data || !data.subject || !data.message) {
+        console.error('Invalid response data:', data);
+        throw new Error('Received invalid response data from the server');
+      }
+      
+      // Get user information from the authenticated session
+      // Use type assertion to handle the session user data safely
+      const userProfile = {
+        name: session?.user?.name || 'Your Name',
+        title: ((session?.user || {}) as any).title || 'Sales Representative',
+        email: session?.user?.email || 'your.email@company.com',
+        phone: ((session?.user || {}) as any).phone || '(555) 123-4567'
+      };
+      
+      console.log('User profile for email:', userProfile);
+      
+      // Replace placeholders with actual values
+      let personalizedMessage = data.message;
+      
+      // Replace client name if available
+      if (meeting.lead?.first_name) {
+        const clientName = `${meeting.lead.first_name} ${meeting.lead.last_name || ''}`.trim();
+        personalizedMessage = personalizedMessage.replace(/\[Client Name\]/g, clientName);
+      }
+      
+      // Replace user information
+      personalizedMessage = personalizedMessage
+        .replace(/\[Your Name\]/g, userProfile.name)
+        .replace(/\[Your Title\]/g, userProfile.title)
+        .replace(/\[Contact Information\]/g, `Email: ${userProfile.email}\nPhone: ${userProfile.phone}`);
+      
+      // Format the message for TipTap
+      // TipTap expects proper HTML with paragraph tags
+      let formattedMessage = '';
+      
+      // Split by double newlines to get paragraphs
+      const paragraphs = personalizedMessage.split(/\n\n+/);
+      
+      // Create HTML with proper paragraph tags
+      formattedMessage = paragraphs.map(paragraph => {
+        // Replace single newlines with <br> tags
+        const withLineBreaks = paragraph.replace(/\n/g, '<br>');
+        return `<p>${withLineBreaks}</p>`;
+      }).join('');
+      
+      console.log('Formatted message for rich text editor:', formattedMessage);
+      
+      setFollowUpMessage(formattedMessage);
+      // Initialize editable fields with the generated content
+      setEditableSubject(data.subject);
+      setEditableMessage(formattedMessage);
       setShowFollowUpDialog(true);
     } catch (error) {
       console.error('Error generating follow-up message:', error);
-      toast({
-        title: 'Error',
-        description: 'Failed to generate follow-up message',
-        variant: 'destructive',
+      
+      // Get more detailed error information
+      let errorMessage = 'Failed to generate follow-up message';
+      
+      if (error instanceof Error) {
+        errorMessage = `Error: ${error.message}`;
+        console.error('Error stack:', error.stack);
+      }
+      
+      toast.error('Error', {
+        description: errorMessage,
       });
     } finally {
       setIsLoadingFollowUp(false);
@@ -492,6 +818,8 @@ export function EnhancedMeetingDetails({
   const scheduleFollowUp = async (daysDelay: number = 3) => {
     setIsSchedulingFollowUp(true);
     try {
+      console.log(`Scheduling follow-up task for meeting ID: ${meeting.id} with ${daysDelay} days delay`);
+      
       const dueDate = new Date();
       dueDate.setDate(dueDate.getDate() + daysDelay);
       
@@ -501,24 +829,53 @@ export function EnhancedMeetingDetails({
         due_date: dueDate.toISOString()
       };
       
-      const { data, error } = await scheduleFollowUpTask(meeting.id.toString(), taskDetails);
-      
-      if (error) {
-        throw new Error(error.message);
+      // Check if meeting ID is valid
+      if (!meeting.id) {
+        throw new Error('Meeting ID is missing or invalid');
       }
       
-      toast({
-        title: 'Success',
-        description: 'Follow-up task scheduled successfully',
+      const { data, error } = await scheduleFollowUpTask(meeting.id.toString(), taskDetails);
+      
+      console.log('Schedule follow-up response:', { data, error });
+      
+      if (error) {
+        console.error('Error details:', error);
+        throw error;
+      }
+      
+      if (!data || !data.task_id) {
+        console.error('Invalid response data:', data);
+        throw new Error('Received invalid response data from the server');
+      }
+      
+      toast.success('Follow-up task scheduled successfully');
+      
+      // Store the scheduled task details - use our local data since API only returns task_id
+      setScheduledTaskDetails({
+        task_id: data.task_id,
+        scheduled_date: dueDate.toISOString(),
+        title: taskDetails.title,
+        description: taskDetails.description
       });
       
-      setShowFollowUpDialog(false);
+      // Show the task confirmation dialog
+      setShowTaskConfirmation(true);
+      
+      // Don't close the follow-up dialog yet
+      // setShowFollowUpDialog(false);
     } catch (error) {
       console.error('Error scheduling follow-up task:', error);
-      toast({
-        title: 'Error',
-        description: 'Failed to schedule follow-up task',
-        variant: 'destructive',
+      
+      // Get more detailed error information
+      let errorMessage = 'Failed to schedule follow-up task';
+      
+      if (error instanceof Error) {
+        errorMessage = `Error: ${error.message}`;
+        console.error('Error stack:', error.stack);
+      }
+      
+      toast.error('Error', {
+        description: errorMessage,
       });
     } finally {
       setIsSchedulingFollowUp(false);
@@ -542,6 +899,45 @@ export function EnhancedMeetingDetails({
       console.log('Agenda API response:', { data, error });
       
       if (error) {
+        // Check for authentication errors
+        if (error.message?.includes('Unauthorized') || error.message?.includes('Authentication required')) {
+          toast.error('Authentication Error', {
+            description: 'Please log in to generate agenda suggestions',
+          });
+          return;
+        }
+        
+        // Check for 404 errors
+        if (error.message?.includes('not found') || error.message?.includes('404')) {
+          toast.error('API Error', {
+            description: 'The agenda API endpoint is not available. Using fallback agenda items.',
+          });
+          
+          // Use fallback agenda items
+          const fallbackItems = getFallbackAgendaItems(meeting.meeting_type);
+          const updatedAgendaItems = [...(meeting.agenda_items || []), ...fallbackItems];
+          
+          try {
+            const { data: updatedMeeting, error: updateError } = await updateMeeting(meeting.id.toString(), { 
+              agenda_items: updatedAgendaItems
+            } as MeetingUpdate);
+            
+            if (updateError) {
+              throw new Error(updateError.message);
+            }
+            
+            toast.success('Fallback agenda suggestions added');
+            
+            if (onUpdate && updatedMeeting) {
+              onUpdate({...updatedMeeting, agenda_items: updatedAgendaItems} as EnhancedMeeting);
+            }
+            return;
+          } catch (updateError) {
+            console.error('Error updating meeting with fallback agenda items:', updateError);
+            throw new Error('Failed to update meeting with fallback agenda items');
+          }
+        }
+        
         throw new Error(error.message);
       }
       
@@ -562,20 +958,15 @@ export function EnhancedMeetingDetails({
         throw new Error(updateError.message);
       }
       
-      toast({
-        title: 'Success',
-        description: 'AI agenda suggestions added',
-      });
+      toast.success('AI agenda suggestions added');
       
       if (onUpdate && updatedMeeting) {
         onUpdate({...updatedMeeting, agenda_items: updatedAgendaItems} as EnhancedMeeting);
       }
     } catch (error) {
       console.error('Error generating agenda suggestions:', error);
-      toast({
-        title: 'Error',
-        description: 'Failed to generate agenda suggestions',
-        variant: 'destructive',
+      toast.error('Error', {
+        description: error instanceof Error ? error.message : 'Failed to generate agenda suggestions',
       });
     } finally {
       setIsLoadingAgendaSuggestions(false);
@@ -585,10 +976,8 @@ export function EnhancedMeetingDetails({
   // Generate comprehensive meeting summary
   const handleGenerateComprehensiveSummary = async () => {
     if (!meeting?.id) {
-      toast({
-        title: "Error",
+      toast.error("Error", {
         description: 'Meeting ID is required to generate a summary',
-        variant: "destructive",
       });
       return;
     }
@@ -597,8 +986,7 @@ export function EnhancedMeetingDetails({
     setComprehensiveSummaryError(null);
 
     try {
-      toast({
-        title: "Generating Summary",
+      toast.success("Generating Summary", {
         description: 'Generating comprehensive summary. This may take up to 30 seconds...',
       });
 
@@ -639,10 +1027,7 @@ export function EnhancedMeetingDetails({
       // Update the state with the comprehensive summary
       setComprehensiveSummary(result.data);
       
-      toast({
-        title: "Success",
-        description: 'Comprehensive summary generated successfully!',
-      });
+      toast.success('Comprehensive summary generated successfully!');
       
       // Set the active tab to summary
       setActiveTab('summary');
@@ -685,10 +1070,8 @@ export function EnhancedMeetingDetails({
       }
       
       setComprehensiveSummaryError(errorMessage);
-      toast({
-        title: "Error",
+      toast.error('Error', {
         description: errorMessage,
-        variant: "destructive",
       });
       
       // Still set the active tab to summary to show the fallback content
@@ -696,6 +1079,176 @@ export function EnhancedMeetingDetails({
     } finally {
       setIsLoadingComprehensiveSummary(false);
     }
+  };
+  
+  // Handle sending email directly
+  const handleSendEmail = async () => {
+    if (!meeting.lead?.email) {
+      toast.error("No email address", {
+        description: "This lead doesn't have an email address.",
+      });
+      return;
+    }
+
+    setIsSendingEmail(true);
+    try {
+      // Process attachments if any
+      const processedAttachments = await Promise.all(
+        attachments.map(async (file) => {
+          return new Promise<{
+            filename: string;
+            content: string;
+            content_type: string;
+            size: number;
+          }>((resolve, reject) => {
+            const reader = new FileReader();
+            reader.onload = () => {
+              const base64content = reader.result as string;
+              // Remove the data URL prefix (e.g., "data:application/pdf;base64,")
+              const base64Data = base64content.split(',')[1];
+              resolve({
+                filename: file.name,
+                content: base64Data,
+                content_type: file.type,
+                size: file.size,
+              });
+            };
+            reader.onerror = reject;
+            reader.readAsDataURL(file);
+          });
+        })
+      );
+      
+      // Call the email service to send the email
+      const response = await sendEmail({
+        to: meeting.lead.email,
+        subject: editableSubject,
+        content: editableMessage,
+        lead_id: meeting.lead.id ? Number(meeting.lead.id) : undefined,
+        attachments: processedAttachments,
+      });
+      
+      toast.success('Email sent successfully', {
+        description: `Your email to ${meeting.lead.email} has been sent.`,
+      });
+      
+      // Close the dialog
+      setShowFollowUpDialog(false);
+      
+      // Reset attachments
+      setAttachments([]);
+      
+      // Log the activity
+      console.log('Email sent:', {
+        to: meeting.lead.email,
+        subject: editableSubject,
+        attachments: attachments.map(file => file.name),
+      });
+      
+    } catch (error) {
+      console.error('Error sending email:', error);
+      toast.error('Failed to send email', {
+        description: 'There was an error sending your email. Please try again.',
+      });
+    } finally {
+      setIsSendingEmail(false);
+    }
+  };
+  
+  // Handle file selection
+  const handleFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
+    if (e.target.files && e.target.files.length > 0) {
+      // Convert FileList to array and add to attachments
+      const newFiles = Array.from(e.target.files);
+      
+      // Check file sizes (SendGrid limit is 30MB total, but we'll limit individual files to 10MB)
+      const oversizedFiles = newFiles.filter(file => file.size > 10 * 1024 * 1024);
+      if (oversizedFiles.length > 0) {
+        toast.error('File size exceeded', {
+          description: `${oversizedFiles.length > 1 ? 'Some files are' : 'One file is'} larger than 10MB and cannot be attached.`,
+        });
+        
+        // Filter out oversized files
+        const validFiles = newFiles.filter(file => file.size <= 10 * 1024 * 1024);
+        if (validFiles.length > 0) {
+          setAttachments([...attachments, ...validFiles]);
+          
+          // Show success toast for valid files
+          toast.success('Files attached', {
+            description: `${validFiles.length} ${validFiles.length === 1 ? 'file' : 'files'} attached successfully.`,
+          });
+        }
+      } else {
+        // All files are valid
+        setAttachments([...attachments, ...newFiles]);
+        
+        // Show success toast
+        toast.success('Files attached', {
+          description: `${newFiles.length} ${newFiles.length === 1 ? 'file' : 'files'} attached successfully: ${newFiles.map(f => f.name).join(', ')}`,
+        });
+      }
+      
+      // Clear the input value so the same file can be selected again
+      e.target.value = '';
+    }
+  };
+  
+  // Handle file removal
+  const handleRemoveFile = (index: number) => {
+    const newAttachments = [...attachments];
+    const removedFile = newAttachments[index];
+    newAttachments.splice(index, 1);
+    setAttachments(newAttachments);
+    
+    // Show toast for removed file
+    toast.info('File removed', {
+      description: `Removed ${removedFile.name}`,
+    });
+  };
+  
+  // Format file size
+  const formatFileSize = (bytes: number): string => {
+    if (bytes < 1024) return bytes + ' bytes';
+    else if (bytes < 1048576) return (bytes / 1024).toFixed(1) + ' KB';
+    else return (bytes / 1048576).toFixed(1) + ' MB';
+  };
+  
+  // Handle version selection
+  const handleVersionSelected = (version: any) => {
+    // Update the notes with the selected version content
+    setNotes(version.content);
+    
+    // Update existing attachments if the version has attachments
+    if (version.attachments && version.attachments.length > 0) {
+      setExistingAttachments(version.attachments);
+    }
+    
+    toast.success('Version loaded', {
+      description: `Loaded version ${version.version_number}`,
+    });
+  };
+  
+  // Handle downloading a file
+  const handleDownloadFile = (attachment: any) => {
+    if (attachment.url) {
+      window.open(attachment.url, '_blank');
+    } else {
+      toast.error('Error', {
+        description: 'File URL not available',
+      });
+    }
+  };
+  
+  // Handle removing an existing file
+  const handleRemoveExistingFile = (index: number) => {
+    const attachment = existingAttachments[index];
+    const newExistingAttachments = [...existingAttachments];
+    newExistingAttachments.splice(index, 1);
+    setExistingAttachments(newExistingAttachments);
+    
+    toast.info('File removed', {
+      description: `Removed ${attachment.filename}`,
+    });
   };
   
   return (
@@ -807,14 +1360,16 @@ export function EnhancedMeetingDetails({
                 <div className="flex items-center text-sm">
                   <Calendar className="mr-2 h-4 w-4 opacity-70" />
                   <span>
-                    {format(parseISO(meeting.start_time), 'EEEE, MMMM d, yyyy')}
+                    {meeting.start_time ? format(parseISO(meeting.start_time), 'EEEE, MMMM d, yyyy') : 'Date not specified'}
                   </span>
                 </div>
                 
                 <div className="flex items-center text-sm">
                   <Clock className="mr-2 h-4 w-4 opacity-70" />
                   <span>
-                    {format(parseISO(meeting.start_time), 'h:mm a')} - {format(parseISO(meeting.end_time), 'h:mm a')}
+                    {meeting.start_time && meeting.end_time ? 
+                      `${format(parseISO(meeting.start_time), 'h:mm a')} - ${format(parseISO(meeting.end_time), 'h:mm a')}` : 
+                      'Time not specified'}
                   </span>
                 </div>
                 
@@ -930,6 +1485,27 @@ export function EnhancedMeetingDetails({
           
           <TabsContent value="notes" className="space-y-4 overflow-x-auto styled-scrollbar min-w-full">
             <div className="space-y-4">
+              <div className="flex justify-between items-center">
+                <h3 className="text-sm font-medium">Meeting Notes</h3>
+                <Button 
+                  variant="outline" 
+                  size="sm" 
+                  onClick={() => setShowVersionHistory(!showVersionHistory)}
+                >
+                  {showVersionHistory ? 'Hide Version History' : 'Show Version History'}
+                </Button>
+              </div>
+              
+              {showVersionHistory && (
+                <div className="mb-4 border rounded-md p-4 bg-muted/30">
+                  <VersionHistory 
+                    meetingId={meeting.id.toString()} 
+                    currentVersionId={meeting.current_note_version_id}
+                    onSelectVersion={handleVersionSelected}
+                  />
+                </div>
+              )}
+              
               <Textarea
                 value={notes}
                 onChange={(e) => setNotes(e.target.value)}
@@ -937,10 +1513,115 @@ export function EnhancedMeetingDetails({
                 className="min-h-[200px]"
               />
               
+              <div className="mt-4 space-y-2">
+                <div className="flex items-center justify-between">
+                  <h3 className="text-sm font-medium">Attachments</h3>
+                  <div className="text-sm text-muted-foreground">
+                    {(attachments.length > 0 || existingAttachments.length > 0) 
+                      ? `${attachments.length + existingAttachments.length} file(s) attached`
+                      : 'No files attached'
+                    }
+                  </div>
+                </div>
+                
+                <div className="flex items-center space-x-2">
+                  <Input
+                    type="file"
+                    id="notes-file-upload"
+                    className="hidden"
+                    onChange={handleFileSelect}
+                    multiple
+                  />
+                  <label
+                    htmlFor="notes-file-upload"
+                    className="cursor-pointer inline-flex items-center justify-center rounded-md text-sm font-medium ring-offset-background transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:pointer-events-none disabled:opacity-50 border border-input bg-background hover:bg-accent hover:text-accent-foreground h-10 px-4 py-2"
+                  >
+                    <Paperclip className="mr-2 h-4 w-4" />
+                    Attach Files
+                  </label>
+                </div>
+                
+                <div className="text-xs text-muted-foreground mt-1">
+                  <p>Supports most common file types (PDF, DOC, DOCX, XLS, XLSX, PPT, PPTX, JPG, PNG, GIF, etc.)</p>
+                  <p>Maximum file size: 10MB per file, 30MB total. Executable files (.exe, .bat, etc.) are not allowed.</p>
+                </div>
+                
+                {/* Existing attachments */}
+                {existingAttachments.length > 0 && (
+                  <div className="space-y-2">
+                    <h4 className="text-xs font-medium text-muted-foreground">Existing Attachments</h4>
+                    <div className="space-y-2">
+                      {existingAttachments.map((attachment, index) => (
+                        <div key={attachment.id} className="flex items-center justify-between bg-background rounded-md p-2 border">
+                          <div className="flex items-center space-x-2 overflow-hidden">
+                            <Paperclip className="h-4 w-4 flex-shrink-0" />
+                            <span className="text-sm truncate">{attachment.filename}</span>
+                            <span className="text-xs text-muted-foreground">{formatFileSize(attachment.size)}</span>
+                          </div>
+                          <div className="flex items-center space-x-1">
+                            <Button
+                              type="button"
+                              variant="ghost"
+                              size="sm"
+                              onClick={() => handleDownloadFile(attachment)}
+                              className="h-6 w-6 p-0"
+                              title="Download"
+                            >
+                              <Download className="h-4 w-4" />
+                              <span className="sr-only">Download</span>
+                            </Button>
+                            <Button
+                              type="button"
+                              variant="ghost"
+                              size="sm"
+                              onClick={() => handleRemoveExistingFile(index)}
+                              className="h-6 w-6 p-0"
+                              title="Remove"
+                            >
+                              <X className="h-4 w-4" />
+                              <span className="sr-only">Remove</span>
+                            </Button>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
+                
+                {/* New attachments */}
+                {attachments.length > 0 && (
+                  <div className="space-y-2">
+                    <h4 className="text-xs font-medium text-muted-foreground">New Attachments</h4>
+                    <div className="space-y-2">
+                      {attachments.map((file, index) => (
+                        <div key={`new-${index}`} className="flex items-center justify-between bg-accent/50 rounded-md p-2">
+                          <div className="flex items-center space-x-2 overflow-hidden">
+                            <Paperclip className="h-4 w-4 flex-shrink-0" />
+                            <span className="text-sm truncate">{file.name}</span>
+                            <span className="text-xs text-muted-foreground">{formatFileSize(file.size)}</span>
+                          </div>
+                          <Button
+                            type="button"
+                            variant="ghost"
+                            size="sm"
+                            onClick={() => handleRemoveFile(index)}
+                            className="h-6 w-6 p-0"
+                            title="Remove"
+                          >
+                            <X className="h-4 w-4" />
+                            <span className="sr-only">Remove</span>
+                          </Button>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
+              </div>
+              
               <div className="flex justify-end">
                 <Button 
                   onClick={saveNotes} 
-                  disabled={isLoading || notes === meeting.notes}
+                  disabled={isLoading || (notes === meeting.notes && attachments.length === 0 && existingAttachments.length === (meeting.displayAttachments?.length || meeting.attachments?.length || 0))}
                 >
                   {isLoading ? 'Saving...' : 'Save Notes'}
                 </Button>
@@ -961,7 +1642,7 @@ export function EnhancedMeetingDetails({
                 <div className="overflow-y-auto styled-scrollbar flex-grow" style={{ maxHeight: '50vh' }}>
                   <div>
                     <h3 className="text-sm font-medium mb-2">Comprehensive Meeting Summary</h3>
-                    <div className="p-3 bg-gray-50 rounded-md text-sm overflow-x-auto whitespace-normal break-words" style={{ maxHeight: '50vh', overflowY: 'auto' }}>
+                    <div className="p-3 bg-background border rounded-md text-sm overflow-x-auto whitespace-normal break-words text-foreground" style={{ maxHeight: '50vh', overflowY: 'auto' }}>
                       {comprehensiveSummary.summary}
                     </div>
                   </div>
@@ -1068,7 +1749,7 @@ export function EnhancedMeetingDetails({
                 </div>
                 
                 {/* Sticky footer with follow-up button */}
-                <div className="sticky bottom-0 bg-white pt-2 pb-1 border-t mt-4 flex justify-end">
+                <div className="sticky bottom-0 bg-background pt-2 pb-1 border-t mt-4 flex justify-end">
                   <Button
                     variant="default"
                     size="sm"
@@ -1086,7 +1767,7 @@ export function EnhancedMeetingDetails({
                 <div className="overflow-y-auto styled-scrollbar flex-grow" style={{ maxHeight: '50vh' }}>
                   <div>
                     <h3 className="text-sm font-medium mb-2">Meeting Summary</h3>
-                    <div className="p-3 bg-gray-50 rounded-md text-sm overflow-x-auto whitespace-normal break-words">
+                    <div className="p-3 bg-background border rounded-md text-sm overflow-x-auto whitespace-normal break-words text-foreground" style={{ maxHeight: '50vh', overflowY: 'auto' }}>
                       {meetingSummary.summary}
                     </div>
                   </div>
@@ -1107,7 +1788,7 @@ export function EnhancedMeetingDetails({
                 </div>
                 
                 {/* Sticky footer with follow-up button */}
-                <div className="sticky bottom-0 bg-white pt-2 pb-1 border-t mt-4 flex justify-end">
+                <div className="sticky bottom-0 bg-background pt-2 pb-1 border-t mt-4 flex justify-end">
                   <Button
                     variant="default"
                     size="sm"
@@ -1157,21 +1838,116 @@ export function EnhancedMeetingDetails({
                 <Skeleton className="h-10 w-24" />
               </div>
             </div>
+          ) : showTaskConfirmation && scheduledTaskDetails ? (
+            <div className="space-y-4 overflow-x-auto">
+              <div className="overflow-y-auto styled-scrollbar" style={{ maxHeight: '60vh' }}>
+                <div className="bg-green-50 dark:bg-green-900/20 border border-green-200 dark:border-green-800 rounded-md p-4 mb-4">
+                  <h3 className="text-sm font-medium mb-2 text-green-800 dark:text-green-300 flex items-center">
+                    <CheckCircle className="h-4 w-4 mr-2" />
+                    Task Scheduled Successfully
+                  </h3>
+                  <div className="space-y-2 text-sm">
+                    <p><span className="font-medium">Task ID:</span> {scheduledTaskDetails.task_id}</p>
+                    <p><span className="font-medium">Title:</span> {scheduledTaskDetails.title}</p>
+                    <p><span className="font-medium">Description:</span> {scheduledTaskDetails.description}</p>
+                    <p><span className="font-medium">Due Date:</span> {format(new Date(scheduledTaskDetails.scheduled_date), 'EEEE, MMMM d, yyyy')}</p>
+                  </div>
+                </div>
+              </div>
+              
+              <div className="flex justify-end space-x-2 pt-4">
+                <Button
+                  variant="default"
+                  onClick={() => {
+                    setShowTaskConfirmation(false);
+                    setShowFollowUpDialog(false);
+                  }}
+                >
+                  Close
+                </Button>
+              </div>
+            </div>
           ) : followUpMessage ? (
             <div className="space-y-4 overflow-x-auto">
               <div className="overflow-y-auto styled-scrollbar" style={{ maxHeight: '60vh' }}>
                 <div>
                   <h3 className="text-sm font-medium mb-2">Subject</h3>
-                  <div className="p-3 bg-gray-50 rounded-md text-sm overflow-x-auto whitespace-normal break-words">
-                    {followUpMessage.subject}
-                  </div>
+                  <Input 
+                    value={editableSubject}
+                    onChange={(e) => setEditableSubject(e.target.value)}
+                    className="w-full"
+                  />
                 </div>
                 
-                <div>
+                <div className="mt-4">
                   <h3 className="text-sm font-medium mb-2">Message</h3>
-                  <div className="p-3 bg-gray-50 rounded-md text-sm whitespace-pre-line overflow-x-auto break-words">
-                    {followUpMessage.message}
+                  <RichTextEditor
+                    content={editableMessage}
+                    onChange={setEditableMessage}
+                    placeholder="Edit your follow-up message here..."
+                    className="min-h-[300px]"
+                  />
+                </div>
+                
+                {/* File Attachments */}
+                <div className="mt-4 space-y-2">
+                  <div className="flex items-center justify-between">
+                    <h3 className="text-sm font-medium">Attachments</h3>
+                    <div className="text-sm text-muted-foreground">
+                      {attachments.length > 0 
+                        ? attachments.length === 1 
+                          ? `1 file attached: ${attachments[0].name}` 
+                          : `${attachments.length} files attached: ${attachments.map(file => file.name).join(', ')}`
+                        : 'No files attached'
+                      }
+                    </div>
                   </div>
+                  
+                  <div className="flex items-center space-x-2">
+                    <Input
+                      type="file"
+                      id="follow-up-file-upload"
+                      className="hidden"
+                      onChange={handleFileSelect}
+                      multiple
+                    />
+                    <label
+                      htmlFor="follow-up-file-upload"
+                      className="cursor-pointer inline-flex items-center justify-center rounded-md text-sm font-medium ring-offset-background transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:pointer-events-none disabled:opacity-50 border border-input bg-background hover:bg-accent hover:text-accent-foreground h-10 px-4 py-2"
+                    >
+                      <Paperclip className="mr-2 h-4 w-4" />
+                      Attach Files
+                    </label>
+                  </div>
+                  
+                  <div className="text-xs text-muted-foreground mt-1">
+                    <p>SendGrid supports most common file types (PDF, DOC, DOCX, XLS, XLSX, PPT, PPTX, JPG, PNG, GIF, etc.)</p>
+                    <p>Maximum file size: 10MB per file, 30MB total. Executable files (.exe, .bat, etc.) are not allowed.</p>
+                  </div>
+                  
+                  {attachments.length > 0 && (
+                    <div className="border rounded-md p-2 space-y-2 max-h-[150px] overflow-y-auto">
+                      {attachments.map((file, index) => (
+                        <div key={index} className="flex items-center justify-between bg-accent/50 rounded-md p-2">
+                          <div className="flex items-center space-x-2 overflow-hidden">
+                            <Paperclip className="h-4 w-4 flex-shrink-0" />
+                            <span className="text-sm truncate">{file.name}</span>
+                            <span className="text-xs text-muted-foreground">{formatFileSize(file.size)}</span>
+                          </div>
+                          <Button
+                            type="button"
+                            variant="ghost"
+                            size="sm"
+                            onClick={() => handleRemoveFile(index)}
+                            className="h-6 w-6 p-0"
+                          >
+                            <X className="h-4 w-4" />
+                            <span className="sr-only">Remove</span>
+                          </Button>
+                        </div>
+                      ))}
+                    </div>
+                  )}
                 </div>
               </div>
               
@@ -1194,9 +1970,11 @@ export function EnhancedMeetingDetails({
                 
                 <Button
                   variant="default"
+                  onClick={handleSendEmail}
+                  disabled={isSendingEmail || !meeting.lead?.email}
                 >
                   <Send className="mr-1 h-4 w-4" />
-                  Send Email
+                  {isSendingEmail ? 'Sending...' : 'Send Email'}
                 </Button>
               </div>
             </div>
@@ -1240,6 +2018,9 @@ export function EnhancedMeetingDetails({
                 end_time: meeting.end_time
               }}
               onSuccess={(newMeeting) => {
+                // Set loading state
+                setIsRescheduling(true);
+                
                 // Create a rescheduled meeting based on the new meeting details
                 const rescheduledMeeting = {
                   ...meeting,
@@ -1262,20 +2043,30 @@ export function EnhancedMeetingDetails({
                 }).then(({ data, error }) => {
                   if (error) {
                     console.error('Error rescheduling meeting:', error);
-                    toast({
-                      title: 'Error',
+                    toast.error('Error', {
                       description: 'Failed to reschedule the meeting',
-                      variant: 'destructive',
                     });
+                    setIsRescheduling(false);
                     return;
                   }
                   
                   // Call the handleRescheduleSuccess function with the updated meeting
-                  handleRescheduleSuccess(rescheduledMeeting);
+                  handleRescheduleSuccess(rescheduledMeeting)
+                    .finally(() => {
+                      setIsRescheduling(false);
+                    });
                 });
               }}
               onCancel={() => setShowRescheduleDialog(false)}
             />
+          )}
+          {isRescheduling && (
+            <div className="mt-4 flex items-center justify-center p-4">
+              <div className="flex flex-col items-center space-y-2">
+                <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-gray-900 dark:border-white"></div>
+                <p className="text-sm text-muted-foreground">Rescheduling meeting and sending calendar invite...</p>
+              </div>
+            </div>
           )}
         </DialogContent>
       </Dialog>
