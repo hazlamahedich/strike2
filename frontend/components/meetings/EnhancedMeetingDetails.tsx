@@ -28,7 +28,8 @@ import {
   generateMeetingAgenda,
   getComprehensiveMeetingSummary,
   updateMeetingWithSummary,
-  getFallbackAgendaItems
+  getFallbackAgendaItems,
+  MeetingAgendaRequest
 } from '@/lib/services/aiMeetingService';
 import { sendEmail } from '@/lib/services/communicationService';
 import { PhoneDialog } from '../communications/PhoneDialog';
@@ -38,6 +39,8 @@ import supabase from '@/lib/supabase/client';
 import { useSession } from 'next-auth/react';
 import { VersionHistory } from '@/components/meetings/VersionHistory';
 import { useToast } from '@/components/ui/use-toast';
+import AgendaSummaryDialog from './AgendaSummaryDialog';
+import ComprehensiveSummaryDialog from './ComprehensiveSummaryDialog';
 
 // Extend the Meeting type to include agenda_items
 interface EnhancedMeeting extends Meeting {
@@ -499,6 +502,10 @@ END:VCALENDAR`;
     size: number;
     url?: string;
   }>>([]);
+  const [isAgendaDialogOpen, setIsAgendaDialogOpen] = useState(false);
+  const [agendaSuggestions, setAgendaSuggestions] = useState<string[]>([]);
+  
+  const [isComprehensiveSummaryDialogOpen, setIsComprehensiveSummaryDialogOpen] = useState(false);
 
   // Initialize state from meeting data when it changes
   useEffect(() => {
@@ -886,12 +893,15 @@ END:VCALENDAR`;
   const generateAgendaSuggestions = async () => {
     console.log('Generating agenda suggestions for meeting:', meeting);
     setIsLoadingAgendaSuggestions(true);
+    
     try {
-      const requestData = {
-        lead_id: meeting.lead?.id?.toString(),
+      // Prepare request data
+      const requestData: MeetingAgendaRequest = {
         meeting_type: meeting.meeting_type,
+        lead_id: meeting.lead_id,
         context: meeting.description
       };
+      
       console.log('Request data for agenda suggestions:', requestData);
       
       const { data, error } = await generateMeetingAgenda(requestData);
@@ -899,129 +909,119 @@ END:VCALENDAR`;
       console.log('Agenda API response:', { data, error });
       
       if (error) {
-        // Check for authentication errors
-        if (error.message?.includes('Unauthorized') || error.message?.includes('Authentication required')) {
-          toast.error('Authentication Error', {
-            description: 'Please log in to generate agenda suggestions',
+        throw error;
+      }
+      
+      if (!data) {
+        // Check if user is authenticated
+        if (!session) {
+          toast.error("Authentication Error", {
+            description: 'Please log in to generate agenda suggestions'
           });
           return;
         }
         
-        // Check for 404 errors
-        if (error.message?.includes('not found') || error.message?.includes('404')) {
-          toast.error('API Error', {
-            description: 'The agenda API endpoint is not available. Using fallback agenda items.',
-          });
-          
-          // Use fallback agenda items
-          const fallbackItems = getFallbackAgendaItems(meeting.meeting_type);
-          const updatedAgendaItems = [...(meeting.agenda_items || []), ...fallbackItems];
-          
-          try {
-            const { data: updatedMeeting, error: updateError } = await updateMeeting(meeting.id.toString(), { 
-              agenda_items: updatedAgendaItems
-            } as MeetingUpdate);
-            
-            if (updateError) {
-              throw new Error(updateError.message);
-            }
-            
-            toast.success('Fallback agenda suggestions added');
-            
-            if (onUpdate && updatedMeeting) {
-              onUpdate({...updatedMeeting, agenda_items: updatedAgendaItems} as EnhancedMeeting);
-            }
-            return;
-          } catch (updateError) {
-            console.error('Error updating meeting with fallback agenda items:', updateError);
-            throw new Error('Failed to update meeting with fallback agenda items');
-          }
-        }
+        // If data is null, the API endpoint might not be available
+        toast.error("API Error", {
+          description: 'The agenda API endpoint is not available. Using fallback agenda items.'
+        });
         
-        throw new Error(error.message);
+        // Use fallback agenda items
+        const fallbackItems = getFallbackAgendaItems(meeting.meeting_type);
+        setAgendaSuggestions(fallbackItems);
+        setIsAgendaDialogOpen(true);
+        return;
       }
       
-      // Ensure meeting.agenda_items is initialized
-      const currentAgendaItems = meeting.agenda_items || [];
+      // Store the suggested agenda items
+      setAgendaSuggestions(data.agenda_items);
       
-      // Update the meeting with the suggested agenda items
-      const updatedAgendaItems = [...currentAgendaItems, ...data.agenda_items];
-      console.log('Updated agenda items:', updatedAgendaItems);
+      // Open the agenda dialog
+      setIsAgendaDialogOpen(true);
       
-      const { data: updatedMeeting, error: updateError } = await updateMeeting(meeting.id.toString(), { 
-        agenda_items: updatedAgendaItems
-      } as MeetingUpdate);
-      
-      console.log('Meeting update response:', { updatedMeeting, updateError });
-      
-      if (updateError) {
-        throw new Error(updateError.message);
-      }
-      
-      toast.success('AI agenda suggestions added');
-      
-      if (onUpdate && updatedMeeting) {
-        onUpdate({...updatedMeeting, agenda_items: updatedAgendaItems} as EnhancedMeeting);
-      }
     } catch (error) {
       console.error('Error generating agenda suggestions:', error);
-      toast.error('Error', {
-        description: error instanceof Error ? error.message : 'Failed to generate agenda suggestions',
+      toast.error("Error", {
+        description: error instanceof Error ? error.message : 'Failed to generate agenda suggestions'
       });
     } finally {
       setIsLoadingAgendaSuggestions(false);
     }
   };
   
+  // Function to add the suggested agenda items to the meeting
+  const addAgendaItemsToMeeting = async () => {
+    try {
+      // Ensure meeting.agenda_items is initialized
+      const currentAgendaItems = meeting.agenda_items || [];
+      
+      // Update the meeting with the suggested agenda items
+      const updatedAgendaItems = [...currentAgendaItems, ...agendaSuggestions];
+      console.log('Updated agenda items:', updatedAgendaItems);
+      
+      // Update the meeting in the database
+      const updatedMeeting = {
+        ...meeting,
+        agenda_items: updatedAgendaItems
+      };
+      
+      // Call the API to update the meeting
+      const { data: updatedData, error: updateError } = await updateMeeting(meeting.id, updatedMeeting);
+      
+      if (updateError) {
+        throw updateError;
+      }
+      
+      toast.success('AI agenda suggestions added');
+      
+      // Update the local state
+      onUpdate?.({...updatedMeeting, agenda_items: updatedAgendaItems} as EnhancedMeeting);
+    } catch (error) {
+      console.error('Error adding agenda items to meeting:', error);
+      toast.error("Error", {
+        description: error instanceof Error ? error.message : 'Failed to add agenda items to meeting'
+      });
+    }
+  };
+  
   // Generate comprehensive meeting summary
   const handleGenerateComprehensiveSummary = async () => {
-    if (!meeting?.id) {
-      toast.error("Error", {
-        description: 'Meeting ID is required to generate a summary',
-      });
+    // If we already have a summary, just show the dialog
+    if (comprehensiveSummary) {
+      setIsComprehensiveSummaryDialogOpen(true);
       return;
     }
-
+    
+    // Otherwise, generate a new summary
     setIsLoadingComprehensiveSummary(true);
     setComprehensiveSummaryError(null);
-
+    
+    toast.success("Generating Summary", {
+      description: 'Generating comprehensive summary. This may take up to 30 seconds...',
+    });
+    
+    console.log('Generating comprehensive summary for meeting:', meeting.id);
+    
     try {
-      toast.success("Generating Summary", {
-        description: 'Generating comprehensive summary. This may take up to 30 seconds...',
-      });
-
-      console.log('Generating comprehensive summary for meeting:', meeting.id);
-      
-      // Create a timeout promise to prevent UI from hanging
-      const timeoutPromise = new Promise((_, reject) => {
-        setTimeout(() => reject(new Error('Request timed out after 30 seconds')), 30000);
-      });
-      
-      // Race between the API call and the timeout
+      // Call the API to generate the summary
       const result = await Promise.race([
         getComprehensiveMeetingSummary(meeting.id),
-        timeoutPromise
-      ]) as ApiResponse<any>;
+        new Promise((_, reject) => setTimeout(() => reject(new Error('Timeout')), 60000))
+      ]) as any;
       
       console.log('Comprehensive summary API response:', result);
       
-      // Check if the response contains an error
-      if (result.error) {
-        console.error('Error from API response:', result.error);
-        
-        // Check if the error is an empty object
-        if (typeof result.error === 'object' && Object.keys(result.error).length === 0) {
-          console.log('Empty error object received, using fallback summary');
-          throw new Error('Empty error response from API');
-        }
-        
-        throw new Error(`API error: ${JSON.stringify(result.error)}`);
+      if (!result.data) {
+        throw new Error('No data returned from API');
       }
       
-      // Check if we have data
-      if (!result.data) {
-        console.error('No data returned from API');
-        throw new Error('No data returned from API');
+      // Update the meeting in the database with the summary
+      const { data: updatedMeeting, error: updateError } = await updateMeeting(meeting.id, {
+        comprehensive_summary: result.data
+      });
+      
+      if (updateError) {
+        throw new Error(updateError.message);
       }
       
       // Update the state with the comprehensive summary
@@ -1029,53 +1029,41 @@ END:VCALENDAR`;
       
       toast.success('Comprehensive summary generated successfully!');
       
-      // Set the active tab to summary
-      setActiveTab('summary');
+      // Open the dialog to show the summary
+      setIsComprehensiveSummaryDialogOpen(true);
+      
+      // Update the parent component with the updated meeting
+      if (onUpdate && updatedMeeting) {
+        onUpdate(updatedMeeting);
+      }
     } catch (error) {
       console.error('Error generating comprehensive summary:', error);
       
-      // Create a fallback summary with generic content
+      // Create a fallback summary if the API fails
       const fallbackSummary = {
-        summary: "We couldn't generate a complete summary at this time. Here's a basic overview based on available information.",
-        insights: ["Try reviewing the meeting details manually", "Consider scheduling a follow-up meeting"],
-        action_items: ["Review meeting notes", "Follow up with the team"],
-        next_steps: ["Schedule a follow-up meeting", "Document key decisions"],
-        company_analysis: {
-          company_summary: "Company information not available",
-          industry: "Unknown",
-          company_size_estimate: "Unknown",
-          strengths: ["Not available"],
-          potential_pain_points: ["Not available"]
-        }
+        summary: "We couldn't generate a comprehensive summary at this time. Please try again later.",
+        insights: [],
+        action_items: [],
+        next_steps: []
       };
       
-      // Set the fallback summary
       setComprehensiveSummary(fallbackSummary);
       
-      // Set a detailed error message
       let errorMessage = 'Failed to generate comprehensive summary.';
       
       if (error instanceof Error) {
-        if (error.message.includes('timed out')) {
-          errorMessage = 'The request timed out. The summary generation is taking longer than expected.';
-        } else if (error.message.includes('network') || error.message.includes('fetch')) {
-          errorMessage = 'Network error. Please check your internet connection and try again.';
-        } else if (error.message.includes('Unauthorized') || error.message.includes('401')) {
-          errorMessage = 'Authentication error. Please log in again and try.';
-        } else if (error.message.includes('Empty error response')) {
-          errorMessage = 'Could not connect to the summary service. Using fallback summary.';
+        if (error.message === 'Timeout') {
+          errorMessage = 'The summary generation timed out. Please try again later.';
         } else {
           errorMessage = `Error: ${error.message}`;
         }
       }
       
-      setComprehensiveSummaryError(errorMessage);
       toast.error('Error', {
         description: errorMessage,
       });
       
-      // Still set the active tab to summary to show the fallback content
-      setActiveTab('summary');
+      setComprehensiveSummaryError(errorMessage);
     } finally {
       setIsLoadingComprehensiveSummary(false);
     }
@@ -1461,7 +1449,7 @@ END:VCALENDAR`;
                 onClick={handleGenerateComprehensiveSummary}
                 disabled={isLoadingComprehensiveSummary}
               >
-                <Sparkles className="mr-1 h-4 w-4 text-purple-500" />
+                <FileText className="mr-1 h-4 w-4 text-blue-500" />
                 {isLoadingComprehensiveSummary ? 'Generating...' : 'Comprehensive AI Summary'}
               </Button>
               
@@ -1641,7 +1629,17 @@ END:VCALENDAR`;
               <div className="space-y-4 overflow-x-auto overflow-y-visible flex flex-col">
                 <div className="overflow-y-auto styled-scrollbar flex-grow" style={{ maxHeight: '50vh' }}>
                   <div>
-                    <h3 className="text-sm font-medium mb-2">Comprehensive Meeting Summary</h3>
+                    <div className="flex justify-between items-center mb-2">
+                      <h3 className="text-sm font-medium">Comprehensive Meeting Summary</h3>
+                      <Button 
+                        variant="ghost" 
+                        size="sm" 
+                        onClick={() => setIsComprehensiveSummaryDialogOpen(true)}
+                        className="text-xs"
+                      >
+                        View in Dialog
+                      </Button>
+                    </div>
                     <div className="p-3 bg-background border rounded-md text-sm overflow-x-auto whitespace-normal break-words text-foreground" style={{ maxHeight: '50vh', overflowY: 'auto' }}>
                       {comprehensiveSummary.summary}
                     </div>
@@ -2070,6 +2068,22 @@ END:VCALENDAR`;
           )}
         </DialogContent>
       </Dialog>
+      
+      {/* Add the AgendaSummaryDialog component */}
+      <AgendaSummaryDialog
+        isOpen={isAgendaDialogOpen}
+        onClose={() => setIsAgendaDialogOpen(false)}
+        agendaItems={agendaSuggestions}
+        meetingType={meeting?.meeting_type}
+        onAddToMeeting={addAgendaItemsToMeeting}
+      />
+      
+      {/* Add the ComprehensiveSummaryDialog component */}
+      <ComprehensiveSummaryDialog
+        isOpen={isComprehensiveSummaryDialogOpen}
+        onClose={() => setIsComprehensiveSummaryDialogOpen(false)}
+        summary={comprehensiveSummary}
+      />
     </Card>
   );
 } 

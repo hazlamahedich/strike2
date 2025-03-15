@@ -5,7 +5,7 @@ from typing import Any, Dict, List, Optional, Union
 
 from openai import AsyncOpenAI
 from langchain.chains import LLMChain
-from langchain.chat_models import ChatOpenAI
+from langchain_community.chat_models import ChatOpenAI
 from langchain.schema import HumanMessage
 from langchain.prompts import PromptTemplate
 from langchain.prompts.chat import ChatPromptTemplate

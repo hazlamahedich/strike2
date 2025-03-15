@@ -16,7 +16,7 @@ from pathlib import Path
 
 from langchain.schema import HumanMessage, AIMessage, SystemMessage
 from langchain.prompts import ChatPromptTemplate, MessagesPlaceholder
-from langchain.chat_models import ChatOpenAI
+from langchain_community.chat_models import ChatOpenAI
 from langchain.tools import BaseTool
 from langchain_core.messages import BaseMessage
 from langchain_core.runnables import RunnableConfig
@@ -24,8 +24,8 @@ from langchain_core.output_parsers import StrOutputParser
 from langchain.callbacks.manager import CallbackManagerForToolRun
 from langchain_community.tools.sql_database.tool import QuerySQLDataBaseTool
 from langchain_community.utilities.sql_database import SQLDatabase
-from langchain.embeddings import OpenAIEmbeddings
-from langchain.vectorstores import FAISS
+from langchain_community.embeddings import OpenAIEmbeddings
+from langchain_community.vectorstores import FAISS
 from langchain.text_splitter import MarkdownTextSplitter
 from langchain.chains import RetrievalQA
 
