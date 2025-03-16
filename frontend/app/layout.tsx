@@ -6,8 +6,11 @@ import { QueryClientProvider } from "@/components/shared/query-client-provider";
 import { BreadcrumbProvider } from "@/components/shared/breadcrumb-provider";
 import { ChatbotProvider } from "@/components/shared/chatbot-provider";
 import { DialogProvider } from "@/lib/contexts/DialogContext";
+import { MeetingDialogProvider } from "@/lib/contexts/MeetingDialogContext";
 import { Providers } from "./providers";
 import { Analytics } from "@/components/shared/analytics";
+import { MeetingDialogContainer } from "@/components/ui/meeting-dialog";
+import { MeetingDialogTaskbar } from "@/components/ui/meeting-dialog-taskbar";
 
 // Use Inter as the primary font and Montserrat for headings
 const inter = Inter({
@@ -56,13 +59,17 @@ export default function RootLayout({
             <QueryClientProvider>
               <ChatbotProvider>
                 <DialogProvider>
-                  <div className="flex flex-col min-h-screen bg-background">
-                    <BreadcrumbProvider />
-                    <main className="flex-1">
-                      {children}
-                    </main>
-                    <Analytics />
-                  </div>
+                  <MeetingDialogProvider>
+                    <div className="flex flex-col min-h-screen bg-background">
+                      <BreadcrumbProvider />
+                      <main className="flex-1">
+                        {children}
+                      </main>
+                      <Analytics />
+                      <MeetingDialogContainer />
+                      <MeetingDialogTaskbar />
+                    </div>
+                  </MeetingDialogProvider>
                 </DialogProvider>
               </ChatbotProvider>
             </QueryClientProvider>
