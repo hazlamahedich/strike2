@@ -1,8 +1,8 @@
 'use client';
 
-import React, { forwardRef, useRef, useEffect, useState, Fragment, useLayoutEffect, createContext, useContext, useMemo, useCallback } from 'react';
+import React, { forwardRef, useRef, useEffect, useState, Fragment, useLayoutEffect, createContext, useContext, useMemo, useCallback, ReactNode } from 'react';
 import * as DialogPrimitive from '@radix-ui/react-dialog';
-import { X, GripVertical, Minus, Maximize2 } from 'lucide-react';
+import { X, GripVertical, Minus, Maximize2, Minimize2 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { useImprovedDialog } from '@/lib/contexts/ImprovedDialogContext';
 
@@ -67,7 +67,9 @@ export const ImprovedDialogRoot = ({
       <DialogPrimitive.Root
         data-dialog-root={dialogId}
         open={isOpen}
+        modal={false}  // Allow interaction with elements outside the dialog
         onOpenChange={(open) => {
+          // Only allow closing via explicit actions (like buttons), not outside clicks
           if (open) {
             // When opening, find the ImprovedDialogContent component in children
             const dialogContent = React.Children.toArray(children)
@@ -86,6 +88,8 @@ export const ImprovedDialogRoot = ({
               openDialog(dialogId, dialogContent);
             }
           } else {
+            // Only proceed if it's an explicit close action, not clicking outside
+            // This was triggered by a button within the dialog or programmatically
             closeDialog(dialogId);
           }
         }}
@@ -105,13 +109,37 @@ export const ImprovedDialogTrigger = forwardRef<
   React.ElementRef<typeof DialogPrimitive.Trigger>,
   ImprovedDialogTriggerProps
 >(({ dialogId, onClick, ...props }, ref) => {
-  const { openDialog } = useImprovedDialog();
+  const { openDialog, isDialogOpen } = useImprovedDialog();
+  const { inRadixDialog } = useContext(ImprovedDialogInternalContext);
   
   const handleClick = (e: React.MouseEvent<HTMLButtonElement>) => {
-    // Just let the DialogPrimitive.Root handle this naturally
-    // Our DialogRoot component will receive the onOpenChange
-    // and properly extract the correct content component
+    // Call the original onClick handler if it exists
     if (onClick) onClick(e);
+    
+    // If we have a dialogId, find the corresponding content component and open it
+    if (dialogId && inRadixDialog) {
+      // Find the parent ImprovedDialogRoot component
+      let parent = e.currentTarget.closest('[data-dialog-root]');
+      if (parent) {
+        const rootDialogId = parent.getAttribute('data-dialog-root');
+        if (rootDialogId === dialogId) {
+          // Find all siblings of the current trigger that might contain our content
+          const root = parent.parentElement;
+          if (root) {
+            // Look for a content element with the matching dialogId
+            const contentElements = Array.from(root.querySelectorAll(`[data-dialog-id="${dialogId}"]`));
+            if (contentElements.length > 0) {
+              const contentElement = contentElements[0];
+              // Directly open the dialog without relying on Radix's mechanism
+              if (!isDialogOpen(dialogId)) {
+                e.stopPropagation(); // Prevent Radix from handling this
+                openDialog(dialogId, contentElement);
+              }
+            }
+          }
+        }
+      }
+    }
   };
   
   return (
@@ -142,21 +170,54 @@ const StandaloneDialogContent = forwardRef<
   HTMLDivElement,
   ImprovedDialogContentProps & React.HTMLAttributes<HTMLDivElement>
 >(({ className, children, dialogId, showCloseButton = true, draggable = true, ...props }, ref) => {
-  const { getDialogZIndex, getDialogData, focusDialog, closeDialog, minimizeDialog } = useImprovedDialog();
+  const { getDialogZIndex, getDialogData, focusDialog, closeDialog, minimizeDialog, maximizeDialog } = useImprovedDialog();
   
   const dialogData = getDialogData(dialogId);
   const zIndex = getDialogZIndex(dialogId);
   const isActive = dialogData?.isActive || false;
   const isMinimized = dialogData?.minimized || false;
+  const isMaximized = dialogData?.maximized || false;
+  
+  console.log(`[${dialogId}] StandaloneDialogContent rendering with states:`, {
+    isActive,
+    isMinimized,
+    isMaximized,
+    dialogData
+  });
+  
+  // Debug on mount and state changes
+  useEffect(() => {
+    console.log(`[${dialogId}] StandaloneDialogContent mounted/updated:`, {
+      isActive,
+      isMinimized, 
+      isMaximized
+    });
+    
+    // Force isMinimized to be false directly in the DOM if needed
+    if (dialogRef.current && !isMinimized) {
+      dialogRef.current.setAttribute('data-minimized', 'false');
+      
+      // Make sure the content is visible
+      const contentDiv = dialogRef.current.querySelector('[class*="isMinimized"]');
+      if (contentDiv) {
+        (contentDiv as HTMLElement).style.display = 'block';
+      }
+    }
+  }, [dialogId, isActive, isMinimized, isMaximized]);
   
   // State for draggable position
   const [position, setPosition] = useState<Position | null>(null);
   const [isDragging, setIsDragging] = useState(false);
+  const [size, setSize] = useState<{ width: number | string, height: number | string } | null>(null);
+  const [isResizing, setIsResizing] = useState(false);
+  const [resizeDirection, setResizeDirection] = useState<string | null>(null);
   
   // Refs
   const dialogRef = useRef<HTMLDivElement>(null);
   const offsetRef = useRef({ x: 0, y: 0 });
   const dragStateRef = useRef({ dragging: false });
+  const resizeStateRef = useRef({ resizing: false, direction: null as string | null });
+  const startSizeRef = useRef({ width: 0, height: 0 });
   
   // Focus handling when clicked
   const handleContentClick = (e: React.MouseEvent) => {
@@ -380,20 +441,120 @@ const StandaloneDialogContent = forwardRef<
     console.log(`[${dialogId}] TOUCH END: Removed move/end listeners`);
   };
   
+  // Handle start of resize
+  const handleResizeStart = (e: React.MouseEvent<HTMLDivElement>, direction: string) => {
+    e.preventDefault();
+    e.stopPropagation();
+    
+    // Don't allow resizing a maximized window
+    if (isMaximized) return;
+    
+    // Focus the dialog
+    focusDialog(dialogId);
+    
+    // Get current size
+    if (dialogRef.current) {
+      const rect = dialogRef.current.getBoundingClientRect();
+      startSizeRef.current = { width: rect.width, height: rect.height };
+    }
+    
+    // Set resize state
+    setIsResizing(true);
+    setResizeDirection(direction);
+    resizeStateRef.current = { resizing: true, direction };
+    
+    // Add event listeners
+    document.addEventListener('mousemove', handleResizeMove);
+    document.addEventListener('mouseup', handleResizeEnd);
+  };
+  
+  // Handle resize movement
+  const handleResizeMove = (e: MouseEvent) => {
+    if (!resizeStateRef.current.resizing || !dialogRef.current) return;
+    
+    e.preventDefault();
+    
+    const direction = resizeStateRef.current.direction;
+    const rect = dialogRef.current.getBoundingClientRect();
+    const startWidth = startSizeRef.current.width;
+    const startHeight = startSizeRef.current.height;
+    
+    let newWidth = startWidth;
+    let newHeight = startHeight;
+    
+    // Calculate new size based on direction
+    if (direction?.includes('e')) {
+      // East/right edge
+      newWidth = Math.max(200, e.clientX - rect.left);
+    }
+    
+    if (direction?.includes('s')) {
+      // South/bottom edge
+      newHeight = Math.max(150, e.clientY - rect.top);
+    }
+    
+    if (direction?.includes('w')) {
+      // West/left edge
+      const diff = rect.left - e.clientX;
+      newWidth = Math.max(200, startWidth + diff);
+    }
+    
+    if (direction?.includes('n')) {
+      // North/top edge
+      const diff = rect.top - e.clientY;
+      newHeight = Math.max(150, startHeight + diff);
+    }
+    
+    // Update size
+    setSize({
+      width: newWidth,
+      height: newHeight
+    });
+    
+    // For immediate visual feedback, update the style directly
+    if (dialogRef.current) {
+      dialogRef.current.style.width = `${newWidth}px`;
+      dialogRef.current.style.height = `${newHeight}px`;
+    }
+  };
+  
+  // Handle end of resize
+  const handleResizeEnd = (e: MouseEvent) => {
+    e.preventDefault();
+    
+    setIsResizing(false);
+    setResizeDirection(null);
+    resizeStateRef.current = { resizing: false, direction: null };
+    
+    // Remove event listeners
+    document.removeEventListener('mousemove', handleResizeMove);
+    document.removeEventListener('mouseup', handleResizeEnd);
+  };
+  
   // Use position style based on dialog position state
   const dialogStyle = (() => {
-    // If minimized, position at the bottom of the screen
+    // If minimized, hide the dialog completely
     if (isMinimized) {
       return {
         zIndex,
-        left: position?.x || '10px',
-        bottom: '10px',
-        top: 'auto',
+        display: 'none',  // Hide it completely when minimized
+        visibility: 'hidden' as const
+      };
+    }
+    
+    // If maximized, fill the screen
+    if (dialogData?.maximized) {
+      return {
+        zIndex,
+        left: '0',
+        top: '0',
+        right: '0',
+        bottom: '0',
+        width: '100vw',
+        height: 'calc(100vh - 48px)', // Subtract taskbar height
         transform: 'none',
-        height: 'auto',
-        width: 'auto',
-        minWidth: '250px',
-        maxWidth: '400px'
+        borderRadius: '0',
+        transition: 'all 0.2s ease'
       };
     }
     
@@ -403,7 +564,11 @@ const StandaloneDialogContent = forwardRef<
         zIndex,
         left: '50%',
         top: '50%',
-        transform: 'translate(-50%, -50%)'
+        transform: 'translate(-50%, -50%)',
+        ...(size && {
+          width: typeof size.width === 'number' ? `${size.width}px` : size.width,
+          height: typeof size.height === 'number' ? `${size.height}px` : size.height
+        })
       };
     }
     
@@ -413,7 +578,11 @@ const StandaloneDialogContent = forwardRef<
       left: `${position.x}px`,
       top: `${position.y}px`,
       transform: 'none',
-      transition: isDragging ? 'none' : 'left 0.1s, top 0.1s'
+      transition: isDragging ? 'none' : 'left 0.1s, top 0.1s',
+      ...(size && {
+        width: typeof size.width === 'number' ? `${size.width}px` : size.width,
+        height: typeof size.height === 'number' ? `${size.height}px` : size.height
+      })
     };
   })();
   
@@ -450,12 +619,14 @@ const StandaloneDialogContent = forwardRef<
   // Add a useEffect to handle focusing when clicked
   useEffect(() => {
     const handleGlobalClick = (e: MouseEvent) => {
-      // Check if the click was inside our dialog
       const dialogElement = dialogRef.current;
       if (!dialogElement) return;
       
       // First check if the click target is inside our dialog
       const wasClickInside = dialogElement.contains(e.target as Node);
+      
+      // Also check if the click was on the taskbar
+      const wasTaskbarClick = isTaskbarElement(e.target as Node);
       
       if (wasClickInside) {
         // If it's inside and we're not active, focus the dialog
@@ -463,10 +634,13 @@ const StandaloneDialogContent = forwardRef<
           console.log(`[${dialogId}] Global click detected inside dialog, focusing`);
           focusDialog(dialogId);
         }
+      } else if (wasTaskbarClick) {
+        // If the click was on the taskbar, prevent closing
+        console.log(`[${dialogId}] Click detected on taskbar, ignoring`);
+        // Don't do anything - we don't want to close or change focus
       } else {
-        // If the click was outside, we don't need to do anything
-        // The ImprovedDialogProvider will handle this
-        console.log(`[${dialogId}] Global click detected outside dialog`);
+        // If the click was outside and not on the taskbar, log but don't close
+        console.log(`[${dialogId}] Global click detected outside dialog, but not closing automatically`);
       }
     };
     
@@ -477,6 +651,54 @@ const StandaloneDialogContent = forwardRef<
       document.removeEventListener('click', handleGlobalClick, { capture: true });
     };
   }, [dialogId, isActive, focusDialog]);
+  
+  // Add logging to help debug state issues
+  useEffect(() => {
+    if (dialogData) {
+      console.log(`[${dialogId}] Dialog data updated:`, {
+        isActive,
+        isMinimized,
+        isMaximized,
+        position: dialogData.position,
+        size: dialogData.size
+      });
+    }
+  }, [dialogData, dialogId, isActive, isMinimized, isMaximized]);
+  
+  // In the StandaloneDialogContent component, just before returning the JSX
+  // Add debugging logic
+  useEffect(() => {
+    console.log(`[DEBUG] StandaloneDialogContent for ${dialogId} render cycle:`, {
+      isActive,
+      isMinimized,
+      isMaximized,
+      hasDialogRef: !!dialogRef.current,
+      position,
+      size,
+    });
+    
+    if (dialogRef.current) {
+      console.log(`[DEBUG] DOM element for ${dialogId}:`, {
+        dataState: dialogRef.current.getAttribute('data-state'),
+        dataMinimized: dialogRef.current.getAttribute('data-minimized'),
+        dataMaximized: dialogRef.current.getAttribute('data-maximized'),
+        display: window.getComputedStyle(dialogRef.current).display,
+        visibility: window.getComputedStyle(dialogRef.current).visibility,
+      });
+      
+      // Get the content div (which might be hidden)
+      const contentDiv = dialogRef.current.querySelector('[class*="pt-4"]');
+      if (contentDiv) {
+        console.log(`[DEBUG] Content div for ${dialogId}:`, {
+          display: window.getComputedStyle(contentDiv as HTMLElement).display,
+          visibility: window.getComputedStyle(contentDiv as HTMLElement).visibility,
+          className: (contentDiv as HTMLElement).className,
+        });
+      } else {
+        console.warn(`[DEBUG] No content div found for ${dialogId}`);
+      }
+    }
+  }, [dialogId, isActive, isMinimized, isMaximized, position, size]);
   
   return (
     <ImprovedDialogInternalContext.Provider value={{ inRadixDialog: false }}>
@@ -506,6 +728,9 @@ const StandaloneDialogContent = forwardRef<
             dialogRef.current = node;
           }}
           data-dialog-id={dialogId}
+          data-state={isActive ? 'active' : 'inactive'}
+          data-minimized={isMinimized}
+          data-maximized={isMaximized}
           tabIndex={-1} // Make the dialog focusable
           onPointerDown={handlePointerDown}
           onClick={(e) => {
@@ -530,6 +755,7 @@ const StandaloneDialogContent = forwardRef<
           className={cn(
             "fixed z-50",
             isDragging ? "cursor-grabbing" : "cursor-auto",
+            isResizing ? "pointer-events-none" : "pointer-events-auto",
             "grid gap-4 border bg-background p-6 shadow-lg",
             "duration-200 data-[state=open]:animate-in data-[state=closed]:animate-out",
             "data-[state=closed]:fade-out-0 data-[state=open]:fade-in-0",
@@ -541,6 +767,8 @@ const StandaloneDialogContent = forwardRef<
             isActive ? "ring-2 ring-ring shadow-lg" : "ring-1 ring-muted opacity-90 shadow-md",
             // For minimized state
             isMinimized ? "min-h-0 min-w-0 w-auto" : "w-full max-w-lg",
+            // For maximized state
+            isMaximized ? "rounded-none max-w-none" : "",
             className
           )}
           style={{
@@ -553,59 +781,136 @@ const StandaloneDialogContent = forwardRef<
         >
           {draggable && (
             <div 
-              className="absolute top-0 left-0 right-0 h-8 flex items-center justify-center cursor-grab bg-muted/30 rounded-t-lg hover:bg-muted/50"
+              className="absolute top-0 left-0 right-0 h-8 flex items-center justify-between cursor-grab bg-muted/30 rounded-t-lg hover:bg-muted/50"
               onMouseDown={handleDragStart}
               onTouchStart={handleTouchStart}
               style={{ cursor: isDragging ? 'grabbing' : 'grab' }}
               data-drag-handle="true"
             >
-              <GripVertical className="h-4 w-4 text-muted-foreground" />
-              <span className={cn(
-                "text-xs ml-1",
-                isMinimized ? "font-medium text-foreground" : "text-muted-foreground"
-              )}>
-                {isMinimized ? `Window: ${dialogId}` : 'Drag here'}
-              </span>
+              <div className="flex items-center">
+                <GripVertical className="h-4 w-4 ml-2 text-muted-foreground" />
+                <span className={cn(
+                  "text-xs ml-1",
+                  isMinimized ? "font-medium text-foreground" : "text-muted-foreground"
+                )}>
+                  {isMinimized ? `Window: ${dialogId}` : 'Drag here'}
+                </span>
+              </div>
+              
+              <div className="flex items-center space-x-1 mr-2">
+                {/* Minimize button */}
+                <span 
+                  className="rounded-sm opacity-70 ring-offset-background transition-opacity hover:opacity-100 focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2 disabled:pointer-events-none cursor-pointer"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    minimizeDialog(dialogId, !isMinimized);
+                  }}
+                  aria-label={isMinimized ? "Restore" : "Minimize"}
+                  title={isMinimized ? "Restore" : "Minimize"}
+                  role="button"
+                  tabIndex={0}
+                >
+                  <Minus className="h-4 w-4" />
+                </span>
+                
+                {/* Maximize/Restore button */}
+                <span 
+                  className="rounded-sm opacity-70 ring-offset-background transition-opacity hover:opacity-100 focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2 disabled:pointer-events-none cursor-pointer"
+                  onClick={(e) => {
+                    e.preventDefault(); // Prevent default button behavior
+                    e.stopPropagation(); // Stop propagation to prevent parent handlers
+                    
+                    try {
+                      console.log(`[StandaloneDialog] Toggling maximize for ${dialogId}, current maximized state: ${isMaximized}`);
+                      // Use a longer delay to ensure React state updates before maximizing
+                      setTimeout(() => {
+                        maximizeDialog(dialogId, !isMaximized);
+                        // Focus the dialog again to make sure it stays active
+                        setTimeout(() => {
+                          focusDialog(dialogId);
+                        }, 50);
+                      }, 50);
+                    } catch (err) {
+                      console.error(`[StandaloneDialog] Error maximizing dialog ${dialogId}:`, err);
+                    }
+                    
+                    // Stop event from bubbling up completely
+                    return false;
+                  }}
+                  aria-label={isMaximized ? "Restore" : "Maximize"}
+                  title={isMaximized ? "Restore" : "Maximize"}
+                  role="button"
+                  tabIndex={0}
+                >
+                  {isMaximized ? (
+                    <Minimize2 className="h-4 w-4" />
+                  ) : (
+                    <Maximize2 className="h-4 w-4" />
+                  )}
+                </span>
+                
+                {/* Close button (if enabled) */}
+                {showCloseButton && (
+                  <DialogPrimitive.Close 
+                    className="rounded-sm opacity-70 ring-offset-background transition-opacity hover:opacity-100 focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2 disabled:pointer-events-none data-[state=open]:bg-accent data-[state=open]:text-muted-foreground cursor-pointer"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      closeDialog(dialogId);
+                    }}
+                    aria-label="Close"
+                    title="Close"
+                  >
+                    <X className="h-4 w-4" />
+                    <span className="sr-only">Close</span>
+                  </DialogPrimitive.Close>
+                )}
+              </div>
             </div>
           )}
           
-          {/* Only show content when not minimized */}
-          <div className={cn(
-            draggable ? "pt-4" : "",
-            isMinimized ? "hidden" : ""
-          )}>
-            {children}
+          {/* Content is ALWAYS shown regardless of minimized state - FORCE VISIBLE */}
+          <div 
+            className={cn(
+              draggable ? "pt-4" : "",
+              "block !visible"  // Force visible with !important-like syntax
+            )}
+            style={{
+              display: 'block !important', 
+              visibility: 'visible' as const,
+              opacity: 1,
+              height: 'auto',
+              minHeight: '100px',
+              overflow: 'visible',
+            }}
+          >
+            <div style={{ padding: '8px', border: '1px dashed #ccc' }}>
+              {/* Extra wrapper to ensure content is visible */}
+              {children}
+            </div>
           </div>
           
-          {/* Action buttons */}
-          <div className="absolute right-4 top-3 flex items-center space-x-1">
-            {/* Minimize/Restore button */}
-            <button 
-              className="rounded-sm opacity-70 ring-offset-background transition-opacity hover:opacity-100 focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2 disabled:pointer-events-none"
-              onClick={() => minimizeDialog(dialogId, !isMinimized)}
-              aria-label={isMinimized ? "Restore" : "Minimize"}
-              title={isMinimized ? "Restore" : "Minimize"}
-            >
-              {isMinimized ? (
-                <Maximize2 className="h-4 w-4" />
-              ) : (
-                <Minus className="h-4 w-4" />
-              )}
-            </button>
-            
-            {/* Close button (if enabled) */}
-            {showCloseButton && (
-              <button 
-                className="rounded-sm opacity-70 ring-offset-background transition-opacity hover:opacity-100 focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2 disabled:pointer-events-none data-[state=open]:bg-accent data-[state=open]:text-muted-foreground"
-                onClick={() => closeDialog(dialogId)}
-                aria-label="Close"
-                title="Close"
-              >
-                <X className="h-4 w-4" />
-                <span className="sr-only">Close</span>
-              </button>
-            )}
-          </div>
+          {/* Add resize handlers */}
+          {!isMinimized && !isMaximized && (
+            <>
+              {/* Right edge */}
+              <div
+                className="absolute right-0 top-8 bottom-0 w-2 cursor-e-resize"
+                onMouseDown={(e) => handleResizeStart(e, 'e')}
+              />
+              
+              {/* Bottom edge */}
+              <div
+                className="absolute left-0 right-0 bottom-0 h-2 cursor-s-resize"
+                onMouseDown={(e) => handleResizeStart(e, 's')}
+              />
+              
+              {/* Bottom-right corner */}
+              <div
+                className="absolute right-0 bottom-0 w-4 h-4 cursor-se-resize"
+                onMouseDown={(e) => handleResizeStart(e, 'se')}
+              />
+            </>
+          )}
         </div>
       </Fragment>
     </ImprovedDialogInternalContext.Provider>
@@ -861,18 +1166,28 @@ export const ImprovedDialogContent = forwardRef<
   
   // Use position style based on dialog position state
   const dialogStyle = (() => {
-    // If minimized, position at the bottom of the screen
+    // If minimized, hide the dialog completely
     if (isMinimized) {
       return {
         zIndex,
-        left: position?.x || '10px',
-        bottom: '10px',
-        top: 'auto',
+        display: 'none',  // Hide it completely when minimized
+        visibility: 'hidden' as const
+      };
+    }
+    
+    // If maximized, fill the screen
+    if (dialogData?.maximized) {
+      return {
+        zIndex,
+        left: '0',
+        top: '0',
+        right: '0',
+        bottom: '0',
+        width: '100vw',
+        height: 'calc(100vh - 48px)', // Subtract taskbar height
         transform: 'none',
-        height: 'auto',
-        width: 'auto',
-        minWidth: '250px',
-        maxWidth: '400px'
+        borderRadius: '0',
+        transition: 'all 0.2s ease'
       };
     }
     
@@ -929,12 +1244,14 @@ export const ImprovedDialogContent = forwardRef<
   // Add a useEffect to handle focusing when clicked
   useEffect(() => {
     const handleGlobalClick = (e: MouseEvent) => {
-      // Check if the click was inside our dialog
       const dialogElement = dialogRef.current;
       if (!dialogElement) return;
       
       // First check if the click target is inside our dialog
       const wasClickInside = dialogElement.contains(e.target as Node);
+      
+      // Also check if the click was on the taskbar
+      const wasTaskbarClick = isTaskbarElement(e.target as Node);
       
       if (wasClickInside) {
         // If it's inside and we're not active, focus the dialog
@@ -942,10 +1259,13 @@ export const ImprovedDialogContent = forwardRef<
           console.log(`[${dialogId}] Global click detected inside dialog, focusing`);
           focusDialog(dialogId);
         }
+      } else if (wasTaskbarClick) {
+        // If the click was on the taskbar, prevent closing
+        console.log(`[${dialogId}] Click detected on taskbar, ignoring`);
+        // Don't do anything - we don't want to close or change focus
       } else {
-        // If the click was outside, we don't need to do anything
-        // The ImprovedDialogProvider will handle this
-        console.log(`[${dialogId}] Global click detected outside dialog`);
+        // If the click was outside and not on the taskbar, log but don't close
+        console.log(`[${dialogId}] Global click detected outside dialog, but not closing automatically`);
       }
     };
     
@@ -1064,35 +1384,56 @@ export const ImprovedDialogContent = forwardRef<
           </div>
         )}
         
-        {/* Only show content when not minimized */}
-        <div className={cn(
-          draggable ? "pt-4" : "",
-          isMinimized ? "hidden" : ""
-        )}>
-          {children}
+        {/* Content is ALWAYS shown regardless of minimized state - FORCE VISIBLE */}
+        <div 
+          className={cn(
+            draggable ? "pt-4" : "",
+            "block !visible"  // Force visible with !important-like syntax
+          )}
+          style={{
+            display: 'block !important', 
+            visibility: 'visible' as const,
+            opacity: 1,
+            height: 'auto',
+            minHeight: '100px',
+            overflow: 'visible',
+          }}
+        >
+          <div style={{ padding: '8px', border: '1px dashed #ccc' }}>
+            {/* Extra wrapper to ensure content is visible */}
+            {children}
+          </div>
         </div>
         
         {/* Action buttons */}
         <div className="absolute right-4 top-3 flex items-center space-x-1">
           {/* Minimize/Restore button */}
-          <button 
-            className="rounded-sm opacity-70 ring-offset-background transition-opacity hover:opacity-100 focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2 disabled:pointer-events-none"
-            onClick={() => minimizeDialog(dialogId, !isMinimized)}
+          <span 
+            className="rounded-sm opacity-70 ring-offset-background transition-opacity hover:opacity-100 focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2 disabled:pointer-events-none cursor-pointer"
+            onClick={(e) => {
+              e.stopPropagation();
+              minimizeDialog(dialogId, !isMinimized);
+            }}
             aria-label={isMinimized ? "Restore" : "Minimize"}
             title={isMinimized ? "Restore" : "Minimize"}
+            role="button"
+            tabIndex={0}
           >
             {isMinimized ? (
               <Maximize2 className="h-4 w-4" />
             ) : (
               <Minus className="h-4 w-4" />
             )}
-          </button>
+          </span>
           
           {/* Close button (if enabled) */}
           {showCloseButton && (
             <DialogPrimitive.Close 
-              className="rounded-sm opacity-70 ring-offset-background transition-opacity hover:opacity-100 focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2 disabled:pointer-events-none data-[state=open]:bg-accent data-[state=open]:text-muted-foreground"
-              onClick={() => closeDialog(dialogId)}
+              className="rounded-sm opacity-70 ring-offset-background transition-opacity hover:opacity-100 focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2 disabled:pointer-events-none data-[state=open]:bg-accent data-[state=open]:text-muted-foreground cursor-pointer"
+              onClick={(e) => {
+                e.stopPropagation();
+                closeDialog(dialogId);
+              }}
               aria-label="Close"
               title="Close"
             >
@@ -1274,4 +1615,25 @@ export const ImprovedDialogContainer = () => {
       ))}
     </div>
   );
+};
+
+// Add this function before the ImprovedDialogContent component
+// Function to reliably identify taskbar elements
+const isTaskbarElement = (element: Node | null): boolean => {
+  if (!element) return false;
+  
+  // Walk up the tree to find a possible taskbar element
+  let current: Node | null = element;
+  while (current && current !== document.body) {
+    if (current instanceof HTMLElement) {
+      // Check if this is part of the taskbar
+      if (current.classList.contains('dialog-taskbar') ||
+          current.getAttribute('role') === 'dialog-taskbar' ||
+          current.getAttribute('data-taskbar') === 'true') {
+        return true;
+      }
+    }
+    current = current.parentNode;
+  }
+  return false;
 }; 
