@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef, useMemo } from 'react';
+import { useState, useEffect, useRef, useMemo, useCallback } from 'react';
 import { Meeting, MeetingStatus, MeetingType, MeetingContact } from '@/lib/types/meeting';
 import { format, parseISO, isSameDay, addDays, isPast, differenceInMinutes } from 'date-fns';
 import { Button } from '@/components/ui/button';
@@ -30,6 +30,13 @@ import dayGridPlugin from '@fullcalendar/daygrid';
 import timeGridPlugin from '@fullcalendar/timegrid';
 import interactionPlugin from '@fullcalendar/interaction';
 import { EventClickArg, DateSelectArg, EventInput } from '@fullcalendar/core';
+
+// Import the new context
+import { EnhancedMeetingDetailsProvider, EnhancedMeetingDetailsContainer, useEnhancedMeetingDetails } from '@/lib/contexts/EnhancedMeetingDetailsContext';
+import { useMeetingDialog, MeetingDialogType, MeetingDialogProvider } from '@/contexts/MeetingDialogContext';
+import { ContextualEnhancedMeetingDetails } from '@/components/meetings/ContextualEnhancedMeetingDetails';
+import { MeetingDialogContainer } from '@/components/ui/meeting-dialog';
+import { MeetingDialogTaskbar } from '@/components/ui/meeting-dialog-taskbar';
 
 // Extended Meeting type that includes the contact property
 interface ExtendedMeeting extends Meeting {
@@ -246,13 +253,28 @@ const createTestEvents = () => {
   return events;
 };
 
+// Wrapper component that adds the context provider
+export function EnhancedCalendarWithProvider() {
+  console.log('🔍🔍 PROVIDER: Rendering EnhancedCalendarWithProvider');
+  
+  return (
+    <MeetingDialogProvider>
+      <EnhancedMeetingDetailsProvider>
+        <EnhancedCalendar />
+        <EnhancedMeetingDetailsContainer />
+        <MeetingDialogContainer />
+        <MeetingDialogTaskbar />
+      </EnhancedMeetingDetailsProvider>
+    </MeetingDialogProvider>
+  );
+}
+
 export function EnhancedCalendar() {
   const calendarRef = useRef<FullCalendar>(null);
   const [meetings, setMeetings] = useState<Meeting[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [selectedMeeting, setSelectedMeeting] = useState<ExtendedMeeting | null>(null);
-  const [showMeetingDetails, setShowMeetingDetails] = useState(false);
   const [showScheduleForm, setShowScheduleForm] = useState(false);
   const [showNoShowForm, setShowNoShowForm] = useState(false);
   const [noShowNotes, setNoShowNotes] = useState('');
@@ -273,6 +295,15 @@ export function EnhancedCalendar() {
   const [showPhoneDialog, setShowPhoneDialog] = useState(false);
   const [showEmailDialog, setShowEmailDialog] = useState(false);
   
+  // Get the dialog context
+  const meetingDialog = useMeetingDialog();
+  
+  console.log('🔍🔍 CALENDAR: EnhancedCalendar component rendered with dialog context:', {
+    isHookAvailable: !!meetingDialog,
+    hasOpenMethod: !!meetingDialog.openMeetingDialog,
+    dialogsCount: meetingDialog.dialogs?.length || 0
+  });
+
   // Fetch meetings from API
   const fetchMeetings = async (retryCount = 0, maxRetries = 3) => {
     try {
@@ -581,7 +612,7 @@ export function EnhancedCalendar() {
         // In development mode, use mock data by default to avoid authentication issues
         if (useMockData) {
           console.log('Using mock lead data');
-          setLeads(MOCK_LEADS);
+          setLeads(MOCK_LEADS as any);
           setIsLoadingLeads(false);
           return;
         }
@@ -614,14 +645,14 @@ export function EnhancedCalendar() {
           });
           
           // Fallback to mock data on error
-          setLeads(MOCK_LEADS);
+          setLeads(MOCK_LEADS as any);
         } else if (data) {
           // Use the data from the API
-          setLeads(data);
+          setLeads(data as any);
         } else {
           // Fallback to mock data if no data and no error
           console.log('No data returned from API, using mock lead data');
-          setLeads(MOCK_LEADS);
+          setLeads(MOCK_LEADS as any);
         }
       } catch (error) {
         console.error('Error fetching leads:', error);
@@ -632,7 +663,7 @@ export function EnhancedCalendar() {
         });
         
         // Fallback to mock data on error
-        setLeads(MOCK_LEADS);
+        setLeads(MOCK_LEADS as any);
       } finally {
         setIsLoadingLeads(false);
       }
@@ -656,7 +687,6 @@ export function EnhancedCalendar() {
   };
 
   // Dialog states
-  const [showMeetingDialog, setShowMeetingDialog] = useState(false);
   const [showScheduleDialog, setShowScheduleDialog] = useState(false);
 
   // Function to change calendar view
@@ -669,7 +699,7 @@ export function EnhancedCalendar() {
   
   // Handle event click
   const handleEventClick = (clickInfo: EventClickArg) => {
-    console.log('Event clicked:', clickInfo.event);
+    console.log('⭐⭐⭐ EVENT CLICKED: Using REACT CONTEXT Dialog approach only');
     
     // Get the lead_id from the event
     const leadId = clickInfo.event.extendedProps?.lead_id || "1";
@@ -700,8 +730,28 @@ export function EnhancedCalendar() {
       lead: lead
     };
     
+    // Set the selected meeting
     setSelectedMeeting(meetingData);
-    setShowMeetingDialog(true);
+    
+    // USING REACT CONTEXT DIALOG ONLY
+    const dialogId = `meeting-details-${meetingData.id}`;
+    console.log('⭐⭐⭐ CALENDAR: Creating dialog with React Context, ID:', dialogId);
+    
+    const dialogContent = (
+      <ContextualEnhancedMeetingDetails
+        dialogId={dialogId}
+        meeting={meetingData}
+        onClose={() => {
+          console.log('⭐⭐⭐ CALENDAR: React Context dialog closed via onClose callback');
+          // Refresh meetings after update to ensure the calendar is updated
+          fetchMeetings();
+        }}
+      />
+    );
+    
+    console.log('⭐⭐⭐ CALENDAR: Opening dialog with React Context, ID:', dialogId);
+    const contextResult = meetingDialog.openMeetingDialog(dialogId, MeetingDialogType.DETAILS, dialogContent, { meeting: meetingData });
+    console.log('⭐⭐⭐ CALENDAR: Result of React Context dialog open:', contextResult);
   };
   
   // Check for meetings that have passed without being joined
@@ -932,16 +982,6 @@ export function EnhancedCalendar() {
     });
     
     setShowNoShowForm(false);
-    setShowMeetingDialog(false);
-  };
-
-  // Handle cancel meeting
-  const handleCancelMeeting = () => {
-    toast({
-      title: "Meeting canceled",
-      description: "The meeting has been successfully canceled.",
-    });
-    setShowMeetingDialog(false);
   };
 
   // Handle reschedule meeting
@@ -1147,7 +1187,7 @@ export function EnhancedCalendar() {
   };
 
   return (
-    <div className="flex flex-col h-full">
+    <div className="w-full h-full flex flex-col">
       <div className="flex justify-between items-center mb-4">
         <div className="flex items-center">
           <h2 className="text-2xl font-bold">Meetings Calendar</h2>
@@ -1201,33 +1241,6 @@ export function EnhancedCalendar() {
           selectable={false}
         />
       </div>
-
-      {/* Meeting Dialog */}
-      <Dialog open={showMeetingDialog} onOpenChange={setShowMeetingDialog}>
-        <DialogContent className="max-w-4xl">
-          <DialogHeader>
-            <DialogTitle>Meeting Details</DialogTitle>
-          </DialogHeader>
-          
-          {selectedMeeting && (
-            <div className="space-y-4">
-              <EnhancedMeetingDetails 
-                meeting={selectedMeeting} 
-                onUpdate={(updatedMeeting) => {
-                  console.log('Meeting updated in calendar:', updatedMeeting);
-                  
-                  // Update the selected meeting with the updated meeting
-                  setSelectedMeeting({...updatedMeeting});
-                  
-                  // Refresh meetings after update to ensure the calendar is updated
-                  fetchMeetings();
-                }}
-                onClose={() => setShowMeetingDialog(false)}
-              />
-            </div>
-          )}
-        </DialogContent>
-      </Dialog>
 
       {/* Schedule Meeting Dialog */}
       <Dialog open={showScheduleDialog} onOpenChange={setShowScheduleDialog}>

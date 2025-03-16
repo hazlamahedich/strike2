@@ -3,7 +3,7 @@
 import React, { forwardRef, useRef, useEffect, useState, ReactNode } from 'react';
 import { X, Minus, Maximize2, Minimize2 } from 'lucide-react';
 import { cn } from '@/lib/utils';
-import { useMeetingDialog, MeetingDialogType } from '@/lib/contexts/MeetingDialogContext';
+import { useMeetingDialog, MeetingDialogType, MeetingDialogData } from '@/contexts/MeetingDialogContext';
 
 // Props for the MeetingDialog component
 interface MeetingDialogRootProps {
@@ -28,9 +28,9 @@ export const MeetingDialogRoot = ({
   defaultOpen = false,
   onOpenChange,
 }: MeetingDialogRootProps) => {
-  const { isMeetingDialogOpen, openMeetingDialog, closeMeetingDialog } = useMeetingDialog();
+  const { isDialogOpen, openMeetingDialog, closeMeetingDialog } = useMeetingDialog();
   const [initialized, setInitialized] = useState(false);
-  const isOpen = isMeetingDialogOpen(dialogId);
+  const isOpen = isDialogOpen(dialogId);
 
   // Initialize dialog on mount if defaultOpen is true
   useEffect(() => {
@@ -82,7 +82,7 @@ export const MeetingDialogTrigger = forwardRef<
   HTMLButtonElement,
   MeetingDialogTriggerProps
 >(({ dialogId, dialogType, meeting, leadId, onClick, children, type = 'button', ...props }, ref) => {
-  const { openMeetingDialog, isMeetingDialogOpen } = useMeetingDialog();
+  const { openMeetingDialog, isDialogOpen } = useMeetingDialog();
   
   const handleClick = (e: React.MouseEvent<HTMLButtonElement>) => {
     // Call the original onClick handler if it exists
@@ -108,7 +108,7 @@ export const MeetingDialogTrigger = forwardRef<
           );
           
           // Open the dialog with the React element
-          if (!isMeetingDialogOpen(dialogId)) {
+          if (!isDialogOpen(dialogId)) {
             e.stopPropagation(); // Prevent default behaviors
             openMeetingDialog(dialogId, dialogType, dialogContent, { meeting, leadId });
           }
@@ -143,26 +143,46 @@ interface MeetingDialogContentProps extends React.HTMLAttributes<HTMLDivElement>
   showCloseButton?: boolean;
   draggable?: boolean;
   title?: string;
+  onClose?: () => void;
 }
 
 export const MeetingDialogContent = forwardRef<
   HTMLDivElement,
   MeetingDialogContentProps
->(({ className, children, dialogId, dialogType, showCloseButton = true, draggable = true, title, ...props }, ref) => {
+>(({ className, children, dialogId, dialogType, showCloseButton = true, draggable = true, title, onClose, ...props }, ref) => {
+  // Add useEffect for mounting/unmounting logs
+  useEffect(() => {
+    console.log(`⭐⭐⭐ DIALOG CONTENT: MeetingDialogContent [${dialogId}] MOUNTED`);
+    return () => console.log(`⭐⭐⭐ DIALOG CONTENT: MeetingDialogContent [${dialogId}] UNMOUNTED`);
+  }, [dialogId]);
+
   const { 
-    getMeetingDialogZIndex, 
-    getMeetingDialogData, 
-    focusMeetingDialog, 
+    getDialogZIndex, 
+    getDialogData, 
+    focusDialog, 
     closeMeetingDialog, 
-    minimizeMeetingDialog, 
-    maximizeMeetingDialog 
+    minimizeDialog, 
+    maximizeDialog,
+    isDialogOpen,
+    setDialogs
   } = useMeetingDialog();
   
-  const dialogData = getMeetingDialogData(dialogId);
-  const zIndex = getMeetingDialogZIndex(dialogId);
+  const dialogData = getDialogData(dialogId);
+  const zIndex = getDialogZIndex(dialogId);
   const isActive = dialogData?.isActive || false;
   const isMinimized = dialogData?.minimized || false;
   const isMaximized = dialogData?.maximized || false;
+  
+  console.log(`⭐⭐⭐ DIALOG CONTENT: MeetingDialogContent [${dialogId}] rendering:`, {
+    isOpen: isDialogOpen(dialogId),
+    hasDialogData: !!dialogData,
+    zIndex,
+    isActive,
+    isMinimized,
+    isMaximized,
+    hasTitle: !!title,
+    hasChildren: !!children
+  });
   
   // State for draggable position
   const [position, setPosition] = useState<Position | null>(
@@ -187,14 +207,39 @@ export const MeetingDialogContent = forwardRef<
   
   // Update position and size when they change in the context
   useEffect(() => {
-    if (dialogData?.position && !isDragging) {
+    // Only update from context if we're not actively dragging or resizing
+    // This prevents the position from being reset during drag operations
+    if (dialogData?.position && !isDragging && !dragStateRef.current.dragging) {
+      console.log('🔄 Updating position from context:', { 
+        dialogId, 
+        contextPosition: dialogData.position, 
+        currentPosition: position 
+      });
       setPosition(dialogData.position);
     }
     
-    if (dialogData?.size && !isResizing) {
+    if (dialogData?.size && !isResizing && !resizeStateRef.current.resizing) {
       setSize(dialogData.size);
     }
-  }, [dialogData?.position, dialogData?.size, isDragging, isResizing]);
+  }, [dialogData?.position, dialogData?.size, isDragging, isResizing, dialogId, position]);
+  
+  // Make sure the dialog stays at its current position even during re-renders
+  // This effect runs after all state updates to ensure consistency
+  useEffect(() => {
+    if (dialogRef.current && position && !isDragging) {
+      // Force position to ensure it persists correctly
+      console.log('📌 POSITION PERSISTENCE: Ensuring position is maintained', { 
+        dialogId, 
+        position,
+        isDragging
+      });
+      
+      dialogRef.current.style.position = 'fixed';
+      dialogRef.current.style.left = `${position.x}px`;
+      dialogRef.current.style.top = `${position.y}px`;
+      dialogRef.current.style.transform = 'none';
+    }
+  }, [position, isDragging, dialogId]);
   
   // Focus handling when clicked
   const handleContentClick = (e: React.MouseEvent) => {
@@ -207,22 +252,24 @@ export const MeetingDialogContent = forwardRef<
     }
     
     // Always focus the dialog when it's clicked
-    focusMeetingDialog(dialogId);
+    focusDialog(dialogId);
   };
   
-  // Force proper positioning
+  // Force the position of the dialog to specific coordinates
   const forcePosition = (x: number, y: number) => {
-    if (dialogRef.current) {
-      console.log('🔨 Force position applied', { x, y, dialogId });
-      dialogRef.current.style.transition = 'none';
-      dialogRef.current.style.left = `${x}px`;
-      dialogRef.current.style.top = `${y}px`;
-      dialogRef.current.style.transform = 'none';
-      dialogRef.current.style.position = 'fixed';
-      
-      // Force a reflow to ensure the changes take effect immediately
-      void dialogRef.current.offsetHeight;
-    }
+    if (!dialogRef.current) return;
+    
+    console.log('🔨 Forcing position', { x, y, dialogId });
+    
+    // Disable transitions temporarily for smoother dragging
+    dialogRef.current.style.transition = 'none';
+    dialogRef.current.style.left = `${x}px`;
+    dialogRef.current.style.top = `${y}px`;
+    dialogRef.current.style.transform = 'none';
+    dialogRef.current.style.position = 'fixed';
+    
+    // Force a reflow to ensure the changes take effect immediately
+    void dialogRef.current.offsetHeight;
   };
 
   // Handle the start of dragging
@@ -239,10 +286,32 @@ export const MeetingDialogContent = forwardRef<
     e.stopPropagation();
     
     // Ensure the dialog is focused
-    focusMeetingDialog(dialogId);
+    focusDialog(dialogId);
     
     // Calculate the offset from the current mouse position to the dialog position
     const rect = dialogRef.current.getBoundingClientRect();
+    
+    // Save the current size to prevent any resizing during drag
+    const currentSize = {
+      width: rect.width,
+      height: rect.height
+    };
+    
+    // Update size in state and context if it has changed
+    if (size?.width !== currentSize.width || size?.height !== currentSize.height) {
+      console.log('📐 Saving current size before drag to prevent resize', currentSize);
+      setSize(currentSize);
+      
+      // Also update size in context
+      const dialogData = getDialogData(dialogId);
+      if (dialogData) {
+        setDialogs((prevDialogs: MeetingDialogData[]) => {
+          return prevDialogs.map((d: MeetingDialogData) => 
+            d.id === dialogId ? { ...d, size: currentSize } : d
+          );
+        });
+      }
+    }
     
     // Force position to match current bounding rect to ensure consistent start
     forcePosition(rect.left, rect.top);
@@ -312,6 +381,29 @@ export const MeetingDialogContent = forwardRef<
     
     // Apply position directly to the DOM element for immediate feedback
     forcePosition(newX, newY);
+    
+    // Update the position in context immediately to maintain state
+    updateDialogPosition(newPosition);
+  };
+  
+  // Helper function to update dialog position in context
+  const updateDialogPosition = (newPosition: Position) => {
+    const dialogData = getDialogData(dialogId);
+    
+    if (dialogData) {
+      // Create updated dialog data with new position
+      const updatedDialogData: MeetingDialogData = {
+        ...dialogData,
+        position: newPosition
+      };
+      
+      // Update the dialog data in the context
+      setDialogs((prevDialogs: MeetingDialogData[]) => {
+        return prevDialogs.map((d: MeetingDialogData) => 
+          d.id === dialogId ? updatedDialogData : d
+        );
+      });
+    }
   };
   
   // Handle the end of dragging
@@ -322,17 +414,39 @@ export const MeetingDialogContent = forwardRef<
     window.removeEventListener('mousemove', handleDragMove);
     window.removeEventListener('mouseup', handleDragEnd);
     
+    // Before disabling dragging state, capture the final position from the DOM
+    // This ensures we have the most accurate position
+    let finalPosition = position;
+    
+    if (dialogRef.current) {
+      const rect = dialogRef.current.getBoundingClientRect();
+      finalPosition = {
+        x: rect.left,
+        y: rect.top
+      };
+      
+      console.log('📏 DRAG END: Final position from DOM', finalPosition);
+      
+      // Re-enable transitions after dragging
+      dialogRef.current.style.transition = '';
+    }
+    
+    // Update the position state with the final position
+    if (finalPosition) {
+      console.log('💾 DRAG END: Setting final position state', finalPosition);
+      setPosition(finalPosition);
+      
+      // Use setTimeout to ensure this runs after React state updates
+      setTimeout(() => {
+        // Final position update to ensure it's saved in context
+        updateDialogPosition(finalPosition!);
+        console.log('⭐ DRAG END: Position update completed');
+      }, 0);
+    }
+    
     // Mark as no longer dragging
     setIsDragging(false);
     dragStateRef.current.dragging = false;
-    
-    // Update position state once more to ensure it's saved in context
-    if (dialogRef.current && position) {
-      console.log('💾 Final position saved', position);
-      
-      // Re-enable transitions
-      dialogRef.current.style.transition = '';
-    }
   };
   
   // Ensure resizing state is synced between state and ref
@@ -355,7 +469,7 @@ export const MeetingDialogContent = forwardRef<
     e.stopPropagation();
     
     // Ensure dialog is focused
-    focusMeetingDialog(dialogId);
+    focusDialog(dialogId);
     
     // Store starting size and mouse position
     if (dialogRef.current) {
@@ -477,7 +591,8 @@ export const MeetingDialogContent = forwardRef<
     });
   };
   
-  const handleResizeEnd = () => {
+  // Handle the end of resizing
+  const handleResizeEnd = (e: MouseEvent) => {
     console.log('⏹️ RESIZE END', { dialogId });
     
     window.removeEventListener('mousemove', handleResizeMove);
@@ -493,10 +608,41 @@ export const MeetingDialogContent = forwardRef<
       // Re-enable transitions
       dialogRef.current.style.transition = '';
       
-      console.log('💾 Final size saved', {
-        width: dialogRef.current.style.width,
-        height: dialogRef.current.style.height
+      // Get current size and position
+      const rect = dialogRef.current.getBoundingClientRect();
+      const currentSize = {
+        width: rect.width,
+        height: rect.height
+      };
+      
+      const currentPosition = {
+        x: rect.left,
+        y: rect.top
+      };
+      
+      console.log('💾 Final size and position saved', {
+        size: currentSize,
+        position: currentPosition
       });
+      
+      // Save to context
+      const dialogData = getDialogData(dialogId);
+      
+      if (dialogData) {
+        // Create updated dialog data
+        const updatedDialogData: MeetingDialogData = {
+          ...dialogData,
+          size: currentSize,
+          position: currentPosition
+        };
+        
+        // Update in context
+        setDialogs((prevDialogs: MeetingDialogData[]) => {
+          return prevDialogs.map((d: MeetingDialogData) => 
+            d.id === dialogId ? updatedDialogData : d
+          );
+        });
+      }
     }
   };
   
@@ -511,7 +657,7 @@ export const MeetingDialogContent = forwardRef<
     e.stopPropagation();
     
     // Ensure the dialog is focused
-    focusMeetingDialog(dialogId);
+    focusDialog(dialogId);
     
     // Calculate the offset from the current touch position to the dialog position
     const rect = dialogRef.current.getBoundingClientRect();
@@ -582,10 +728,28 @@ export const MeetingDialogContent = forwardRef<
     setIsDragging(false);
     dragStateRef.current.dragging = false;
     
-    // Update position state once more to ensure it's saved in context
+    // Save the final position to context
     if (dialogRef.current && position) {
       // Re-enable transitions
       dialogRef.current.style.transition = '';
+      
+      // Update position in the context
+      const dialogData = getDialogData(dialogId);
+      
+      if (dialogData && position) {
+        // Create updated dialog data
+        const updatedDialogData: MeetingDialogData = {
+          ...dialogData,
+          position: position
+        };
+        
+        // Update in context
+        setDialogs((prevDialogs: MeetingDialogData[]) => {
+          return prevDialogs.map((d: MeetingDialogData) => 
+            d.id === dialogId ? updatedDialogData : d
+          );
+        });
+      }
     }
   };
   
@@ -638,11 +802,24 @@ export const MeetingDialogContent = forwardRef<
   const finalPosition = position || dialogData?.position;
   const finalSize = size || dialogData?.size;
   
+  // Function to close the dialog
+  const handleClose = (e?: React.MouseEvent) => {
+    if (e) {
+      e.stopPropagation();
+    }
+    closeMeetingDialog(dialogId);
+    
+    // Call the onClose callback if provided
+    if (onClose) {
+      onClose();
+    }
+  };
+  
   return (
     <div
       ref={dialogRef}
       className={cn(
-        "fixed z-50 gap-4 bg-background p-6 shadow-lg transition-all duration-200 data-[state=open]:animate-in data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=open]:fade-in-0 data-[state=closed]:zoom-out-95 data-[state=open]:zoom-in-95 data-[state=closed]:slide-out-to-left-1/2 data-[state=closed]:slide-out-to-top-[48%] data-[state=open]:slide-in-from-left-1/2 data-[state=open]:slide-in-from-top-[48%] rounded-lg border",
+        "fixed z-50 gap-4 bg-background p-0 shadow-lg transition-all duration-200 data-[state=open]:animate-in data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=open]:fade-in-0 data-[state=closed]:zoom-out-95 data-[state=open]:zoom-in-95 data-[state=closed]:slide-out-to-left-1/2 data-[state=closed]:slide-out-to-top-[48%] data-[state=open]:slide-in-from-left-1/2 data-[state=open]:slide-in-from-top-[48%] rounded-lg border flex flex-col",
         isMinimized ? "opacity-0 pointer-events-none invisible" : "opacity-100 visible",
         isMaximized && "inset-0 rounded-none",
         isActive && "ring-2 ring-ring",
@@ -680,7 +857,7 @@ export const MeetingDialogContent = forwardRef<
       <div 
         className={cn(
           "absolute top-0 left-0 right-0 h-10 bg-muted flex items-center justify-between px-4 cursor-move rounded-t-lg",
-          isDragging && "cursor-grabbing",
+          isDragging && "cursor-grabbing bg-blue-100 dark:bg-blue-900/30",
           !isMaximized && "hover:bg-muted/80"
         )}
         onMouseDown={handleDragStart}
@@ -699,7 +876,7 @@ export const MeetingDialogContent = forwardRef<
             className="rounded-full h-6 w-6 inline-flex items-center justify-center text-muted-foreground hover:bg-accent hover:text-accent-foreground"
             onClick={() => {
               console.log('🔽 Minimize button clicked', { dialogId, isMinimized });
-              minimizeMeetingDialog(dialogId, true);
+              minimizeDialog(dialogId, true);
               console.log('🔽 After minimize call', { dialogId });
             }}
             title="Minimize"
@@ -708,7 +885,7 @@ export const MeetingDialogContent = forwardRef<
           </button>
           <button
             className="rounded-full h-6 w-6 inline-flex items-center justify-center text-muted-foreground hover:bg-accent hover:text-accent-foreground"
-            onClick={() => maximizeMeetingDialog(dialogId, !isMaximized)}
+            onClick={() => maximizeDialog(dialogId, !isMaximized)}
             title={isMaximized ? "Restore" : "Maximize"}
           >
             {isMaximized ? <Minimize2 className="h-4 w-4" /> : <Maximize2 className="h-4 w-4" />}
@@ -716,7 +893,7 @@ export const MeetingDialogContent = forwardRef<
           {showCloseButton && (
             <button
               className="rounded-full h-6 w-6 inline-flex items-center justify-center text-muted-foreground hover:bg-accent hover:text-accent-foreground"
-              onClick={() => closeMeetingDialog(dialogId)}
+              onClick={handleClose}
               title="Close"
             >
               <X className="h-4 w-4" />
@@ -724,7 +901,7 @@ export const MeetingDialogContent = forwardRef<
           )}
         </div>
       </div>
-      <div className="pt-6">
+      <div className="pt-6 overflow-y-auto max-h-[calc(100vh-150px)] px-6 pb-6">
         {children}
       </div>
       
@@ -828,18 +1005,49 @@ MeetingDialogDescription.displayName = 'MeetingDialogDescription';
 
 // Container to render all open dialogs
 export const MeetingDialogContainer = () => {
-  const { openDialogs, getAllMeetingDialogs } = useMeetingDialog();
+  const { dialogs, getAllDialogs } = useMeetingDialog();
   
-  // Re-render when dialogs change
-  const dialogsToRender = getAllMeetingDialogs();
+  // Get all dialogs to render
+  const dialogsToRender = getAllDialogs();
+  console.log('🔍🔍 CONTAINER: MeetingDialogContainer rendering', {
+    dialogsCount: dialogsToRender.length,
+    dialogIds: dialogsToRender.map(d => d.id)
+  });
+  
+  // Add effect to log when container is mounted/updated
+  useEffect(() => {
+    console.log('🔍🔍 CONTAINER: MeetingDialogContainer mounted/updated', {
+      dialogsCount: dialogsToRender.length,
+      dialogIds: dialogsToRender.map(d => d.id)
+    });
+    
+    return () => {
+      console.log('🔍🔍 CONTAINER: MeetingDialogContainer unmounted');
+    };
+  }, [dialogsToRender]);
+  
+  // If no dialogs, render nothing
+  if (dialogsToRender.length === 0) {
+    console.log('🔍🔍 CONTAINER: No dialogs to render');
+    return null;
+  }
   
   return (
     <>
-      {dialogsToRender.map((dialog) => (
-        <React.Fragment key={dialog.id}>
-          {dialog.component}
-        </React.Fragment>
-      ))}
+      {dialogsToRender.map((dialog: MeetingDialogData) => {
+        console.log('🔍🔍 CONTAINER: Rendering dialog:', dialog.id);
+        return (
+          <React.Fragment key={dialog.id}>
+            {dialog.content ? (
+              dialog.content
+            ) : (
+              <div className="fixed top-10 left-10 p-4 bg-destructive text-white z-50 rounded">
+                Error: Dialog content is empty for dialog {dialog.id}
+              </div>
+            )}
+          </React.Fragment>
+        );
+      })}
     </>
   );
 }; 

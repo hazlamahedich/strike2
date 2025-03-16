@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react';
 import { MeetingList } from './MeetingList';
 import { MeetingCalendar } from './MeetingCalendar';
-import { EnhancedCalendar } from './EnhancedCalendar';
+import { EnhancedCalendar, EnhancedCalendarWithProvider } from './EnhancedCalendar';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { CalendarDays, List, Plus } from 'lucide-react';
 import { Button } from '@/components/ui/button';
@@ -126,7 +126,7 @@ export function MeetingView() {
         </TabsContent>
         
         <TabsContent value="fullcalendar" className="mt-0 w-full">
-          <EnhancedCalendar />
+          <EnhancedCalendarWithProvider />
         </TabsContent>
       </Tabs>
     </div>

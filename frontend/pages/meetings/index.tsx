@@ -29,7 +29,15 @@ interface ApiResponse<T> {
   error: ApiError | null;
 }
 
-export default function MeetingsPage() {
+// Import meeting dialog components
+import { MeetingDialogProvider } from '@/lib/contexts/MeetingDialogContext';
+import { MeetingDialogContainer } from '@/components/ui/meeting-dialog';
+import { MeetingDialogTaskbar } from '@/components/ui/meeting-dialog-taskbar';
+import { ContextualEnhancedMeetingDetails } from '@/components/meetings/ContextualEnhancedMeetingDetails';
+import { MeetingDialogType, useMeetingDialog } from '@/lib/contexts/MeetingDialogContext';
+
+// Wrap the main page component with MeetingDialogProvider
+const MeetingsPageContent = () => {
   const router = useRouter();
   const [activeTab, setActiveTab] = useState('calendar');
   const [meetings, setMeetings] = useState<Meeting[]>([]);
@@ -39,6 +47,9 @@ export default function MeetingsPage() {
   const [showMeetingDetails, setShowMeetingDetails] = useState(false);
   const [selectedMeeting, setSelectedMeeting] = useState<Meeting | null>(null);
   const [selectedTimeSlot, setSelectedTimeSlot] = useState<TimeSlot | null>(null);
+  
+  // Access the meeting dialog context
+  const { openMeetingDialog } = useMeetingDialog();
   
   // Load meetings and leads data
   useEffect(() => {
@@ -118,7 +129,33 @@ export default function MeetingsPage() {
   // Handle meeting selection from calendar
   const handleMeetingSelected = (meeting: Meeting) => {
     setSelectedMeeting(meeting);
-    setShowMeetingDetails(true);
+    
+    // Use the ContextualEnhancedMeetingDetails component with MeetingDialogContext
+    const dialogId = `meeting-details-${meeting.id}`;
+    
+    const dialogContent = (
+      <ContextualEnhancedMeetingDetails
+        dialogId={dialogId}
+        meeting={meeting}
+        onClose={() => {
+          // Refresh meetings after a meeting is updated
+          const fetchMeetings = async () => {
+            try {
+              const { data } = await getMeetings();
+              if (data) {
+                setMeetings(data);
+              }
+            } catch (error) {
+              console.error('Error refreshing meetings:', error);
+            }
+          };
+          
+          fetchMeetings();
+        }}
+      />
+    );
+    
+    openMeetingDialog(dialogId, MeetingDialogType.DETAILS, dialogContent, { meeting });
   };
   
   return (
@@ -207,19 +244,17 @@ export default function MeetingsPage() {
           />
         </DialogContent>
       </Dialog>
-      
-      {/* Meeting Details Dialog */}
-      <Dialog open={showMeetingDetails} onOpenChange={setShowMeetingDetails}>
-        <DialogContent className="max-w-3xl">
-          {selectedMeeting && (
-            <EnhancedMeetingDetails
-              meeting={selectedMeeting}
-              onUpdate={handleMeetingUpdated}
-              onClose={() => setShowMeetingDetails(false)}
-            />
-          )}
-        </DialogContent>
-      </Dialog>
     </div>
+  );
+};
+
+// Wrap the page with the MeetingDialogProvider
+export default function MeetingsPage() {
+  return (
+    <MeetingDialogProvider>
+      <MeetingsPageContent />
+      <MeetingDialogContainer />
+      <MeetingDialogTaskbar />
+    </MeetingDialogProvider>
   );
 } 

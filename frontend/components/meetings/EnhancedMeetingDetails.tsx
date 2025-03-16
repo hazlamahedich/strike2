@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { format, parseISO, addDays } from 'date-fns';
 import { 
   Clock, MapPin, User, Calendar, FileText, 
@@ -13,7 +13,6 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Badge } from '@/components/ui/badge';
 import { Textarea } from '@/components/ui/textarea';
 import { toast } from 'sonner';
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Input } from '@/components/ui/input';
 import RichTextEditor from '../communications/RichTextEditor';
@@ -22,7 +21,6 @@ import { Meeting, MeetingStatus, MeetingUpdate } from '@/lib/types/meeting';
 import { updateMeeting } from '@/lib/api/meetings';
 import { ApiResponse } from '@/lib/api/apiClient';
 import { 
-  getMeetingSummaryAI as getMeetingSummary, 
   generateFollowUpMessage,
   scheduleFollowUpTask,
   generateMeetingAgenda,
@@ -32,15 +30,18 @@ import {
   MeetingAgendaRequest
 } from '@/lib/services/aiMeetingService';
 import { sendEmail } from '@/lib/services/communicationService';
-import { PhoneDialog } from '../communications/PhoneDialog';
-import { EmailDialog } from '../communications/EmailDialog';
 import { EnhancedMeetingForm } from './EnhancedMeetingForm';
 import supabase from '@/lib/supabase/client';
 import { useSession } from 'next-auth/react';
 import { VersionHistory } from '@/components/meetings/VersionHistory';
 import { useToast } from '@/components/ui/use-toast';
-import AgendaSummaryDialog from './AgendaSummaryDialog';
-import ComprehensiveSummaryDialog from './ComprehensiveSummaryDialog';
+import { ContextualPhoneDialog } from '../communications/ContextualPhoneDialog';
+import { ContextualEmailDialog } from '../communications/ContextualEmailDialog';
+import { ContextualRescheduleDialog } from './ContextualRescheduleDialog';
+import { ContextualAgendaDialog } from './ContextualAgendaDialog';
+import { ContextualComprehensiveSummaryDialog } from './ContextualComprehensiveSummaryDialog';
+import { useMeetingDialog, MeetingDialogType } from '@/contexts/MeetingDialogContext';
+import { ContextualFollowUpDialog } from './ContextualFollowUpDialog';
 
 // Extend the Meeting type to include agenda_items
 interface EnhancedMeeting extends Meeting {
@@ -63,6 +64,9 @@ export function EnhancedMeetingDetails({
   // Get the authenticated user's session
   const { data: session } = useSession();
   
+  // Access the meeting dialog context at the top level of the component
+  const meetingDialog = useMeetingDialog();
+  
   // Early return if meeting is null or undefined
   if (!meeting) {
     console.error('EnhancedMeetingDetails: meeting object is null or undefined');
@@ -79,30 +83,35 @@ export function EnhancedMeetingDetails({
     );
   }
   
-  // State for phone and email dialogs
-  const [showPhoneDialog, setShowPhoneDialog] = useState(false);
-  const [showEmailDialog, setShowEmailDialog] = useState(false);
-  const [showRescheduleDialog, setShowRescheduleDialog] = useState(false);
+  // State for reschedule dialog - Remove the showRescheduleDialog state
+  // const [showRescheduleDialog, setShowRescheduleDialog] = useState(false);
   const [isRescheduling, setIsRescheduling] = useState(false);
   
   // Add state for showing version history
   const [showVersionHistory, setShowVersionHistory] = useState(false);
   
-  // Handle opening the phone dialog
-  const handleOpenPhoneDialog = () => {
-    if (meeting?.lead?.phone) {
-      setShowPhoneDialog(true);
-    } else {
-      toast.error("No phone number", {
-        description: "This lead doesn't have a phone number.",
-      });
-    }
-  };
-  
-  // Handle opening the email dialog
+  // Handle opening the email dialog using React Context
   const handleOpenEmailDialog = () => {
     if (meeting?.lead?.email) {
-      setShowEmailDialog(true);
+      // Use React Context dialog approach
+      const dialogId = `email-dialog-${meeting.id}-${Date.now()}`;
+      console.log('⭐⭐⭐ MEETING DETAILS: Opening email dialog with React Context, ID:', dialogId);
+      
+      // Use the meetingDialog from the component scope
+      const dialogContent = (
+        <ContextualEmailDialog
+          dialogId={dialogId}
+          leadEmail={meeting.lead.email}
+          leadName={meeting.lead.first_name + ' ' + meeting.lead.last_name}
+          handleClose={() => {
+            console.log('⭐⭐⭐ MEETING DETAILS: Email dialog closed via handleClose callback');
+            meetingDialog.closeMeetingDialog(dialogId);
+          }}
+          handleEmailSuccess={handleEmailSuccess}
+        />
+      );
+      
+      meetingDialog.openMeetingDialog(dialogId, MeetingDialogType.EMAIL, dialogContent, { meeting });
     } else {
       toast.error("No email address", {
         description: "This lead doesn't have an email address.",
@@ -110,9 +119,26 @@ export function EnhancedMeetingDetails({
     }
   };
   
-  // Handle opening the reschedule dialog
+  // Handle opening the reschedule dialog using React Context
   const handleOpenRescheduleDialog = () => {
-    setShowRescheduleDialog(true);
+    // Use React Context dialog approach
+    const dialogId = `reschedule-dialog-${meeting.id}-${Date.now()}`;
+    console.log('⭐⭐⭐ MEETING DETAILS: Opening reschedule dialog with React Context, ID:', dialogId);
+    
+    // Use the meetingDialog from the component scope
+    const dialogContent = (
+      <ContextualRescheduleDialog
+        dialogId={dialogId}
+        meeting={meeting}
+        handleClose={() => {
+          console.log('⭐⭐⭐ MEETING DETAILS: Reschedule dialog closed via handleClose callback');
+          meetingDialog.closeMeetingDialog(dialogId);
+        }}
+        handleRescheduleSuccess={handleRescheduleSuccess}
+      />
+    );
+    
+    meetingDialog.openMeetingDialog(dialogId, MeetingDialogType.RESCHEDULE, dialogContent, { meeting });
   };
   
   // Log activity function
@@ -310,78 +336,35 @@ END:VCALENDAR`;
       onUpdate(updatedMeeting as EnhancedMeeting);
     }
     
-    // Try to log the activity but don't let it block the process
-    try {
-      await logActivity('meeting_rescheduled', {
-        meeting_id: meeting.id,
-        new_start_time: rescheduledMeeting.start_time,
-        new_end_time: rescheduledMeeting.end_time,
-        description: rescheduledMeeting.start_time ? 
-          `Meeting has been rescheduled to ${format(parseISO(rescheduledMeeting.start_time), 'EEEE, MMMM d, yyyy h:mm a')}` :
-          'Meeting has been rescheduled',
-      });
-    } catch (error) {
-      // Log but continue with the process
-      console.error('Failed to log meeting reschedule activity:', error);
-    }
+    // Send calendar invite with updated meeting details
+    const inviteResult = await sendCalendarInvite(rescheduledMeeting);
     
-    // Send calendar invite
-    if (meeting.lead?.email) {
-      try {
-        const inviteResponse = await sendCalendarInvite(rescheduledMeeting);
-        
-        if (inviteResponse.success) {
-          toast.success("Meeting Rescheduled", {
-            description: `Meeting has been rescheduled to ${format(parseISO(rescheduledMeeting.start_time), 'EEEE, MMMM d, yyyy h:mm a')}. Calendar invite sent to ${meeting.lead.first_name} ${meeting.lead.last_name} (${meeting.lead.email}).`,
-          });
-        } else {
-          toast.success("Meeting Rescheduled", {
-            description: `Meeting has been rescheduled to ${format(parseISO(rescheduledMeeting.start_time), 'EEEE, MMMM d, yyyy h:mm a')}, but failed to send calendar invite.`,
-          });
-          
-          toast.error("Failed to send calendar invite", {
-            description: `Could not send calendar invite to ${meeting.lead.email}: ${inviteResponse.message}`,
-          });
-        }
-      } catch (emailError) {
-        console.error('Error sending calendar invite:', emailError);
-        toast.success("Meeting Rescheduled", {
-          description: `Meeting has been rescheduled to ${format(parseISO(rescheduledMeeting.start_time), 'EEEE, MMMM d, yyyy h:mm a')}`,
-        });
-        toast.error("Failed to send calendar invite", {
-          description: `An unexpected error occurred while sending the calendar invite.`,
-        });
-      }
+    // Log the activity
+    await logActivity('meeting_rescheduled', {
+      previous_time: meeting.start_time,
+      new_time: rescheduledMeeting.start_time,
+      invited_parties: [meeting.lead?.email],
+      calendar_invite_sent: inviteResult.success
+    });
+    
+    // Show success/error toast based on the result of sending the calendar invite
+    if (!inviteResult.success) {
+      console.error('Error sending calendar invite:', inviteResult.message);
+      toast.warning("Meeting Rescheduled", {
+        description: `Meeting has been rescheduled, but there was an error sending the calendar invite: ${inviteResult.message}`,
+      });
     } else {
       toast.success("Meeting Rescheduled", {
         description: `Meeting has been rescheduled to ${format(parseISO(rescheduledMeeting.start_time), 'EEEE, MMMM d, yyyy h:mm a')}`,
       });
     }
     
-    setShowRescheduleDialog(false);
+    // No need to close the dialog, it will be closed by the context's handleClose callback
     
     // Close the meeting details dialog if onClose is provided
     if (onClose) {
       onClose();
     }
-  };
-  
-  // Handle phone call success
-  const handlePhoneCallSuccess = (callData: { phoneNumber: string; duration: number; notes: string }) => {
-    console.log('Phone call completed:', callData);
-    toast.success("Call completed", {
-      description: `Call to ${callData.phoneNumber} completed (${callData.duration} seconds)`,
-    });
-    setShowPhoneDialog(false);
-  };
-  
-  // Handle email success
-  const handleEmailSuccess = (emailData: { to: string; subject: string; body: string }) => {
-    console.log('Email sent:', emailData);
-    toast.success("Email sent", {
-      description: `Email to ${emailData.to} sent successfully`,
-    });
-    setShowEmailDialog(false);
   };
   
   // Handle cancel meeting
@@ -457,19 +440,10 @@ END:VCALENDAR`;
   const [notes, setNotes] = useState(meeting.notes || '');
   const [isLoading, setIsLoading] = useState(false);
   const [activeTab, setActiveTab] = useState('details');
-  const [meetingSummary, setMeetingSummary] = useState<{ summary: string; action_items: string[] } | null>(
-    meeting.summary && meeting.action_items ? 
-    { summary: meeting.summary, action_items: meeting.action_items } : 
-    null
-  );
-  const [isLoadingSummary, setIsLoadingSummary] = useState(false);
   const [followUpMessage, setFollowUpMessage] = useState<string | null>(null);
   const [editableSubject, setEditableSubject] = useState('');
   const [editableMessage, setEditableMessage] = useState('');
   const [isLoadingFollowUp, setIsLoadingFollowUp] = useState(false);
-  const [showFollowUpDialog, setShowFollowUpDialog] = useState(false);
-  const [isSchedulingFollowUp, setIsSchedulingFollowUp] = useState(false);
-  const [isSendingEmail, setIsSendingEmail] = useState(false);
   const [isLoadingAgendaSuggestions, setIsLoadingAgendaSuggestions] = useState(false);
   const [isLoadingComprehensiveSummary, setIsLoadingComprehensiveSummary] = useState(false);
   const [comprehensiveSummary, setComprehensiveSummary] = useState<{
@@ -486,13 +460,6 @@ END:VCALENDAR`;
     };
   } | null>(meeting.comprehensive_summary || null);
   const [comprehensiveSummaryError, setComprehensiveSummaryError] = useState<string | null>(null);
-  const [scheduledTaskDetails, setScheduledTaskDetails] = useState<{
-    task_id: string;
-    scheduled_date: string;
-    title: string;
-    description: string;
-  } | null>(null);
-  const [showTaskConfirmation, setShowTaskConfirmation] = useState(false);
   const [attachments, setAttachments] = useState<File[]>([]);
   const [existingAttachments, setExistingAttachments] = useState<Array<{
     id: string;
@@ -519,14 +486,6 @@ END:VCALENDAR`;
     // Initialize notes from meeting
     setNotes(meeting.notes || '');
     
-    // Initialize summary data from meeting
-    if (meeting.summary && meeting.action_items) {
-      setMeetingSummary({ 
-        summary: meeting.summary, 
-        action_items: meeting.action_items 
-      });
-    }
-    
     // Initialize existing attachments from meeting
     if (meeting.displayAttachments && meeting.displayAttachments.length > 0) {
       setExistingAttachments(meeting.displayAttachments);
@@ -550,9 +509,12 @@ END:VCALENDAR`;
       console.log('Setting comprehensive summary from meeting:', meeting.comprehensive_summary);
       setComprehensiveSummary(meeting.comprehensive_summary);
       
-      // If we have a comprehensive summary, make sure the summary tab is active
-      if (activeTab !== 'summary') {
-        setActiveTab('summary');
+      // Make sure default tab is always 'details'
+      if (!isComponentMounted.current) {
+        if (activeTab !== 'details') {
+          setActiveTab('details');
+        }
+        isComponentMounted.current = true;
       }
     } else {
       console.log('No comprehensive summary found in meeting data');
@@ -673,65 +635,11 @@ END:VCALENDAR`;
     }
   };
   
-  // Generate meeting summary
-  const generateSummary = async () => {
-    setIsLoadingSummary(true);
-    try {
-      const { data, error } = await getMeetingSummary(meeting.id.toString());
-      
-      if (error) {
-        throw new Error(error.message);
-      }
-      
-      setMeetingSummary(data);
-      setActiveTab('summary');
-      
-      try {
-        // Save summary to meeting object
-        const { data: updatedMeeting, error: updateError } = await updateMeeting(meeting.id.toString(), { 
-          summary: data.summary,
-          action_items: data.action_items
-        });
-        
-        if (updateError) {
-          console.error('Error saving summary to meeting:', updateError);
-          toast.error("Warning", {
-            description: "Summary generated but could not be saved to the meeting record.",
-          });
-        } else if (onUpdate && updatedMeeting) {
-          // Preserve existing comprehensive summary if present
-          const updatedMeetingWithComprehensive = {
-            ...updatedMeeting,
-            comprehensive_summary: meeting.comprehensive_summary,
-            agenda_items: meeting.agenda_items
-          };
-          onUpdate(updatedMeetingWithComprehensive as EnhancedMeeting);
-          
-          toast.success("Summary generated and saved.");
-        }
-      } catch (innerError) {
-        console.error('Error saving summary to meeting:', innerError);
-        toast.error("Warning", {
-          description: "Summary generated but could not be saved to the meeting record.",
-        });
-      }
-    } catch (error) {
-      console.error('Error generating meeting summary:', error);
-      toast.error('Error', {
-        description: 'Failed to generate meeting summary',
-      });
-    } finally {
-      setIsLoadingSummary(false);
-    }
-  };
-  
   // Generate follow-up message
   const generateFollowUp = async () => {
     setIsLoadingFollowUp(true);
-    // Reset task confirmation state to ensure we show the message dialog first
-    setShowTaskConfirmation(false);
     try {
-      console.log('Generating follow-up for meeting ID:', meeting.id.toString());
+      console.log('⭐⭐⭐ FOLLOW UP: Generating follow-up for meeting ID:', meeting.id.toString());
       
       // Check if meeting ID is valid
       if (!meeting.id) {
@@ -739,11 +647,11 @@ END:VCALENDAR`;
       }
       
       // Log the meeting object for debugging
-      console.log('Meeting object:', meeting);
+      console.log('⭐⭐⭐ FOLLOW UP: Meeting object:', meeting);
       
       const { data, error } = await generateFollowUpMessage(meeting.id.toString());
       
-      console.log('Follow-up API response:', { data, error });
+      console.log('⭐⭐⭐ FOLLOW UP: API response:', { data, error });
       
       if (error) {
         console.error('Error details:', error);
@@ -764,7 +672,7 @@ END:VCALENDAR`;
         phone: ((session?.user || {}) as any).phone || '(555) 123-4567'
       };
       
-      console.log('User profile for email:', userProfile);
+      console.log('⭐⭐⭐ FOLLOW UP: User profile for email:', userProfile);
       
       // Replace placeholders with actual values
       let personalizedMessage = data.message;
@@ -795,13 +703,42 @@ END:VCALENDAR`;
         return `<p>${withLineBreaks}</p>`;
       }).join('');
       
-      console.log('Formatted message for rich text editor:', formattedMessage);
+      console.log('⭐⭐⭐ FOLLOW UP: Formatted message for rich text editor:', formattedMessage);
       
+      // Store the follow-up message in state
       setFollowUpMessage(formattedMessage);
+      
       // Initialize editable fields with the generated content
       setEditableSubject(data.subject);
       setEditableMessage(formattedMessage);
-      setShowFollowUpDialog(true);
+      
+      // Use React Context dialog approach instead of Radix UI Dialog
+      const dialogId = `follow-up-dialog-${meeting.id}-${Date.now()}`;
+      console.log('⭐⭐⭐ FOLLOW UP: Opening follow-up dialog with React Context, ID:', dialogId);
+      
+      const dialogContent = (
+        <ContextualFollowUpDialog
+          dialogId={dialogId}
+          leadEmail={meeting.lead?.email}
+          leadId={meeting.lead?.id}
+          leadName={meeting.lead ? `${meeting.lead.first_name} ${meeting.lead.last_name}` : ''}
+          meetingId={meeting.id.toString()}
+          followUpMessage={formattedMessage}
+          subject={data.subject}
+          handleClose={() => {
+            console.log('⭐⭐⭐ FOLLOW UP: Dialog closed via handleClose callback');
+            meetingDialog.closeMeetingDialog(dialogId);
+          }}
+        />
+      );
+      
+      meetingDialog.openMeetingDialog(
+        dialogId, 
+        MeetingDialogType.EMAIL, // Use EMAIL type since FOLLOW_UP doesn't exist
+        dialogContent, 
+        { meeting }
+      );
+      
     } catch (error) {
       console.error('Error generating follow-up message:', error);
       
@@ -818,74 +755,6 @@ END:VCALENDAR`;
       });
     } finally {
       setIsLoadingFollowUp(false);
-    }
-  };
-  
-  // Schedule follow-up task
-  const scheduleFollowUp = async (daysDelay: number = 3) => {
-    setIsSchedulingFollowUp(true);
-    try {
-      console.log(`Scheduling follow-up task for meeting ID: ${meeting.id} with ${daysDelay} days delay`);
-      
-      const dueDate = new Date();
-      dueDate.setDate(dueDate.getDate() + daysDelay);
-      
-      const taskDetails = {
-        title: `Follow up with ${meeting.lead?.first_name} ${meeting.lead?.last_name}`,
-        description: `Follow up on meeting: ${meeting.title}`,
-        due_date: dueDate.toISOString()
-      };
-      
-      // Check if meeting ID is valid
-      if (!meeting.id) {
-        throw new Error('Meeting ID is missing or invalid');
-      }
-      
-      const { data, error } = await scheduleFollowUpTask(meeting.id.toString(), taskDetails);
-      
-      console.log('Schedule follow-up response:', { data, error });
-      
-      if (error) {
-        console.error('Error details:', error);
-        throw error;
-      }
-      
-      if (!data || !data.task_id) {
-        console.error('Invalid response data:', data);
-        throw new Error('Received invalid response data from the server');
-      }
-      
-      toast.success('Follow-up task scheduled successfully');
-      
-      // Store the scheduled task details - use our local data since API only returns task_id
-      setScheduledTaskDetails({
-        task_id: data.task_id,
-        scheduled_date: dueDate.toISOString(),
-        title: taskDetails.title,
-        description: taskDetails.description
-      });
-      
-      // Show the task confirmation dialog
-      setShowTaskConfirmation(true);
-      
-      // Don't close the follow-up dialog yet
-      // setShowFollowUpDialog(false);
-    } catch (error) {
-      console.error('Error scheduling follow-up task:', error);
-      
-      // Get more detailed error information
-      let errorMessage = 'Failed to schedule follow-up task';
-      
-      if (error instanceof Error) {
-        errorMessage = `Error: ${error.message}`;
-        console.error('Error stack:', error.stack);
-      }
-      
-      toast.error('Error', {
-        description: errorMessage,
-      });
-    } finally {
-      setIsSchedulingFollowUp(false);
     }
   };
   
@@ -929,16 +798,49 @@ END:VCALENDAR`;
         // Use fallback agenda items
         const fallbackItems = getFallbackAgendaItems(meeting.meeting_type);
         setAgendaSuggestions(fallbackItems);
-        setIsAgendaDialogOpen(true);
+        
+        // Use the contextual dialog approach
+        const dialogId = `agenda-dialog-${meeting.id}-${Date.now()}`;
+        console.log('⭐⭐⭐ MEETING DETAILS: Opening agenda dialog with React Context, ID:', dialogId);
+        
+        const dialogContent = (
+          <ContextualAgendaDialog
+            dialogId={dialogId}
+            agendaItems={fallbackItems}
+            meetingType={meeting.meeting_type}
+            handleClose={() => {
+              console.log('⭐⭐⭐ MEETING DETAILS: Agenda dialog closed via handleClose callback');
+              meetingDialog.closeMeetingDialog(dialogId);
+            }}
+            onAddToMeeting={addAgendaItemsToMeeting}
+          />
+        );
+        
+        meetingDialog.openMeetingDialog(dialogId, MeetingDialogType.AGENDA, dialogContent, { meeting });
         return;
       }
       
       // Store the suggested agenda items
       setAgendaSuggestions(data.agenda_items);
       
-      // Open the agenda dialog
-      setIsAgendaDialogOpen(true);
+      // Use the contextual dialog approach
+      const dialogId = `agenda-dialog-${meeting.id}-${Date.now()}`;
+      console.log('⭐⭐⭐ MEETING DETAILS: Opening agenda dialog with React Context, ID:', dialogId);
       
+      const dialogContent = (
+        <ContextualAgendaDialog
+          dialogId={dialogId}
+          agendaItems={data.agenda_items}
+          meetingType={meeting.meeting_type}
+          handleClose={() => {
+            console.log('⭐⭐⭐ MEETING DETAILS: Agenda dialog closed via handleClose callback');
+            meetingDialog.closeMeetingDialog(dialogId);
+          }}
+          onAddToMeeting={addAgendaItemsToMeeting}
+        />
+      );
+      
+      meetingDialog.openMeetingDialog(dialogId, MeetingDialogType.AGENDA, dialogContent, { meeting });
     } catch (error) {
       console.error('Error generating agenda suggestions:', error);
       toast.error("Error", {
@@ -985,162 +887,181 @@ END:VCALENDAR`;
   };
   
   // Generate comprehensive meeting summary
-  const handleGenerateComprehensiveSummary = async () => {
+  const handleGenerateComprehensiveSummary = async (e?: React.MouseEvent) => {
+    console.log('⚠️⚠️⚠️ BUTTON ACTION [1]: handleGenerateComprehensiveSummary START', { 
+      hasEvent: !!e, 
+      eventType: e ? e.type : 'none',
+      target: e ? e.target : 'none',
+      currentTarget: e ? e.currentTarget : 'none',
+      time: new Date().toISOString()
+    });
+    
+    // Prevent event propagation if an event object is provided
+    if (e) {
+      console.log('⚠️⚠️⚠️ BUTTON ACTION [2]: Preventing default behavior and stopping propagation');
+      e.preventDefault();
+      e.stopPropagation();
+      
+      if (e.nativeEvent) {
+        console.log('⚠️⚠️⚠️ BUTTON ACTION [3]: Stopping immediate propagation on native event');
+        e.nativeEvent.stopImmediatePropagation();
+      }
+    }
+    
+    console.log('⚠️⚠️⚠️ BUTTON ACTION [4]: Checking if comprehensiveSummary exists:', !!comprehensiveSummary);
+    
     // If we already have a summary, just show the dialog
     if (comprehensiveSummary) {
-      setIsComprehensiveSummaryDialogOpen(true);
-      return;
+      console.log('⚠️⚠️⚠️ BUTTON ACTION [5]: Comprehensive summary exists, calling openComprehensiveSummaryDialog');
+      return openComprehensiveSummaryDialog(e as React.MouseEvent);
     }
     
     // Otherwise, generate a new summary
+    console.log('⚠️⚠️⚠️ BUTTON ACTION [6]: No summary exists, starting generation process');
     setIsLoadingComprehensiveSummary(true);
     setComprehensiveSummaryError(null);
+    
+    console.log('⚠️⚠️⚠️ BUTTON ACTION [7]: Loading state set, proceeding with generation');
     
     toast.success("Generating Summary", {
       description: 'Generating comprehensive summary. This may take up to 30 seconds...',
     });
     
-    console.log('Generating comprehensive summary for meeting:', meeting.id);
+    console.log('⚠️⚠️⚠️ BUTTON ACTION [8]: Starting API call to generate comprehensive summary');
     
     try {
       // Call the API to generate the summary
+      console.log('⚠️⚠️⚠️ BUTTON ACTION [9]: Starting Promise.race with API call and timeout');
       const result = await Promise.race([
         getComprehensiveMeetingSummary(meeting.id),
         new Promise((_, reject) => setTimeout(() => reject(new Error('Timeout')), 60000))
       ]) as any;
       
-      console.log('Comprehensive summary API response:', result);
+      console.log('⚠️⚠️⚠️ BUTTON ACTION [10]: API call completed, result:', result);
       
       if (!result.data) {
+        console.log('⚠️⚠️⚠️ BUTTON ACTION [11]: No data returned from API');
         throw new Error('No data returned from API');
       }
       
       // Update the meeting in the database with the summary
+      console.log('⚠️⚠️⚠️ BUTTON ACTION [12]: Updating meeting in database with summary');
       const { data: updatedMeeting, error: updateError } = await updateMeeting(meeting.id, {
         comprehensive_summary: result.data
       });
       
       if (updateError) {
+        console.log('⚠️⚠️⚠️ BUTTON ACTION [13]: Error updating meeting:', updateError);
         throw new Error(updateError.message);
       }
       
       // Update the state with the comprehensive summary
+      console.log('⚠️⚠️⚠️ BUTTON ACTION [14]: Setting comprehensive summary state');
       setComprehensiveSummary(result.data);
       
       toast.success('Comprehensive summary generated successfully!');
       
-      // Open the dialog to show the summary
-      setIsComprehensiveSummaryDialogOpen(true);
+      // Open the dialog to show the summary using the contextual approach
+      console.log('⚠️⚠️⚠️ BUTTON ACTION [15]: Opening dialog to show new summary');
+      const timestamp = Date.now();
+      const randomId = Math.floor(Math.random() * 10000);
+      const dialogId = `comprehensive-summary-${meeting.id}-${timestamp}-${randomId}`;
+      console.log('⚠️⚠️⚠️ BUTTON ACTION [16]: Created dialog ID for new summary:', dialogId);
+      
+      const dialogContent = (
+        <ContextualComprehensiveSummaryDialog
+          dialogId={dialogId}
+          summary={result.data}
+          handleClose={() => {
+            console.log('⚠️⚠️⚠️ BUTTON ACTION [17]: Dialog close callback called for new summary dialog');
+            meetingDialog.closeMeetingDialog(dialogId);
+          }}
+        />
+      );
+      
+      // Open the dialog but don't pass the full meeting object, just the ID
+      console.log('⚠️⚠️⚠️ BUTTON ACTION [18]: Opening dialog for new summary');
+      meetingDialog.openMeetingDialog(
+        dialogId, 
+        MeetingDialogType.COMPREHENSIVE_SUMMARY, 
+        dialogContent, 
+        { meetingId: meeting.id }
+      );
+      console.log('⚠️⚠️⚠️ BUTTON ACTION [19]: New summary dialog opened');
       
       // Update the parent component with the updated meeting
       if (onUpdate && updatedMeeting) {
-        onUpdate(updatedMeeting);
+        console.log('⚠️⚠️⚠️ BUTTON ACTION [20]: SKIPPING onUpdate to prevent dialog refresh');
+        // Don't call onUpdate to avoid closing/reopening the dialog
+        // The comprehensive summary is shown in a separate dialog anyway
+        // onUpdate(updatedMeeting);
       }
     } catch (error) {
-      console.error('Error generating comprehensive summary:', error);
-      
-      // Create a fallback summary if the API fails
-      const fallbackSummary = {
-        summary: "We couldn't generate a comprehensive summary at this time. Please try again later.",
-        insights: [],
-        action_items: [],
-        next_steps: []
-      };
-      
-      setComprehensiveSummary(fallbackSummary);
-      
-      let errorMessage = 'Failed to generate comprehensive summary.';
-      
-      if (error instanceof Error) {
-        if (error.message === 'Timeout') {
-          errorMessage = 'The summary generation timed out. Please try again later.';
-        } else {
-          errorMessage = `Error: ${error.message}`;
-        }
-      }
-      
-      toast.error('Error', {
-        description: errorMessage,
+      console.error('⚠️⚠️⚠️ BUTTON ACTION [ERROR]: Error generating comprehensive summary:', error);
+      setComprehensiveSummaryError(error instanceof Error ? error.message : 'Unknown error');
+      toast.error("Error", {
+        description: error instanceof Error ? error.message : 'Failed to generate comprehensive summary'
       });
-      
-      setComprehensiveSummaryError(errorMessage);
     } finally {
+      console.log('⚠️⚠️⚠️ BUTTON ACTION [21]: Setting isLoadingComprehensiveSummary to false');
       setIsLoadingComprehensiveSummary(false);
     }
   };
   
-  // Handle sending email directly
-  const handleSendEmail = async () => {
-    if (!meeting.lead?.email) {
-      toast.error("No email address", {
-        description: "This lead doesn't have an email address.",
-      });
-      return;
+  // Function that isolates opening the comprehensive summary dialog
+  const openComprehensiveSummaryDialog = (e: React.MouseEvent) => {
+    console.log('⚠️⚠️⚠️ DIALOG OPEN [1]: openComprehensiveSummaryDialog START', {
+      eventType: e?.type,
+      target: e?.target,
+      currentTarget: e?.currentTarget,
+      time: new Date().toISOString(),
+      summaryExists: !!comprehensiveSummary
+    });
+    
+    // Stop all propagation and prevent default
+    console.log('⚠️⚠️⚠️ DIALOG OPEN [2]: Preventing default behavior and stopping propagation');
+    if (e) {
+      e.preventDefault();
+      e.stopPropagation();
+      
+      // Prevent the event from bubbling up
+      if (e.nativeEvent) {
+        console.log('⚠️⚠️⚠️ DIALOG OPEN [3]: Stopping immediate propagation on native event');
+        e.nativeEvent.stopImmediatePropagation();
+      }
     }
-
-    setIsSendingEmail(true);
-    try {
-      // Process attachments if any
-      const processedAttachments = await Promise.all(
-        attachments.map(async (file) => {
-          return new Promise<{
-            filename: string;
-            content: string;
-            content_type: string;
-            size: number;
-          }>((resolve, reject) => {
-            const reader = new FileReader();
-            reader.onload = () => {
-              const base64content = reader.result as string;
-              // Remove the data URL prefix (e.g., "data:application/pdf;base64,")
-              const base64Data = base64content.split(',')[1];
-              resolve({
-                filename: file.name,
-                content: base64Data,
-                content_type: file.type,
-                size: file.size,
-              });
-            };
-            reader.onerror = reject;
-            reader.readAsDataURL(file);
-          });
-        })
-      );
-      
-      // Call the email service to send the email
-      const response = await sendEmail({
-        to: meeting.lead.email,
-        subject: editableSubject,
-        content: editableMessage,
-        lead_id: meeting.lead.id ? Number(meeting.lead.id) : undefined,
-        attachments: processedAttachments,
-      });
-      
-      toast.success('Email sent successfully', {
-        description: `Your email to ${meeting.lead.email} has been sent.`,
-      });
-      
-      // Close the dialog
-      setShowFollowUpDialog(false);
-      
-      // Reset attachments
-      setAttachments([]);
-      
-      // Log the activity
-      console.log('Email sent:', {
-        to: meeting.lead.email,
-        subject: editableSubject,
-        attachments: attachments.map(file => file.name),
-      });
-      
-    } catch (error) {
-      console.error('Error sending email:', error);
-      toast.error('Failed to send email', {
-        description: 'There was an error sending your email. Please try again.',
-      });
-    } finally {
-      setIsSendingEmail(false);
-    }
+    
+    // Create a completely unique ID to avoid any potential conflicts
+    const timestamp = Date.now();
+    const randomString = Math.random().toString(36).substring(2, 8);
+    const dialogId = `comprehensive-summary-${timestamp}-${randomString}`;
+    
+    console.log('⚠️⚠️⚠️ DIALOG OPEN [4]: Created unique dialog ID:', dialogId);
+    console.log('⚠️⚠️⚠️ DIALOG OPEN [5]: Creating dialog content with summary');
+    
+    const dialogContent = (
+      <ContextualComprehensiveSummaryDialog
+        dialogId={dialogId}
+        summary={comprehensiveSummary}
+        handleClose={() => {
+          console.log('⚠️⚠️⚠️ DIALOG OPEN [6]: Dialog close callback called for ID:', dialogId);
+          meetingDialog.closeMeetingDialog(dialogId);
+        }}
+      />
+    );
+    
+    // Don't pass any meeting data at all to avoid re-renders
+    console.log('⚠️⚠️⚠️ DIALOG OPEN [7]: About to call meetingDialog.openMeetingDialog with empty data object');
+    meetingDialog.openMeetingDialog(
+      dialogId, 
+      MeetingDialogType.COMPREHENSIVE_SUMMARY, 
+      dialogContent,
+      {} // Empty object for data
+    );
+    
+    console.log('⚠️⚠️⚠️ DIALOG OPEN [8]: meetingDialog.openMeetingDialog called successfully');
+    // Return false to further ensure event doesn't propagate
+    return false;
   };
   
   // Handle file selection
@@ -1239,6 +1160,61 @@ END:VCALENDAR`;
     });
   };
   
+  // Handle opening the phone dialog using React Context
+  const handleOpenPhoneDialog = () => {
+    if (meeting?.lead?.phone) {
+      // Use React Context dialog approach
+      const dialogId = `phone-dialog-${meeting.id}-${Date.now()}`;
+      console.log('⭐⭐⭐ MEETING DETAILS: Opening phone dialog with React Context, ID:', dialogId);
+      
+      // Use the meetingDialog from the component scope instead of calling the hook here
+      const dialogContent = (
+        <ContextualPhoneDialog
+          dialogId={dialogId}
+          leadPhone={meeting.lead.phone}
+          leadName={meeting.lead.first_name + ' ' + meeting.lead.last_name}
+          handleClose={() => {
+            console.log('⭐⭐⭐ MEETING DETAILS: Phone dialog closed via handleClose callback');
+            meetingDialog.closeMeetingDialog(dialogId);
+          }}
+          handlePhoneCallSuccess={handlePhoneCallSuccess}
+        />
+      );
+      
+      meetingDialog.openMeetingDialog(dialogId, MeetingDialogType.PHONE, dialogContent, { meeting });
+    } else {
+      toast.error("No phone number", {
+        description: "This lead doesn't have a phone number.",
+      });
+    }
+  };
+  
+  // Handle phone call success
+  const handlePhoneCallSuccess = (callData: { phoneNumber: string; duration: number; notes: string }) => {
+    console.log('Phone call completed:', callData);
+    toast.success("Call completed", {
+      description: `Call to ${callData.phoneNumber} completed (${callData.duration} seconds)`,
+    });
+  };
+  
+  // Handle email success
+  const handleEmailSuccess = (emailData: { to: string; subject: string; body: string }) => {
+    console.log('Email sent:', emailData);
+    toast.success("Email sent", {
+      description: `Email to ${emailData.to} sent successfully`,
+    });
+  };
+  
+  // Initialize a ref to track component mount state
+  const isComponentMounted = useRef(false);
+
+  // Cleanup effect to reset ref on unmount
+  useEffect(() => {
+    return () => {
+      isComponentMounted.current = false;
+    };
+  }, []);
+
   return (
     <Card className="w-full max-w-full overflow-visible">
       <CardHeader>
@@ -1336,10 +1312,6 @@ END:VCALENDAR`;
           <TabsList className="mb-4">
             <TabsTrigger value="details">Details</TabsTrigger>
             <TabsTrigger value="notes">Notes</TabsTrigger>
-            <TabsTrigger value="summary">
-              AI Summary
-              {meetingSummary && <CheckCircle className="ml-1 h-3 w-3 text-green-500" />}
-            </TabsTrigger>
           </TabsList>
           
           <TabsContent value="details" className="space-y-4 overflow-x-auto styled-scrollbar min-w-full">
@@ -1429,29 +1401,52 @@ END:VCALENDAR`;
                 onClick={generateAgendaSuggestions}
                 disabled={isLoadingAgendaSuggestions}
               >
-                <ListChecks className="mr-1 h-4 w-4 text-blue-500" />
+                <Sparkles className="mr-1 h-4 w-4 text-blue-500" />
                 {isLoadingAgendaSuggestions ? 'Generating...' : 'AI Agenda Suggestions'}
               </Button>
               
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={generateSummary}
-                disabled={isLoadingSummary || !meeting.notes}
-              >
-                <Sparkles className="mr-1 h-4 w-4 text-blue-500" />
-                {isLoadingSummary ? 'Generating...' : 'Generate AI Summary'}
-              </Button>
-              
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={handleGenerateComprehensiveSummary}
-                disabled={isLoadingComprehensiveSummary}
-              >
-                <FileText className="mr-1 h-4 w-4 text-blue-500" />
-                {isLoadingComprehensiveSummary ? 'Generating...' : 'Comprehensive AI Summary'}
-              </Button>
+              {!comprehensiveSummary ? (
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={(e) => {
+                    console.log('⚠️⚠️⚠️ BUTTON CLICK [1]: Comprehensive Summary Generate button clicked', {
+                      eventType: e.type,
+                      target: e.target,
+                      meetingId: meeting.id,
+                      time: new Date().toISOString()
+                    });
+                    // Prevent default behavior and propagation
+                    e.preventDefault();
+                    e.stopPropagation();
+                    handleGenerateComprehensiveSummary(e);
+                  }}
+                  disabled={isLoadingComprehensiveSummary}
+                >
+                  <FileText className="mr-1 h-4 w-4 text-blue-500" />
+                  {isLoadingComprehensiveSummary ? 'Generating...' : 'Comprehensive AI Summary'}
+                </Button>
+              ) : (
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={(e) => {
+                    console.log('⚠️⚠️⚠️ BUTTON CLICK [2]: View Comprehensive Summary button clicked', {
+                      eventType: e.type,
+                      target: e.target,
+                      meetingId: meeting.id,
+                      time: new Date().toISOString(),
+                      summaryExists: !!comprehensiveSummary
+                    });
+                    // Directly call the isolated function without going through handleGenerateComprehensiveSummary
+                    openComprehensiveSummaryDialog(e);
+                  }}
+                  className="shadow-md hover:shadow-lg transition-all"
+                >
+                  <FileText className="mr-1 h-4 w-4 text-blue-500" />
+                  View Comprehensive Summary
+                </Button>
+              )}
               
               <Button
                 variant="outline"
@@ -1462,12 +1457,6 @@ END:VCALENDAR`;
                 <MessageSquare className="mr-1 h-4 w-4 text-blue-500" />
                 {isLoadingFollowUp ? 'Generating...' : 'Generate Follow-up'}
               </Button>
-              
-              {onClose && (
-                <Button variant="ghost" size="sm" onClick={onClose}>
-                  Close
-                </Button>
-              )}
             </div>
           </TabsContent>
           
@@ -1616,212 +1605,11 @@ END:VCALENDAR`;
               </div>
             </div>
           </TabsContent>
-          
-          <TabsContent value="summary" className="overflow-x-auto styled-scrollbar min-w-full" style={{ maxHeight: '60vh', overflowY: 'auto' }}>
-            {isLoadingSummary || isLoadingComprehensiveSummary ? (
-              <div className="space-y-4">
-                <Skeleton className="h-8 w-full" />
-                <Skeleton className="h-32 w-full" />
-                <Skeleton className="h-8 w-full" />
-                <Skeleton className="h-24 w-full" />
-              </div>
-            ) : comprehensiveSummary ? (
-              <div className="space-y-4 overflow-x-auto overflow-y-visible flex flex-col">
-                <div className="overflow-y-auto styled-scrollbar flex-grow" style={{ maxHeight: '50vh' }}>
-                  <div>
-                    <div className="flex justify-between items-center mb-2">
-                      <h3 className="text-sm font-medium">Comprehensive Meeting Summary</h3>
-                      <Button 
-                        variant="ghost" 
-                        size="sm" 
-                        onClick={() => setIsComprehensiveSummaryDialogOpen(true)}
-                        className="text-xs"
-                      >
-                        View in Dialog
-                      </Button>
-                    </div>
-                    <div className="p-3 bg-background border rounded-md text-sm overflow-x-auto whitespace-normal break-words text-foreground" style={{ maxHeight: '50vh', overflowY: 'auto' }}>
-                      {comprehensiveSummary.summary}
-                    </div>
-                  </div>
-                  
-                  {comprehensiveSummary.insights && comprehensiveSummary.insights.length > 0 && (
-                    <div>
-                      <h3 className="text-sm font-medium mb-2">Key Insights</h3>
-                      <ul className="space-y-2">
-                        {comprehensiveSummary.insights.map((item, index) => (
-                          <li key={index} className="flex items-start">
-                            <Sparkles className="h-4 w-4 text-purple-500 mt-0.5 mr-2 flex-shrink-0" />
-                            <span className="text-sm overflow-x-auto whitespace-normal break-words">{item}</span>
-                          </li>
-                        ))}
-                      </ul>
-                    </div>
-                  )}
-                  
-                  {comprehensiveSummary.action_items && comprehensiveSummary.action_items.length > 0 && (
-                    <div>
-                      <h3 className="text-sm font-medium mb-2">Action Items</h3>
-                      <ul className="space-y-2">
-                        {comprehensiveSummary.action_items.map((item, index) => (
-                          <li key={index} className="flex items-start">
-                            <CheckCircle className="h-4 w-4 text-green-500 mt-0.5 mr-2 flex-shrink-0" />
-                            <span className="text-sm overflow-x-auto whitespace-normal break-words">{item}</span>
-                          </li>
-                        ))}
-                      </ul>
-                    </div>
-                  )}
-                  
-                  {comprehensiveSummary.next_steps && comprehensiveSummary.next_steps.length > 0 && (
-                    <div>
-                      <h3 className="text-sm font-medium mb-2">Recommended Next Steps</h3>
-                      <ul className="space-y-2">
-                        {comprehensiveSummary.next_steps.map((item, index) => (
-                          <li key={index} className="flex items-start">
-                            <ArrowRight className="h-4 w-4 text-blue-500 mt-0.5 mr-2 flex-shrink-0" />
-                            <span className="text-sm overflow-x-auto whitespace-normal break-words">{item}</span>
-                          </li>
-                        ))}
-                      </ul>
-                    </div>
-                  )}
-                  
-                  {/* Add this section to display company analysis data in the comprehensive summary tab */}
-                  {comprehensiveSummary?.company_analysis && (
-                    <div className="mt-6 border-t pt-4">
-                      <h3 className="text-sm font-medium mb-2">Company Analysis</h3>
-                      
-                      {comprehensiveSummary.company_analysis.company_summary && (
-                        <div className="mb-3">
-                          <h4 className="text-xs font-medium text-gray-500 mb-1">Company Summary</h4>
-                          <p className="text-sm overflow-x-auto whitespace-normal break-words">{comprehensiveSummary.company_analysis.company_summary}</p>
-                        </div>
-                      )}
-                      
-                      <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mt-3">
-                        {comprehensiveSummary.company_analysis.industry && (
-                          <div>
-                            <h4 className="text-xs font-medium text-gray-500 mb-1">Industry</h4>
-                            <p className="text-sm overflow-x-auto whitespace-normal break-words">{comprehensiveSummary.company_analysis.industry}</p>
-                          </div>
-                        )}
-                        
-                        {comprehensiveSummary.company_analysis.company_size_estimate && (
-                          <div>
-                            <h4 className="text-xs font-medium text-gray-500 mb-1">Company Size</h4>
-                            <p className="text-sm overflow-x-auto whitespace-normal break-words">{comprehensiveSummary.company_analysis.company_size_estimate}</p>
-                          </div>
-                        )}
-                      </div>
-                      
-                      {comprehensiveSummary.company_analysis.strengths && comprehensiveSummary.company_analysis.strengths.length > 0 && (
-                        <div className="mt-3">
-                          <h4 className="text-xs font-medium text-gray-500 mb-1">Strengths</h4>
-                          <ul className="space-y-1">
-                            {comprehensiveSummary.company_analysis.strengths.map((strength, index) => (
-                              <li key={index} className="flex items-start">
-                                <span className="text-green-500 mr-2 flex-shrink-0">•</span>
-                                <span className="text-sm overflow-x-auto whitespace-normal break-words">{strength}</span>
-                              </li>
-                            ))}
-                          </ul>
-                        </div>
-                      )}
-                      
-                      {comprehensiveSummary.company_analysis.potential_pain_points && comprehensiveSummary.company_analysis.potential_pain_points.length > 0 && (
-                        <div className="mt-3">
-                          <h4 className="text-xs font-medium text-gray-500 mb-1">Potential Pain Points</h4>
-                          <ul className="space-y-1">
-                            {comprehensiveSummary.company_analysis.potential_pain_points.map((painPoint, index) => (
-                              <li key={index} className="flex items-start">
-                                <span className="text-amber-500 mr-2 flex-shrink-0">•</span>
-                                <span className="text-sm overflow-x-auto whitespace-normal break-words">{painPoint}</span>
-                              </li>
-                            ))}
-                          </ul>
-                        </div>
-                      )}
-                    </div>
-                  )}
-                </div>
-                
-                {/* Sticky footer with follow-up button */}
-                <div className="sticky bottom-0 bg-background pt-2 pb-1 border-t mt-4 flex justify-end">
-                  <Button
-                    variant="default"
-                    size="sm"
-                    onClick={generateFollowUp}
-                    disabled={isLoadingFollowUp}
-                    className="shadow-md hover:shadow-lg transition-all"
-                  >
-                    <MessageSquare className="mr-1 h-4 w-4" />
-                    {isLoadingFollowUp ? 'Generating...' : 'Generate Follow-up'}
-                  </Button>
-                </div>
-              </div>
-            ) : meetingSummary ? (
-              <div className="space-y-4 overflow-x-auto overflow-y-visible flex flex-col">
-                <div className="overflow-y-auto styled-scrollbar flex-grow" style={{ maxHeight: '50vh' }}>
-                  <div>
-                    <h3 className="text-sm font-medium mb-2">Meeting Summary</h3>
-                    <div className="p-3 bg-background border rounded-md text-sm overflow-x-auto whitespace-normal break-words text-foreground" style={{ maxHeight: '50vh', overflowY: 'auto' }}>
-                      {meetingSummary.summary}
-                    </div>
-                  </div>
-                  
-                  {meetingSummary.action_items.length > 0 && (
-                    <div>
-                      <h3 className="text-sm font-medium mb-2">Action Items</h3>
-                      <ul className="space-y-2">
-                        {meetingSummary.action_items.map((item, index) => (
-                          <li key={index} className="flex items-start">
-                            <CheckCircle className="h-4 w-4 text-green-500 mt-0.5 mr-2 flex-shrink-0" />
-                            <span className="text-sm overflow-x-auto whitespace-normal break-words">{item}</span>
-                          </li>
-                        ))}
-                      </ul>
-                    </div>
-                  )}
-                </div>
-                
-                {/* Sticky footer with follow-up button */}
-                <div className="sticky bottom-0 bg-background pt-2 pb-1 border-t mt-4 flex justify-end">
-                  <Button
-                    variant="default"
-                    size="sm"
-                    onClick={generateFollowUp}
-                    disabled={isLoadingFollowUp}
-                    className="shadow-md hover:shadow-lg transition-all"
-                  >
-                    <MessageSquare className="mr-1 h-4 w-4" />
-                    {isLoadingFollowUp ? 'Generating...' : 'Generate Follow-up'}
-                  </Button>
-                </div>
-              </div>
-            ) : (
-              <div className="text-center py-8">
-                <div className="flex justify-center mb-4">
-                  <Sparkles className="h-12 w-12 text-blue-200" />
-                </div>
-                <h3 className="text-lg font-medium mb-2">No AI Summary Yet</h3>
-                <p className="text-sm text-gray-500 mb-4">
-                  Generate an AI-powered summary of this meeting to extract key points and action items.
-                </p>
-                <Button
-                  onClick={generateSummary}
-                  disabled={isLoadingSummary || !meeting.notes}
-                >
-                  {isLoadingSummary ? 'Generating...' : 'Generate Summary'}
-                </Button>
-              </div>
-            )}
-          </TabsContent>
         </Tabs>
       </CardContent>
       
-      {/* Follow-up Dialog */}
-      <Dialog open={showFollowUpDialog} onOpenChange={setShowFollowUpDialog}>
+      {/* Follow-up Dialog - No longer needed, using React Context approach */}
+      {/* <Dialog open={showFollowUpDialog} onOpenChange={setShowFollowUpDialog}>
         <DialogContent className="max-w-3xl w-[95vw] max-h-[90vh] overflow-y-auto overflow-x-auto styled-scrollbar">
           <DialogHeader>
             <DialogTitle>AI-Generated Follow-up</DialogTitle>
@@ -1887,7 +1675,6 @@ END:VCALENDAR`;
                   />
                 </div>
                 
-                {/* File Attachments */}
                 <div className="mt-4 space-y-2">
                   <div className="flex items-center justify-between">
                     <h3 className="text-sm font-medium">Attachments</h3>
@@ -1978,36 +1765,22 @@ END:VCALENDAR`;
             </div>
           ) : null}
         </DialogContent>
-      </Dialog>
-
-      {/* Phone Dialog */}
-      {meeting && meeting.lead && (
-        <PhoneDialog
-          open={showPhoneDialog}
-          onOpenChange={setShowPhoneDialog}
-          leadPhone={meeting.lead.phone}
-          leadName={`${meeting.lead.first_name} ${meeting.lead.last_name}`}
-          onSuccess={handlePhoneCallSuccess}
-        />
-      )}
+      </Dialog> */}
       
       {/* Email Dialog */}
-      {meeting && meeting.lead && (
-        <EmailDialog
-          open={showEmailDialog}
-          onOpenChange={setShowEmailDialog}
-          leadEmail={meeting.lead.email || ''}
-          leadName={`${meeting.lead.first_name} ${meeting.lead.last_name}`}
-          onSuccess={handleEmailSuccess}
-        />
-      )}
+      {/* <ContextualEmailDialog
+        leadEmail={meeting.lead.email || ''}
+        leadName={`${meeting.lead.first_name} ${meeting.lead.last_name}`}
+        handleClose={() => {
+          console.log('⭐⭐⭐ MEETING DETAILS: Email dialog closed via handleClose callback');
+          meetingDialog.closeMeetingDialog(`email-dialog-${meeting.id}-${Date.now()}`);
+        }}
+        handleEmailSuccess={handleEmailSuccess}
+      /> */}
       
       {/* Reschedule Dialog */}
-      <Dialog open={showRescheduleDialog} onOpenChange={setShowRescheduleDialog}>
-        <DialogContent className="max-w-4xl w-[95vw] max-h-[90vh] overflow-y-auto overflow-x-auto styled-scrollbar">
-          <DialogHeader>
-            <DialogTitle>Reschedule Meeting</DialogTitle>
-          </DialogHeader>
+      {/* <Dialog open={showRescheduleDialog} onOpenChange={setShowRescheduleDialog}> */}
+        {/* <DialogContent className="max-w-4xl w-[95vw] max-h-[90vh] overflow-y-auto overflow-x-auto styled-scrollbar"> */}
           {meeting && meeting.lead && (
             <EnhancedMeetingForm
               leadOptions={meeting.lead ? [meeting.lead] : []}
@@ -2055,7 +1828,9 @@ END:VCALENDAR`;
                     });
                 });
               }}
-              onCancel={() => setShowRescheduleDialog(false)}
+              onCancel={() => {
+                // Do nothing, this is just a placeholder since we commented out the original dialog
+              }}
             />
           )}
           {isRescheduling && (
@@ -2066,24 +1841,15 @@ END:VCALENDAR`;
               </div>
             </div>
           )}
-        </DialogContent>
-      </Dialog>
-      
-      {/* Add the AgendaSummaryDialog component */}
-      <AgendaSummaryDialog
-        isOpen={isAgendaDialogOpen}
-        onClose={() => setIsAgendaDialogOpen(false)}
-        agendaItems={agendaSuggestions}
-        meetingType={meeting?.meeting_type}
-        onAddToMeeting={addAgendaItemsToMeeting}
-      />
+        {/* </DialogContent> */}
+      {/* </Dialog> */}
       
       {/* Add the ComprehensiveSummaryDialog component */}
-      <ComprehensiveSummaryDialog
+      {/* <ContextualComprehensiveSummaryDialog
         isOpen={isComprehensiveSummaryDialogOpen}
         onClose={() => setIsComprehensiveSummaryDialogOpen(false)}
         summary={comprehensiveSummary}
-      />
+      /> */}
     </Card>
   );
 } 
