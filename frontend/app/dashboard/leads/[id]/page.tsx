@@ -185,11 +185,31 @@ const mockInsightsData = {
 // Add import for CompanyAnalysis
 import CompanyAnalysis from '@/components/leads/CompanyAnalysis';
 
+// Add import for EmailDialogProvider and useEmailDialog
+import { EmailDialogProvider, useEmailDialog } from '@/contexts/EmailDialogContext';
+import { LeadPhoneDialogProvider, useLeadPhoneDialog } from '@/contexts/LeadPhoneDialogContext';
+
 export default function LeadDetailPage() {
+  // Wrap the entire component with our providers
+  return (
+    <EmailDialogProvider>
+      <LeadPhoneDialogProvider>
+        <LeadDetailContent />
+      </LeadPhoneDialogProvider>
+    </EmailDialogProvider>
+  );
+}
+
+// Create a new component for the actual lead detail content
+function LeadDetailContent() {
   const router = useRouter();
   const params = useParams();
-  const leadId = safeParseInt(params.id as string);
+  const leadId = params?.id ? safeParseInt(params.id as string) : 0;
   const queryClient = useQueryClient();
+  
+  // Get the context hooks
+  const { openEmailDialog } = useEmailDialog();
+  const { openPhoneDialog } = useLeadPhoneDialog();
   
   // State for lead data
   const [lead, setLead] = useState<any>(null);
@@ -203,13 +223,11 @@ export default function LeadDetailPage() {
   const [isEditingTask, setIsEditingTask] = useState(false);
   const [showInsightsEditor, setShowInsightsEditor] = useState(false);
   
-  // State for dialogs
+  // State for dialogs - remove email and call dialogs as they'll be handled by contexts
   const [showStatusDialog, setShowStatusDialog] = useState(false);
   const [statusToChange, setStatusToChange] = useState<LeadStatus | null>(null);
   const [showNoteDialog, setShowNoteDialog] = useState(false);
   const [showTaskDialog, setShowTaskDialog] = useState(false);
-  const [showEmailDialog, setShowEmailDialog] = useState(false);
-  const [showCallDialog, setShowCallDialog] = useState(false);
   const [showMeetingDialog, setShowMeetingDialog] = useState(false);
   const [showEditDialog, setShowEditDialog] = useState(false);
   
@@ -1015,62 +1033,35 @@ export default function LeadDetailPage() {
     }
   };
   
-  // Handle sending an email
-  const handleSendEmail = (emailData: { to: string; subject: string; body: string }) => {
-    if (USE_MOCK_DATA) {
-      // Mock implementation
-      toast.success('Email sent successfully');
-    } else {
-      // Real implementation with Supabase
-      const sendEmailMutation = useMutation({
-        mutationFn: async () => {
-          // Record the email in the database
-          const { data, error } = await supabase
-            .from('lead_emails')
-            .insert({
-              lead_id: leadId,
-              subject: emailData.subject,
-              body: emailData.body,
-              recipient: emailData.to,
-              sent_at: new Date().toISOString(),
-              sent_by: (await supabase.auth.getUser()).data.user?.id,
-              status: 'sent'
-            })
-            .select()
-            .single();
-            
-          if (error) throw error;
-          
-          // Add to timeline
-          await supabase.from('lead_timeline').insert({
-            lead_id: leadId,
-            type: 'email',
-            content: `Sent email: "${emailData.subject}"`,
-            data: { email_id: data.id, subject: emailData.subject, body_preview: emailData.body.substring(0, 100) },
-            created_at: new Date().toISOString(),
-            user_id: (await supabase.auth.getUser()).data.user?.id
-          });
-          
-          // In a real implementation, this would also send the actual email
-          // through an email service like SendGrid or AWS SES
-          
-          return data;
-        },
-        onSuccess: () => {
-          // Invalidate queries to refresh data
-          queryClient.invalidateQueries({ queryKey: leadKeys.detail(leadId) });
-          queryClient.invalidateQueries({ queryKey: leadKeys.timeline(leadId) });
-          
-          // Show toast
-          toast.success('Email sent successfully');
-        },
-        onError: (error) => {
-          console.error('Failed to send email:', error);
-          toast.error('Failed to send email');
-        }
-      });
+  // Modified handleSendEmail function to use our context
+  const handleSendEmail = () => {
+    if (lead) {
+      // Create a lead object for the email dialog context
+      const emailLead = {
+        id: lead.id.toString(),
+        name: lead.full_name || `${lead.first_name || ''} ${lead.last_name || ''}`,
+        email: lead.email || '',
+        phone: lead.phone || ''
+      };
       
-      sendEmailMutation.mutate();
+      // Open the email dialog using our context
+      openEmailDialog(emailLead);
+    }
+  };
+  
+  // Modified handleCall function to use our context
+  const handleCall = () => {
+    if (lead) {
+      // Create a lead object for the phone dialog context
+      const phoneLead = {
+        id: lead.id.toString(),
+        name: lead.full_name || `${lead.first_name || ''} ${lead.last_name || ''}`,
+        email: lead.email || '',
+        phone: lead.phone || ''
+      };
+      
+      // Open the phone dialog using our context
+      openPhoneDialog(phoneLead);
     }
   };
   
@@ -1115,66 +1106,6 @@ export default function LeadDetailPage() {
     } catch (error: any) {
       console.error('Failed to schedule meeting:', error);
       toast.error('Failed to schedule meeting: ' + (error.message || 'Unknown error'));
-    }
-  };
-  
-  // Handle making a call
-  const handleCall = (callData: { phoneNumber: string; duration: number; notes: string }) => {
-    if (USE_MOCK_DATA) {
-      // Mock implementation
-      toast.success('Call logged successfully');
-    } else {
-      // Real implementation with Supabase
-      const logCallMutation = useMutation({
-        mutationFn: async () => {
-          // Record the call in the database
-          const { data, error } = await supabase
-            .from('lead_calls')
-            .insert({
-              lead_id: leadId,
-              phone_number: callData.phoneNumber,
-              duration: callData.duration,
-              notes: callData.notes,
-              called_at: new Date().toISOString(),
-              called_by: (await supabase.auth.getUser()).data.user?.id,
-              status: 'completed'
-            })
-            .select()
-            .single();
-            
-          if (error) throw error;
-          
-          // Add to timeline
-          await supabase.from('lead_timeline').insert({
-            lead_id: leadId,
-            type: 'call',
-            content: `Made a call (${callData.duration} seconds)${callData.notes ? ': ' + callData.notes.substring(0, 50) + (callData.notes.length > 50 ? '...' : '') : ''}`,
-            data: { 
-              call_id: data.id, 
-              duration: callData.duration,
-              notes: callData.notes
-            },
-            created_at: new Date().toISOString(),
-            user_id: (await supabase.auth.getUser()).data.user?.id
-          });
-          
-          return data;
-        },
-        onSuccess: () => {
-          // Invalidate queries to refresh data
-          queryClient.invalidateQueries({ queryKey: leadKeys.detail(leadId) });
-          queryClient.invalidateQueries({ queryKey: leadKeys.timeline(leadId) });
-          
-          // Show toast
-          toast.success('Call logged successfully');
-        },
-        onError: (error) => {
-          console.error('Failed to log call:', error);
-          toast.error('Failed to log call');
-        }
-      });
-      
-      logCallMutation.mutate();
     }
   };
   
@@ -1421,11 +1352,11 @@ export default function LeadDetailPage() {
           
           {/* Quick action buttons */}
           <div className="flex flex-wrap gap-2">
-            <Button onClick={() => setShowEmailDialog(true)}>
+            <Button onClick={handleSendEmail}>
               <Mail className="mr-2 h-4 w-4" />
               Send Email
             </Button>
-            <Button onClick={() => setShowCallDialog(true)}>
+            <Button onClick={handleCall}>
               <Phone className="mr-2 h-4 w-4" />
               Call
             </Button>
@@ -1918,30 +1849,6 @@ export default function LeadDetailPage() {
           </Tabs>
           
           {/* Dialog Components */}
-          {showEmailDialog && lead && (
-            <EmailDialog
-              open={showEmailDialog}
-              onOpenChange={setShowEmailDialog}
-              leadEmail={lead.email || ''}
-              leadName={lead.full_name || ''}
-              onSuccess={(emailData) => {
-                if (emailData) {
-                  handleSendEmail(emailData);
-                }
-              }}
-            />
-          )}
-          
-          {showCallDialog && lead && (
-            <PhoneDialog
-              open={showCallDialog}
-              onOpenChange={setShowCallDialog}
-              leadPhone={lead.phone || ''}
-              leadName={lead.full_name || ''}
-              onSuccess={handleCall}
-            />
-          )}
-          
           {showNoteDialog && lead && (
             <NoteDialog
               open={showNoteDialog}

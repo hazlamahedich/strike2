@@ -1,9 +1,12 @@
 'use client';
 
-import React, { forwardRef, useRef, useEffect, useState, ReactNode } from 'react';
+import React, { forwardRef, useRef, useEffect, useState, ReactNode, useMemo } from 'react';
 import { X, Minus, Maximize2, Minimize2 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { useMeetingDialog, MeetingDialogType, MeetingDialogData } from '@/contexts/MeetingDialogContext';
+
+// Note: MeetingDialogType is imported from @/contexts/MeetingDialogContext 
+// It includes: DETAILS, SCHEDULE, EDIT, RESCHEDULE, CANCEL, SUMMARY, COMPREHENSIVE_SUMMARY, PHONE, EMAIL, AGENDA
 
 // Props for the MeetingDialog component
 interface MeetingDialogRootProps {
@@ -149,7 +152,17 @@ interface MeetingDialogContentProps extends React.HTMLAttributes<HTMLDivElement>
 export const MeetingDialogContent = forwardRef<
   HTMLDivElement,
   MeetingDialogContentProps
->(({ className, children, dialogId, dialogType, showCloseButton = true, draggable = true, title, onClose, ...props }, ref) => {
+>(({ 
+  dialogId, 
+  dialogType, 
+  className, 
+  children, 
+  showCloseButton = true, 
+  draggable = true, 
+  title = 'Dialog',
+  onClose,
+  ...props 
+}, ref) => {
   // Add useEffect for mounting/unmounting logs
   useEffect(() => {
     console.log(`⭐⭐⭐ DIALOG CONTENT: MeetingDialogContent [${dialogId}] MOUNTED`);
@@ -818,9 +831,13 @@ export const MeetingDialogContent = forwardRef<
   return (
     <div
       ref={dialogRef}
+      data-dialog-id={dialogId}
+      data-dialog-type={dialogType}
       className={cn(
-        "fixed z-50 gap-4 bg-background p-0 shadow-lg transition-all duration-200 data-[state=open]:animate-in data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=open]:fade-in-0 data-[state=closed]:zoom-out-95 data-[state=open]:zoom-in-95 data-[state=closed]:slide-out-to-left-1/2 data-[state=closed]:slide-out-to-top-[48%] data-[state=open]:slide-in-from-left-1/2 data-[state=open]:slide-in-from-top-[48%] rounded-lg border flex flex-col",
-        isMinimized ? "opacity-0 pointer-events-none invisible" : "opacity-100 visible",
+        "fixed bg-background", // Ensure there's a background
+        "shadow-2xl border-2", // Add more prominent border and shadow
+        "rounded-md overflow-hidden",
+        isMinimized ? "opacity-0 pointer-events-none" : "opacity-100", 
         isMaximized && "inset-0 rounded-none",
         isActive && "ring-2 ring-ring",
         isDragging && "opacity-90 shadow-xl",
@@ -831,27 +848,21 @@ export const MeetingDialogContent = forwardRef<
         ...(!isMaximized && !isMinimized && finalPosition ? {
           position: 'fixed', 
           left: `${finalPosition.x}px`, 
-          top: `${finalPosition.y}px`
-        } : {}),
-        ...(finalSize && !isMaximized && !isMinimized ? { 
-          width: typeof finalSize.width === 'number' ? `${finalSize.width}px` : finalSize.width, 
-          height: typeof finalSize.height === 'number' ? `${finalSize.height}px` : finalSize.height 
+          top: `${finalPosition.y}px`,
         } : {}),
         // Always render z-index
         zIndex,
         // When minimized, hide completely with CSS
         ...(isMinimized ? {
           display: 'none'
+        } : {}),
+        // Size
+        ...(finalSize ? {
+          width: typeof finalSize.width === 'number' ? `${finalSize.width}px` : finalSize.width,
+          height: typeof finalSize.height === 'number' ? `${finalSize.height}px` : finalSize.height 
         } : {})
       }}
-      data-meeting-dialog-id={dialogId}
-      data-active={isActive ? "true" : "false"}
-      data-minimized={isMinimized ? "true" : "false"}
-      data-maximized={isMaximized ? "true" : "false"}
       onClick={handleContentClick}
-      onMouseDown={(e) => {
-        console.log('🖱️ Mouse down on dialog', { dialogId, target: e.target });
-      }}
       {...props}
     >
       <div 

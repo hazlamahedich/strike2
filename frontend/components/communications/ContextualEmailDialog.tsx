@@ -2,7 +2,7 @@
 
 import React, { useState, useEffect } from 'react';
 import { MeetingDialogContent } from '../ui/meeting-dialog';
-import { MeetingDialogType } from '../../contexts/MeetingDialogContext';
+import { MeetingDialogType } from '@/contexts/MeetingDialogContext';
 import { useToast } from '../ui/use-toast';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '../ui/tabs';
 import { Button } from '../ui/button';
@@ -11,7 +11,7 @@ import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from '
 import { useForm } from 'react-hook-form';
 import { z } from 'zod';
 import { zodResolver } from '@hookform/resolvers/zod';
-import { Loader2, Send, FileText, Sparkles, Paperclip, X } from 'lucide-react';
+import { Loader2, Send, FileText, Sparkles, Paperclip, X, Mail, Inbox, Share } from 'lucide-react';
 import { 
   sendEmail, 
   generateEmailWithAI, 
@@ -35,10 +35,10 @@ type EmailFormValues = z.infer<typeof emailFormSchema>;
 
 interface ContextualEmailDialogProps {
   dialogId: string;
-  leadEmail: string;
+  leadEmail?: string;
   leadName: string;
   handleClose: () => void;
-  handleEmailSuccess: (emailData: { to: string; subject: string; body: string }) => void;
+  onSuccess?: (emailData: { to: string; subject: string; body: string }) => void;
 }
 
 export function ContextualEmailDialog({ 
@@ -46,7 +46,7 @@ export function ContextualEmailDialog({
   leadEmail, 
   leadName, 
   handleClose,
-  handleEmailSuccess
+  onSuccess
 }: ContextualEmailDialogProps) {
   console.log("⭐⭐⭐ CONTEXTUAL EMAIL DIALOG - Rendering for", leadName);
   
@@ -63,13 +63,13 @@ export function ContextualEmailDialog({
   const form = useForm<EmailFormValues>({
     resolver: zodResolver(emailFormSchema),
     defaultValues: {
-      to: leadEmail,
+      to: leadEmail || '',
       subject: `Follow up with ${leadName}`,
       content: `<p>Hello ${leadName},</p><p>I wanted to follow up regarding...</p><p>Best regards,<br>Your Name</p>`,
     },
   });
   
-  // Fetch emails when dialog opens
+  // Fetch emails when dialog is mounted
   useEffect(() => {
     fetchEmails();
   }, [leadEmail]);
@@ -145,7 +145,7 @@ export function ContextualEmailDialog({
       
       // Reset the form and attachments
       form.reset({
-        to: leadEmail,
+        to: leadEmail || '',
         subject: '',
         content: '',
       });
@@ -158,11 +158,13 @@ export function ContextualEmailDialog({
       setActiveTab('sent');
       
       // Call the onSuccess callback
-      handleEmailSuccess({
-        to: data.to,
-        subject: data.subject,
-        body: data.content
-      });
+      if (onSuccess) {
+        onSuccess({
+          to: data.to,
+          subject: data.subject,
+          body: data.content
+        });
+      }
     } catch (error) {
       console.error('Error sending email:', error);
       toast({
@@ -305,26 +307,35 @@ export function ContextualEmailDialog({
   // Format file size
   const formatFileSize = (bytes: number): string => {
     if (bytes < 1024) return bytes + ' bytes';
-    else if (bytes < 1048576) return (bytes / 1024).toFixed(1) + ' KB';
-    else return (bytes / 1048576).toFixed(1) + ' MB';
+    else if (bytes < 1024 * 1024) return (bytes / 1024).toFixed(1) + ' KB';
+    else return (bytes / (1024 * 1024)).toFixed(1) + ' MB';
   };
   
   return (
-    <MeetingDialogContent 
+    <MeetingDialogContent
       dialogId={dialogId}
       dialogType={MeetingDialogType.EMAIL}
       title={`Email ${leadName}`}
       onClose={handleClose}
     >
-      <div className="sm:max-w-[800px] max-h-[90vh] overflow-hidden overflow-x-auto flex flex-col p-4">
-        <Tabs value={activeTab} onValueChange={setActiveTab} className="flex-1 flex flex-col overflow-hidden">
-          <TabsList className="mb-4">
-            <TabsTrigger value="compose">Compose</TabsTrigger>
-            <TabsTrigger value="inbox">Inbox</TabsTrigger>
-            <TabsTrigger value="sent">Sent</TabsTrigger>
+      <div className="p-6">
+        <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
+          <TabsList className="grid w-full grid-cols-3">
+            <TabsTrigger value="compose" className="flex items-center">
+              <Mail className="mr-2 h-4 w-4" />
+              Compose
+            </TabsTrigger>
+            <TabsTrigger value="inbox" className="flex items-center">
+              <Inbox className="mr-2 h-4 w-4" />
+              Inbox
+            </TabsTrigger>
+            <TabsTrigger value="sent" className="flex items-center">
+              <Share className="mr-2 h-4 w-4" />
+              Sent
+            </TabsTrigger>
           </TabsList>
           
-          <TabsContent value="compose" className="flex-1 overflow-auto">
+          <TabsContent value="compose" className="pt-4">
             <Form {...form}>
               <form onSubmit={form.handleSubmit(handleSubmit)} className="space-y-4">
                 <FormField
@@ -405,11 +416,6 @@ export function ContextualEmailDialog({
                     </label>
                   </div>
                   
-                  <div className="text-xs text-muted-foreground mt-1">
-                    <p>SendGrid supports most common file types (PDF, DOC, DOCX, XLS, XLSX, PPT, PPTX, JPG, PNG, GIF, etc.)</p>
-                    <p>Maximum file size: 10MB per file, 30MB total. Executable files (.exe, .bat, etc.) are not allowed.</p>
-                  </div>
-                  
                   {attachments.length > 0 && (
                     <div className="border rounded-md p-2 space-y-2 max-h-[150px] overflow-y-auto">
                       {attachments.map((file, index) => (
@@ -472,7 +478,7 @@ export function ContextualEmailDialog({
             </Form>
           </TabsContent>
           
-          <TabsContent value="inbox" className="flex-1 overflow-auto">
+          <TabsContent value="inbox" className="flex-1 overflow-auto pt-4">
             {isLoading ? (
               <div className="flex items-center justify-center h-40">
                 <Loader2 className="h-8 w-8 animate-spin text-primary" />
@@ -506,7 +512,7 @@ export function ContextualEmailDialog({
             )}
           </TabsContent>
           
-          <TabsContent value="sent" className="flex-1 overflow-auto">
+          <TabsContent value="sent" className="flex-1 overflow-auto pt-4">
             {isLoading ? (
               <div className="flex items-center justify-center h-40">
                 <Loader2 className="h-8 w-8 animate-spin text-primary" />
@@ -535,13 +541,13 @@ export function ContextualEmailDialog({
             )}
           </TabsContent>
         </Tabs>
-        
-        <TemplateSelectionDialog 
-          open={templateDialogOpen}
-          onOpenChange={setTemplateDialogOpen}
-          onSelectTemplate={handleSelectTemplate}
-        />
       </div>
+      
+      <TemplateSelectionDialog 
+        open={templateDialogOpen}
+        onOpenChange={setTemplateDialogOpen}
+        onSelectTemplate={handleSelectTemplate}
+      />
     </MeetingDialogContent>
   );
 } 

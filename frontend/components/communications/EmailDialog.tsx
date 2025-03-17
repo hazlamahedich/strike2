@@ -300,235 +300,237 @@ export function EmailDialog({ open, onOpenChange, leadEmail, leadName, onSuccess
   // Format file size
   const formatFileSize = (bytes: number): string => {
     if (bytes < 1024) return bytes + ' bytes';
-    else if (bytes < 1048576) return (bytes / 1024).toFixed(1) + ' KB';
-    else return (bytes / 1048576).toFixed(1) + ' MB';
+    else if (bytes < 1024 * 1024) return (bytes / 1024).toFixed(1) + ' KB';
+    else return (bytes / (1024 * 1024)).toFixed(1) + ' MB';
   };
   
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="sm:max-w-[800px] max-h-[90vh] overflow-hidden overflow-x-auto flex flex-col">
-        <DialogHeader>
-          <DialogTitle>Email Communication with {leadName}</DialogTitle>
+      <DialogContent className="sm:max-w-[700px] max-h-[90vh] overflow-y-auto p-0 bg-background border-2 shadow-2xl z-[9999]">
+        <DialogHeader className="px-6 pt-6 pb-0">
+          <DialogTitle>Email {leadName}</DialogTitle>
         </DialogHeader>
         
-        <Tabs value={activeTab} onValueChange={setActiveTab} className="flex-1 flex flex-col overflow-hidden">
-          <TabsList className="mb-4">
-            <TabsTrigger value="compose">Compose</TabsTrigger>
-            <TabsTrigger value="inbox">Inbox</TabsTrigger>
-            <TabsTrigger value="sent">Sent</TabsTrigger>
-          </TabsList>
-          
-          <TabsContent value="compose" className="flex-1 overflow-auto">
-            <Form {...form}>
-              <form onSubmit={form.handleSubmit(handleSubmit)} className="space-y-4">
-                <FormField
-                  control={form.control}
-                  name="to"
-                  render={({ field }) => (
-                    <FormItem>
-                      <FormLabel>To</FormLabel>
-                      <FormControl>
-                        <Input placeholder="recipient@example.com" {...field} />
-                      </FormControl>
-                      <FormMessage />
-                    </FormItem>
-                  )}
-                />
-                
-                <FormField
-                  control={form.control}
-                  name="subject"
-                  render={({ field }) => (
-                    <FormItem>
-                      <FormLabel>Subject</FormLabel>
-                      <FormControl>
-                        <Input placeholder="Email subject" {...field} />
-                      </FormControl>
-                      <FormMessage />
-                    </FormItem>
-                  )}
-                />
-                
-                <FormField
-                  control={form.control}
-                  name="content"
-                  render={({ field }) => (
-                    <FormItem>
-                      <FormLabel>Message</FormLabel>
-                      <FormControl>
-                        <RichTextEditor
-                          content={field.value}
-                          onChange={field.onChange}
-                          placeholder="Write your email message here..."
-                          className="min-h-[200px]"
-                        />
-                      </FormControl>
-                      <FormMessage />
-                    </FormItem>
-                  )}
-                />
-                
-                {/* File Attachments */}
-                <div className="space-y-2">
-                  <div className="flex items-center justify-between">
-                    <FormLabel>Attachments</FormLabel>
-                    <div className="text-sm text-muted-foreground">
-                      {attachments.length > 0 
-                        ? attachments.length === 1 
-                          ? `1 file attached: ${attachments[0].name}` 
-                          : `${attachments.length} files attached: ${attachments.map(file => file.name).join(', ')}`
-                        : 'No files attached'
-                      }
-                    </div>
-                  </div>
-                  
-                  <div className="flex items-center space-x-2">
-                    <Input
-                      type="file"
-                      id="file-upload"
-                      className="hidden"
-                      onChange={handleFileSelect}
-                      multiple
-                    />
-                    <label
-                      htmlFor="file-upload"
-                      className="cursor-pointer inline-flex items-center justify-center rounded-md text-sm font-medium ring-offset-background transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:pointer-events-none disabled:opacity-50 border border-input bg-background hover:bg-accent hover:text-accent-foreground h-10 px-4 py-2"
-                    >
-                      <Paperclip className="mr-2 h-4 w-4" />
-                      Attach Files
-                    </label>
-                  </div>
-                  
-                  <div className="text-xs text-muted-foreground mt-1">
-                    <p>SendGrid supports most common file types (PDF, DOC, DOCX, XLS, XLSX, PPT, PPTX, JPG, PNG, GIF, etc.)</p>
-                    <p>Maximum file size: 10MB per file, 30MB total. Executable files (.exe, .bat, etc.) are not allowed.</p>
-                  </div>
-                  
-                  {attachments.length > 0 && (
-                    <div className="border rounded-md p-2 space-y-2 max-h-[150px] overflow-y-auto">
-                      {attachments.map((file, index) => (
-                        <div key={index} className="flex items-center justify-between bg-accent/50 rounded-md p-2">
-                          <div className="flex items-center space-x-2 overflow-hidden">
-                            <Paperclip className="h-4 w-4 flex-shrink-0" />
-                            <span className="text-sm truncate">{file.name}</span>
-                            <span className="text-xs text-muted-foreground">{formatFileSize(file.size)}</span>
-                          </div>
-                          <Button
-                            type="button"
-                            variant="ghost"
-                            size="sm"
-                            onClick={() => handleRemoveFile(index)}
-                            className="h-6 w-6 p-0"
-                          >
-                            <X className="h-4 w-4" />
-                            <span className="sr-only">Remove</span>
-                          </Button>
-                        </div>
-                      ))}
-                    </div>
-                  )}
-                </div>
-                
-                <div className="flex justify-between pt-4">
-                  <div className="space-x-2">
-                    <Button
-                      type="button"
-                      variant="outline"
-                      onClick={handleUseTemplate}
-                    >
-                      <FileText className="mr-2 h-4 w-4" />
-                      Use Template
-                    </Button>
-                    <Button
-                      type="button"
-                      variant="outline"
-                      onClick={handleGenerateWithAI}
-                    >
-                      <Sparkles className="mr-2 h-4 w-4" />
-                      Generate with AI
-                    </Button>
-                  </div>
-                  <Button type="submit" disabled={isSubmitting}>
-                    {isSubmitting ? (
-                      <>
-                        <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                        Sending...
-                      </>
-                    ) : (
-                      <>
-                        <Send className="mr-2 h-4 w-4" />
-                        Send
-                      </>
+        <div className="px-6 py-4">
+          <Tabs defaultValue="compose" value={activeTab} onValueChange={setActiveTab} className="w-full">
+            <TabsList className="mb-4">
+              <TabsTrigger value="compose">Compose</TabsTrigger>
+              <TabsTrigger value="inbox">Inbox</TabsTrigger>
+              <TabsTrigger value="sent">Sent</TabsTrigger>
+            </TabsList>
+            
+            <TabsContent value="compose" className="flex-1 overflow-auto">
+              <Form {...form}>
+                <form onSubmit={form.handleSubmit(handleSubmit)} className="space-y-4">
+                  <FormField
+                    control={form.control}
+                    name="to"
+                    render={({ field }) => (
+                      <FormItem>
+                        <FormLabel>To</FormLabel>
+                        <FormControl>
+                          <Input placeholder="recipient@example.com" {...field} />
+                        </FormControl>
+                        <FormMessage />
+                      </FormItem>
                     )}
-                  </Button>
-                </div>
-              </form>
-            </Form>
-          </TabsContent>
-          
-          <TabsContent value="inbox" className="flex-1 overflow-auto">
-            {isLoading ? (
-              <div className="flex items-center justify-center h-40">
-                <Loader2 className="h-8 w-8 animate-spin text-primary" />
-              </div>
-            ) : receivedEmails.length === 0 ? (
-              <div className="text-center py-10">
-                <p className="text-muted-foreground">No emails received from this lead yet.</p>
-              </div>
-            ) : (
-              <div className="space-y-4">
-                {receivedEmails.map((email) => (
-                  <div key={email.id} className="border rounded-lg p-4 hover:bg-accent transition-colors">
-                    <div className="flex justify-between items-start mb-2">
-                      <div>
-                        <h3 className="font-medium">{email.subject}</h3>
-                        <p className="text-sm text-muted-foreground">From: {email.from}</p>
-                      </div>
+                  />
+                  
+                  <FormField
+                    control={form.control}
+                    name="subject"
+                    render={({ field }) => (
+                      <FormItem>
+                        <FormLabel>Subject</FormLabel>
+                        <FormControl>
+                          <Input placeholder="Email subject" {...field} />
+                        </FormControl>
+                        <FormMessage />
+                      </FormItem>
+                    )}
+                  />
+                  
+                  <FormField
+                    control={form.control}
+                    name="content"
+                    render={({ field }) => (
+                      <FormItem>
+                        <FormLabel>Message</FormLabel>
+                        <FormControl>
+                          <RichTextEditor
+                            content={field.value}
+                            onChange={field.onChange}
+                            placeholder="Write your email message here..."
+                            className="min-h-[200px]"
+                          />
+                        </FormControl>
+                        <FormMessage />
+                      </FormItem>
+                    )}
+                  />
+                  
+                  {/* File Attachments */}
+                  <div className="space-y-2">
+                    <div className="flex items-center justify-between">
+                      <FormLabel>Attachments</FormLabel>
                       <div className="text-sm text-muted-foreground">
-                        {formatDate(email.received_at)}
+                        {attachments.length > 0 
+                          ? attachments.length === 1 
+                            ? `1 file attached: ${attachments[0].name}` 
+                            : `${attachments.length} files attached: ${attachments.map(file => file.name).join(', ')}`
+                          : 'No files attached'
+                        }
                       </div>
                     </div>
-                    <div className="prose prose-sm max-w-none mb-3" dangerouslySetInnerHTML={{ __html: email.content }} />
-                    <div className="flex justify-end">
-                      <Button variant="outline" size="sm" onClick={() => handleReply(email)}>
-                        Reply
+                    
+                    <div className="flex items-center space-x-2">
+                      <Input
+                        type="file"
+                        id="file-upload"
+                        className="hidden"
+                        onChange={handleFileSelect}
+                        multiple
+                      />
+                      <label
+                        htmlFor="file-upload"
+                        className="cursor-pointer inline-flex items-center justify-center rounded-md text-sm font-medium ring-offset-background transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:pointer-events-none disabled:opacity-50 border border-input bg-background hover:bg-accent hover:text-accent-foreground h-10 px-4 py-2"
+                      >
+                        <Paperclip className="mr-2 h-4 w-4" />
+                        Attach Files
+                      </label>
+                    </div>
+                    
+                    <div className="text-xs text-muted-foreground mt-1">
+                      <p>SendGrid supports most common file types (PDF, DOC, DOCX, XLS, XLSX, PPT, PPTX, JPG, PNG, GIF, etc.)</p>
+                      <p>Maximum file size: 10MB per file, 30MB total. Executable files (.exe, .bat, etc.) are not allowed.</p>
+                    </div>
+                    
+                    {attachments.length > 0 && (
+                      <div className="border rounded-md p-2 space-y-2 max-h-[150px] overflow-y-auto">
+                        {attachments.map((file, index) => (
+                          <div key={index} className="flex items-center justify-between bg-accent/50 rounded-md p-2">
+                            <div className="flex items-center space-x-2 overflow-hidden">
+                              <Paperclip className="h-4 w-4 flex-shrink-0" />
+                              <span className="text-sm truncate">{file.name}</span>
+                              <span className="text-xs text-muted-foreground">{formatFileSize(file.size)}</span>
+                            </div>
+                            <Button
+                              type="button"
+                              variant="ghost"
+                              size="sm"
+                              onClick={() => handleRemoveFile(index)}
+                              className="h-6 w-6 p-0"
+                            >
+                              <X className="h-4 w-4" />
+                              <span className="sr-only">Remove</span>
+                            </Button>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                  
+                  <div className="flex justify-between pt-4">
+                    <div className="space-x-2">
+                      <Button
+                        type="button"
+                        variant="outline"
+                        onClick={handleUseTemplate}
+                      >
+                        <FileText className="mr-2 h-4 w-4" />
+                        Use Template
+                      </Button>
+                      <Button
+                        type="button"
+                        variant="outline"
+                        onClick={handleGenerateWithAI}
+                      >
+                        <Sparkles className="mr-2 h-4 w-4" />
+                        Generate with AI
                       </Button>
                     </div>
+                    <Button type="submit" disabled={isSubmitting}>
+                      {isSubmitting ? (
+                        <>
+                          <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                          Sending...
+                        </>
+                      ) : (
+                        <>
+                          <Send className="mr-2 h-4 w-4" />
+                          Send
+                        </>
+                      )}
+                    </Button>
                   </div>
-                ))}
-              </div>
-            )}
-          </TabsContent>
-          
-          <TabsContent value="sent" className="flex-1 overflow-auto">
-            {isLoading ? (
-              <div className="flex items-center justify-center h-40">
-                <Loader2 className="h-8 w-8 animate-spin text-primary" />
-              </div>
-            ) : sentEmails.length === 0 ? (
-              <div className="text-center py-10">
-                <p className="text-muted-foreground">No emails sent to this lead yet.</p>
-              </div>
-            ) : (
-              <div className="space-y-4">
-                {sentEmails.map((email) => (
-                  <div key={email.id} className="border rounded-lg p-4 hover:bg-accent transition-colors">
-                    <div className="flex justify-between items-start mb-2">
-                      <div>
-                        <h3 className="font-medium">{email.subject}</h3>
-                        <p className="text-sm text-muted-foreground">To: {email.to}</p>
+                </form>
+              </Form>
+            </TabsContent>
+            
+            <TabsContent value="inbox" className="flex-1 overflow-auto">
+              {isLoading ? (
+                <div className="flex items-center justify-center h-40">
+                  <Loader2 className="h-8 w-8 animate-spin text-primary" />
+                </div>
+              ) : receivedEmails.length === 0 ? (
+                <div className="text-center py-10">
+                  <p className="text-muted-foreground">No emails received from this lead yet.</p>
+                </div>
+              ) : (
+                <div className="space-y-4">
+                  {receivedEmails.map((email) => (
+                    <div key={email.id} className="border rounded-lg p-4 hover:bg-accent transition-colors">
+                      <div className="flex justify-between items-start mb-2">
+                        <div>
+                          <h3 className="font-medium">{email.subject}</h3>
+                          <p className="text-sm text-muted-foreground">From: {email.from}</p>
+                        </div>
+                        <div className="text-sm text-muted-foreground">
+                          {formatDate(email.received_at)}
+                        </div>
                       </div>
-                      <div className="text-sm text-muted-foreground">
-                        {formatDate(email.received_at)}
+                      <div className="prose prose-sm max-w-none mb-3" dangerouslySetInnerHTML={{ __html: email.content }} />
+                      <div className="flex justify-end">
+                        <Button variant="outline" size="sm" onClick={() => handleReply(email)}>
+                          Reply
+                        </Button>
                       </div>
                     </div>
-                    <div className="prose prose-sm max-w-none" dangerouslySetInnerHTML={{ __html: email.content }} />
-                  </div>
-                ))}
-              </div>
-            )}
-          </TabsContent>
-        </Tabs>
+                  ))}
+                </div>
+              )}
+            </TabsContent>
+            
+            <TabsContent value="sent" className="flex-1 overflow-auto">
+              {isLoading ? (
+                <div className="flex items-center justify-center h-40">
+                  <Loader2 className="h-8 w-8 animate-spin text-primary" />
+                </div>
+              ) : sentEmails.length === 0 ? (
+                <div className="text-center py-10">
+                  <p className="text-muted-foreground">No emails sent to this lead yet.</p>
+                </div>
+              ) : (
+                <div className="space-y-4">
+                  {sentEmails.map((email) => (
+                    <div key={email.id} className="border rounded-lg p-4 hover:bg-accent transition-colors">
+                      <div className="flex justify-between items-start mb-2">
+                        <div>
+                          <h3 className="font-medium">{email.subject}</h3>
+                          <p className="text-sm text-muted-foreground">To: {email.to}</p>
+                        </div>
+                        <div className="text-sm text-muted-foreground">
+                          {formatDate(email.received_at)}
+                        </div>
+                      </div>
+                      <div className="prose prose-sm max-w-none" dangerouslySetInnerHTML={{ __html: email.content }} />
+                    </div>
+                  ))}
+                </div>
+              )}
+            </TabsContent>
+          </Tabs>
+        </div>
         
         <TemplateSelectionDialog 
           open={templateDialogOpen}

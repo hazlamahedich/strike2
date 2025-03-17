@@ -133,7 +133,7 @@ export const ImprovedDialogTrigger = forwardRef<
               // Directly open the dialog without relying on Radix's mechanism
               if (!isDialogOpen(dialogId)) {
                 e.stopPropagation(); // Prevent Radix from handling this
-                openDialog(dialogId, contentElement);
+                openDialog(dialogId, contentElement as unknown as React.ReactNode);
               }
             }
           }

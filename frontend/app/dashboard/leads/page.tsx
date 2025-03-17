@@ -116,7 +116,8 @@ import { TaskDialog } from '@/components/leads/TaskDialog';
 import { MeetingDialogNew } from '@/components/meetings/MeetingDialogNew';
 import { Lead, LeadSource as ApiLeadSource, LeadStatus as ApiLeadStatus } from '@/lib/types/lead';
 import { EmailDialog } from '@/components/communications/EmailDialog';
-import { PhoneDialog } from '@/components/communications/PhoneDialog';
+import { LeadPhoneDialogProvider, useLeadPhoneDialog } from '@/contexts/LeadPhoneDialogContext';
+import { EmailDialogProvider, useEmailDialog } from '@/contexts/EmailDialogContext';
 
 // Define Campaign type
 type Campaign = {
@@ -155,8 +156,24 @@ enum LeadSource {
 }
 
 export default function LeadsPage() {
+  return (
+    <EmailDialogProvider>
+      <LeadPhoneDialogProvider>
+        <LeadsContent />
+      </LeadPhoneDialogProvider>
+    </EmailDialogProvider>
+  );
+}
+
+function LeadsContent() {
+  console.log("⭐⭐⭐ LEADS CONTENT - Rendering");
+  
   const router = useRouter();
   const { toast } = useToast();
+  const { openPhoneDialog } = useLeadPhoneDialog();
+  const { openEmailDialog } = useEmailDialog();
+  
+  // State for leads and loading
   const [leads, setLeads] = useState<DashboardLead[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState('');
@@ -165,7 +182,6 @@ export default function LeadsPage() {
   const [sourceFilter, setSourceFilter] = useState<string | null>(null);
   const [showAddLeadDialog, setShowAddLeadDialog] = useState(false);
   const [showEmailDialog, setShowEmailDialog] = useState(false);
-  const [showPhoneDialog, setShowPhoneDialog] = useState(false);
   const [selectedLead, setSelectedLead] = useState<DashboardLead | null>(null);
   const [showDuplicateAlert, setShowDuplicateAlert] = useState(false);
   const [singleLeadDuplicateHandling, setSingleLeadDuplicateHandling] = useState<'skip' | 'update' | 'create_new'>('skip');
@@ -923,37 +939,34 @@ export default function LeadsPage() {
 
   // Handle action links
   const handleEmailClick = (email: string, name: string) => {
-    // Find the lead with this email
-    const lead = leads.find(l => l.email === email);
-    if (lead) {
-      setSelectedLead(lead);
-      setShowEmailDialog(true);
-    }
+    console.log("⭐⭐⭐ LEADS PAGE - Email clicked:", email);
+    
+    // Create a lead object with the email address
+    const lead = {
+      id: `temp-${Date.now()}`,
+      name: name || 'Contact',
+      email: email,
+      phone: ''
+    };
+    
+    // Open the email dialog using the context
+    openEmailDialog(lead);
   };
 
+  // Handle phone number click - use the context instead of dialog state
   const handlePhoneClick = (phone: string) => {
-    // Use the PhoneDialog component
-    setSelectedLead({
-      id: '',
-      name: '',
-      email: '',
+    console.log("⭐⭐⭐ LEADS PAGE - Phone clicked:", phone);
+    
+    // Create a lead object with the phone number
+    const lead = {
+      id: `temp-${Date.now()}`,
+      name: 'Contact',
       phone: phone,
-      status: 'new',
-      source: '',
-      created_at: '',
-      last_contact: null,
-      notes: '',
-      score: 50,
-      address: '',
-      campaign_id: '',
-      campaign_name: '',
-      company_name: '',
-      position: '',
-      linkedin_url: '',
-      facebook_url: '',
-      twitter_url: ''
-    });
-    setShowPhoneDialog(true);
+      email: ''
+    };
+    
+    // Open the phone dialog using the context
+    openPhoneDialog(lead);
   };
 
   const handleViewDetails = (leadId: string) => {
@@ -2200,66 +2213,7 @@ export default function LeadsPage() {
           </div>
         </CardContent>
       </Card>
-
-      {/* Meeting dialogs for each lead */}
-      {leads.map(lead => {
-        // Map status to LeadStatus enum
-        let leadStatus: LeadStatus;
-        switch (lead.status) {
-          case 'new': leadStatus = LeadStatus.NEW; break;
-          case 'contacted': leadStatus = LeadStatus.CONTACTED; break;
-          case 'qualified': leadStatus = LeadStatus.QUALIFIED; break;
-          case 'proposal': leadStatus = LeadStatus.PROPOSAL; break;
-          case 'negotiation': leadStatus = LeadStatus.NEGOTIATION; break;
-          case 'closed_won': leadStatus = LeadStatus.WON; break;
-          case 'closed_lost': leadStatus = LeadStatus.LOST; break;
-          default: leadStatus = LeadStatus.NEW;
-        }
-        
-        // Map source to LeadSource enum
-        let leadSource: LeadSource;
-        switch (lead.source) {
-          case 'website': leadSource = LeadSource.WEBSITE; break;
-          case 'referral': leadSource = LeadSource.REFERRAL; break;
-          case 'linkedin': leadSource = LeadSource.LINKEDIN; break;
-          case 'cold_call': leadSource = LeadSource.COLD_CALL; break;
-          case 'email_campaign': leadSource = LeadSource.EMAIL_CAMPAIGN; break;
-          case 'event': leadSource = LeadSource.EVENT; break;
-          default: leadSource = LeadSource.OTHER;
-        }
-        
-        return (
-          <MeetingDialogNew 
-            key={`meeting-dialog-${lead.id}`}
-            open={false} // This will be controlled by the openMeetingDialog function
-            onOpenChange={() => {}}
-            lead={{
-              id: parseInt(lead.id),
-              first_name: lead.name.split(' ')[0],
-              last_name: lead.name.split(' ').slice(1).join(' '),
-              full_name: lead.name,
-              email: lead.email,
-              phone: lead.phone,
-              source: ApiLeadSource.WEBSITE, // Default source
-              status: ApiLeadStatus.NEW, // Default status
-              custom_fields: {},
-              lead_score: lead.score || 0,
-              created_at: lead.created_at,
-              updated_at: lead.created_at
-            }}
-            onSuccess={(meetingData) => {
-              if (meetingData) {
-                // Handle meeting creation
-                toast({
-                  title: "Meeting Scheduled",
-                  description: "The meeting has been scheduled successfully.",
-                });
-              }
-            }}
-          />
-        );
-      })}
-
+      
       {/* Campaign Creation Dialog */}
       <Dialog open={showCampaignDialog} onOpenChange={setShowCampaignDialog}>
         <DialogContent className="sm:max-w-[600px]">
@@ -2615,18 +2569,18 @@ export default function LeadsPage() {
           open={showMeetingDialog}
           onOpenChange={setShowMeetingDialog}
           lead={{
-            id: parseInt(selectedLeadId),
+            id: selectedLeadId.toString(), // Convert to string
             first_name: currentLead.name.split(' ')[0],
             last_name: currentLead.name.split(' ').slice(1).join(' '),
-            full_name: currentLead.name,
-            email: currentLead.email,
-            phone: currentLead.phone,
-            source: ApiLeadSource.WEBSITE, // Default source
-            status: ApiLeadStatus.NEW, // Default status
-            custom_fields: {},
-            lead_score: currentLead.score || 0,
-            created_at: currentLead.created_at,
-            updated_at: currentLead.created_at
+            email: currentLead.email || '',
+            phone: currentLead.phone || '',
+            status: ApiLeadStatus.NEW,
+            source: ApiLeadSource.WEBSITE,
+            created_at: currentLead.created_at || new Date().toISOString(),
+            updated_at: currentLead.created_at || new Date().toISOString(),
+            notes: currentLead.notes || '',
+            company: currentLead.company_name || '',
+            job_title: currentLead.position || '',
           }}
           onSuccess={(meetingData) => {
             if (meetingData) {
@@ -2651,22 +2605,6 @@ export default function LeadsPage() {
             toast({
               title: "Email Sent",
               description: `Email has been sent to ${selectedLead.name}.`,
-            });
-          }}
-        />
-      )}
-      
-      {/* Phone Dialog */}
-      {selectedLead && (
-        <PhoneDialog
-          open={showPhoneDialog}
-          onOpenChange={setShowPhoneDialog}
-          leadPhone={selectedLead.phone}
-          leadName={selectedLead.name}
-          onSuccess={(callData) => {
-            toast({
-              title: "Call Completed",
-              description: `Call with ${selectedLead.name} lasted ${callData.duration} seconds.`,
             });
           }}
         />

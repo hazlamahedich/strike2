@@ -273,6 +273,12 @@ export const MeetingDialogProvider = ({ children }: MeetingDialogProviderProps) 
   // Get dialog z-index
   const getDialogZIndex = useCallback((id: string) => {
     const dialog = dialogs.find(d => d.id === id);
+    
+    // If this is a phone dialog, use a very high z-index to ensure visibility
+    if (dialog?.type === MeetingDialogType.PHONE) {
+      return 9999; // Very high z-index for phone dialogs
+    }
+    
     return dialog?.zIndex || BASE_Z_INDEX;
   }, [dialogs]);
 
