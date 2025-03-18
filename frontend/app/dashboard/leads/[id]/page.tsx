@@ -1,7 +1,7 @@
 'use client';
 
-import { useState, useEffect } from 'react';
-import { useRouter, useParams } from 'next/navigation';
+import React, { useState, useEffect, useMemo } from 'react';
+import { useParams, useRouter } from 'next/navigation';
 import { 
   ArrowLeft, 
   Edit, 
@@ -34,7 +34,7 @@ import {
   Eye
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
-import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
+import { Card, CardContent, CardHeader, CardTitle, CardDescription, CardFooter } from '@/components/ui/card';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Badge } from '@/components/ui/badge';
 import { toast } from 'sonner';
@@ -76,14 +76,17 @@ import {
   getLeadInsights, 
   addLeadNote, 
   deleteLead 
-} from '@/lib/api/leads';
+} from './api'; // Use our local API implementation
 
 // Dynamically import the InsightsEditor component
 const InsightsEditor = dynamic(() => import('./InsightsEditor'), { ssr: false });
 
+// Import the useMockData hook
+import { useMockData } from '@/hooks/useMockData';
+
 // Configuration flag to toggle between mock and real data
 // Set this to false to use the API's decision on whether to use mock data
-const USE_MOCK_DATA = false;
+const USE_MOCK_DATA = true;
 
 // Mock lead details data
 // This is now just a fallback in case the mockService fails
@@ -190,6 +193,8 @@ import { EmailDialogProvider, useEmailDialog } from '@/contexts/EmailDialogConte
 import { LeadPhoneDialogProvider, useLeadPhoneDialog } from '@/contexts/LeadPhoneDialogContext';
 
 export default function LeadDetailPage() {
+  const { isEnabled: USE_MOCK_DATA } = useMockData();
+  
   // Wrap the entire component with our providers
   return (
     <EmailDialogProvider>
@@ -204,7 +209,12 @@ export default function LeadDetailPage() {
 function LeadDetailContent() {
   const router = useRouter();
   const params = useParams();
-  const leadId = params?.id ? safeParseInt(params.id as string) : 0;
+  // Safely access params.id and provide default if it doesn't exist
+  const leadId = params && params.id ? safeParseInt(params.id as string) : 0;
+  
+  // Convert leadId to string when needed for API calls
+  const leadIdString = String(leadId);
+  
   const queryClient = useQueryClient();
   
   // Get the context hooks
@@ -230,6 +240,8 @@ function LeadDetailContent() {
   const [showTaskDialog, setShowTaskDialog] = useState(false);
   const [showMeetingDialog, setShowMeetingDialog] = useState(false);
   const [showEditDialog, setShowEditDialog] = useState(false);
+  const [showCampaignDialog, setShowCampaignDialog] = useState(false);
+  const [showScheduleForm, setShowScheduleForm] = useState(false); // Add this state for scheduling
   
   // Initialize mock service if using mock data
   useEffect(() => {
@@ -272,7 +284,7 @@ function LeadDetailContent() {
   const addLeadNoteMutation = useAddLeadNote();
   
   // Use mock or API data based on configuration
-  const leadData = USE_MOCK_DATA ? mockLeadDetails[params.id as string] : apiLead;
+  const leadData = USE_MOCK_DATA ? mockLeadDetails[params?.id as string] : apiLead;
   const timeline = USE_MOCK_DATA ? mockLeadTimeline : apiTimeline;
   const insights = USE_MOCK_DATA ? mockInsightsData : apiInsights;
   
@@ -280,7 +292,17 @@ function LeadDetailContent() {
   const isError = USE_MOCK_DATA ? false : isErrorLead;
   
   // Mock data for development
-  const mockLead = mockLeadDetails[params.id as string];
+  const mockLead = mockLeadDetails[params?.id as string];
+  
+  // Log mock data access for debugging
+  useEffect(() => {
+    if (USE_MOCK_DATA) {
+      console.log("Using mock data mode");
+      console.log("Available mock leads:", Object.keys(mockLeadDetails));
+      console.log("Accessing mock lead with ID:", params?.id);
+      console.log("Found mock lead data:", mockLeadDetails[params?.id as string]);
+    }
+  }, [params?.id]);
   
   // Set lead data
   useEffect(() => {
@@ -288,20 +310,26 @@ function LeadDetailContent() {
       console.log("Setting lead data:", leadData);
       console.log("Lead status:", leadData.status);
       
-      // Ensure lead status is a valid LeadStatus enum value
-      if (leadData.status && !Object.values(LeadStatus).includes(leadData.status)) {
-        console.warn("Invalid lead status:", leadData.status);
-        // Set a default status if the current one is invalid
-        const updatedLeadData = {
-          ...leadData,
-          status: LeadStatus.NEW
-        };
-        setLead(updatedLeadData);
-      } else {
-        setLead(leadData);
-      }
+      // Ensure we have a valid lead with a valid status
+      const updatedLeadData = {
+        ...leadData,
+        // Default to NEW status if status is missing or invalid
+        status: leadData.status && Object.values(LeadStatus).includes(leadData.status) 
+          ? leadData.status 
+          : LeadStatus.NEW
+      };
       
+      setLead(updatedLeadData);
       setLoading(false);
+    } else if (USE_MOCK_DATA) {
+      // If we're in mock mode but leadData is null, try to use the default mock data
+      console.log("No lead data found, trying default mock lead");
+      const defaultMockLead = mockLeadDetails["1"];
+      if (defaultMockLead) {
+        console.log("Using default mock lead:", defaultMockLead);
+        setLead(defaultMockLead);
+        setLoading(false);
+      }
     }
   }, [leadData]);
   
@@ -491,11 +519,14 @@ function LeadDetailContent() {
   
   // Format status for display
   const formatStatus = (status: LeadStatus): string => {
+    if (!status) return 'Unknown';
     return status.charAt(0).toUpperCase() + status.slice(1).replace('_', ' ');
   };
   
   // Get status color
   const getStatusColor = (status: LeadStatus): string => {
+    if (!status) return 'bg-gray-100 text-gray-800 dark:bg-gray-800 dark:text-gray-100';
+    
     switch (status) {
       case LeadStatus.NEW:
         return 'bg-blue-100 text-blue-800 dark:bg-blue-900 dark:text-blue-100';
@@ -805,7 +836,7 @@ function LeadDetailContent() {
         mutationFn: async () => {
           const taskData = {
             ...newTask,
-            lead_id: leadId,
+            lead_id: leadIdString,
             created_at: new Date().toISOString(),
             updated_at: new Date().toISOString(),
             created_by: (await supabase.auth.getUser()).data.user?.id
@@ -821,7 +852,7 @@ function LeadDetailContent() {
           
           // Add to timeline
           await supabase.from('lead_timeline').insert({
-            lead_id: leadId,
+            lead_id: leadIdString,
             type: 'task_create',
             content: `Created task: "${newTask.title}"`,
             created_at: new Date().toISOString(),
@@ -932,7 +963,7 @@ function LeadDetailContent() {
           const { data, error } = await supabase
             .from('lead_campaigns')
             .insert({
-              lead_id: leadId,
+              lead_id: leadIdString,
               campaign_id: campaignId,
               status: 'added',
               added_at: new Date().toISOString(),
@@ -946,7 +977,7 @@ function LeadDetailContent() {
           
           // Add to timeline
           await supabase.from('lead_timeline').insert({
-            lead_id: leadId,
+            lead_id: leadIdString,
             type: 'campaign',
             content: `Added to campaign: "${campaign.name}"`,
             created_at: new Date().toISOString(),
@@ -1010,7 +1041,7 @@ function LeadDetailContent() {
     } else {
       // Real implementation with Supabase
       addLeadNoteMutation.mutate({
-        leadId: leadId,
+        leadId: leadIdString,
         content,
         isPrivate
       }, {
@@ -1078,7 +1109,7 @@ function LeadDetailContent() {
         // Real implementation with Supabase
         // Prepare the meeting data
         const meetingCreateData = {
-          lead_id: leadId,
+          lead_id: leadIdString,
           title: meetingData.title,
           description: meetingData.description || '',
           start_time: meetingData.start_time,
@@ -1146,13 +1177,15 @@ function LeadDetailContent() {
   const refreshInsights = async () => {
     if (lead) {
       try {
-        const insightsData = await getLeadInsights(lead.id);
+        console.log('⭐⭐⭐ refreshInsights - Calling getLeadInsights with lead.id:', lead.id, 'of type:', typeof lead.id);
+        const insightsData = await getLeadInsights(String(lead.id)); // Ensure we're passing a string
+        console.log('⭐⭐⭐ refreshInsights - Got insights data:', insightsData);
         setLead({
           ...lead,
           insights: insightsData
         });
       } catch (error) {
-        console.error('Error refreshing insights:', error);
+        console.error('⭐⭐⭐ refreshInsights - Error refreshing insights:', error);
       }
     }
   };
@@ -1203,30 +1236,64 @@ function LeadDetailContent() {
           {/* ... */}
           
           {/* Lead header */}
-          <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
-            <div className="flex items-center">
-              <Button variant="ghost" onClick={() => router.push('/dashboard/leads')} className="mr-4">
-                <ArrowLeft className="h-4 w-4 mr-2" />
-                Back
+          <div className="flex items-center justify-between mb-4">
+            <div className="flex items-center space-x-2">
+              <Button variant="ghost" size="icon" onClick={() => router.push('/dashboard/leads')}>
+                <ArrowLeft className="h-5 w-5" />
               </Button>
-              <h1 className="text-2xl font-bold">{lead.full_name}</h1>
-              <Badge className={`ml-3 ${getStatusColor(lead.status)}`}>
-                {formatStatus(lead.status)}
-              </Badge>
+              <h1 className="text-2xl font-bold">Lead Details</h1>
+              {lead && (
+                <Badge 
+                  className={`ml-2 ${getStatusColor(lead.status)}`}>
+                  {formatStatus(lead.status)}
+                </Badge>
+              )}
             </div>
             
-            <div className="flex items-center space-x-2">
-              <Button variant="outline" onClick={() => setShowEditDialog(true)}>
-                <Edit className="h-4 w-4 mr-2" />
-                Edit
-              </Button>
+            {/* Mock data toggle button */}
+            <div className="flex items-center gap-2">
+              <div className="text-sm text-muted-foreground mr-2">
+                {USE_MOCK_DATA ? "Using mock data" : "Using real data"}
+              </div>
               <Button 
-                variant="destructive" 
-                onClick={handleDeleteLead}
+                variant="outline" 
+                size="sm"
+                onClick={() => {
+                  // This will just display a message since we can't directly change the global flag here
+                  toast.info("Mock data setting", {
+                    description: "To change the mock data setting, please use the global settings panel or refresh the page.",
+                    action: {
+                      label: "OK",
+                      onClick: () => console.log("Acknowledged"),
+                    },
+                  });
+                }}
               >
-                <Trash className="h-4 w-4 mr-2" />
-                Delete
+                {USE_MOCK_DATA ? "Mock Data: ON" : "Mock Data: OFF"}
               </Button>
+              
+              <div className="flex gap-2">
+                <Button onClick={() => setShowTaskDialog(true)} variant="default">
+                  <Plus className="h-4 w-4 mr-2" />
+                  Add Task
+                </Button>
+                <Button onClick={() => setShowNoteDialog(true)} variant="outline">
+                  <MessageSquare className="h-4 w-4 mr-2" />
+                  Add Note
+                </Button>
+                <Button onClick={() => setShowScheduleForm(true)} variant="outline">
+                  <Calendar className="h-4 w-4 mr-2" />
+                  Schedule
+                </Button>
+                <Button onClick={() => setShowEditDialog(true)} variant="outline">
+                  <Edit className="h-4 w-4 mr-2" />
+                  Edit Lead
+                </Button>
+                <Button onClick={() => setShowDeleteConfirm(true)} variant="outline" className="text-red-500 hover:text-red-700">
+                  <Trash className="h-4 w-4 mr-2" />
+                  Delete
+                </Button>
+              </div>
             </div>
           </div>
           
@@ -1432,15 +1499,157 @@ function LeadDetailContent() {
           </Card>
           
           {/* Tabs for different sections */}
-          <Tabs defaultValue="timeline" className="w-full">
-            <TabsList className="grid grid-cols-6 mb-4">
+          <Tabs defaultValue="overview" className="w-full">
+            <TabsList className="grid grid-cols-7 mb-4">
               <TabsTrigger value="overview">Overview</TabsTrigger>
               <TabsTrigger value="tasks">Tasks</TabsTrigger>
               <TabsTrigger value="notes">Notes</TabsTrigger>
               <TabsTrigger value="timeline">Timeline</TabsTrigger>
+              <TabsTrigger value="insights">Insights</TabsTrigger>
               <TabsTrigger value="campaigns">Campaigns</TabsTrigger>
               <TabsTrigger value="company-analysis">Company Analysis</TabsTrigger>
             </TabsList>
+            
+            {/* Overview Tab */}
+            <TabsContent value="overview" className="space-y-4">
+              <Card>
+                <CardHeader>
+                  <CardTitle>Lead Overview</CardTitle>
+                </CardHeader>
+                <CardContent>
+                  <div className="grid md:grid-cols-2 gap-6">
+                    {/* Lead Details */}
+                    <div>
+                      <h3 className="text-lg font-medium mb-4">Contact Information</h3>
+                      <dl className="space-y-2">
+                        <div className="flex justify-between">
+                          <dt className="text-muted-foreground">Name:</dt>
+                          <dd className="font-medium">{lead.full_name || 'N/A'}</dd>
+                        </div>
+                        <div className="flex justify-between">
+                          <dt className="text-muted-foreground">Email:</dt>
+                          <dd className="font-medium">{lead.email || 'N/A'}</dd>
+                        </div>
+                        <div className="flex justify-between">
+                          <dt className="text-muted-foreground">Phone:</dt>
+                          <dd className="font-medium">{lead.phone || 'N/A'}</dd>
+                        </div>
+                        <div className="flex justify-between">
+                          <dt className="text-muted-foreground">Company:</dt>
+                          <dd className="font-medium">{lead.company || 'N/A'}</dd>
+                        </div>
+                        <div className="flex justify-between">
+                          <dt className="text-muted-foreground">Title:</dt>
+                          <dd className="font-medium">{lead.title || 'N/A'}</dd>
+                        </div>
+                        <div className="flex justify-between">
+                          <dt className="text-muted-foreground">Source:</dt>
+                          <dd className="font-medium">{lead.source || 'N/A'}</dd>
+                        </div>
+                      </dl>
+                    </div>
+
+                    {/* Activity Summary */}
+                    <div>
+                      <h3 className="text-lg font-medium mb-4">Activity Summary</h3>
+                      <dl className="space-y-2">
+                        <div className="flex justify-between">
+                          <dt className="text-muted-foreground">Last Contacted:</dt>
+                          <dd className="font-medium">
+                            {lead.last_contacted_at ? formatDate(lead.last_contacted_at) : 'Never'}
+                          </dd>
+                        </div>
+                        <div className="flex justify-between">
+                          <dt className="text-muted-foreground">Total Emails:</dt>
+                          <dd className="font-medium">{lead.emails?.length || 0}</dd>
+                        </div>
+                        <div className="flex justify-between">
+                          <dt className="text-muted-foreground">Total Calls:</dt>
+                          <dd className="font-medium">{lead.calls?.length || 0}</dd>
+                        </div>
+                        <div className="flex justify-between">
+                          <dt className="text-muted-foreground">Total Notes:</dt>
+                          <dd className="font-medium">{lead.notes?.length || 0}</dd>
+                        </div>
+                        <div className="flex justify-between">
+                          <dt className="text-muted-foreground">Total Tasks:</dt>
+                          <dd className="font-medium">{lead.tasks?.length || 0}</dd>
+                        </div>
+                        <div className="flex justify-between">
+                          <dt className="text-muted-foreground">Total Meetings:</dt>
+                          <dd className="font-medium">{lead.meetings?.length || 0}</dd>
+                        </div>
+                      </dl>
+                    </div>
+
+                    {/* Upcoming Tasks */}
+                    <div className="md:col-span-2">
+                      <h3 className="text-lg font-medium mb-4">Upcoming Tasks</h3>
+                      {lead.tasks && lead.tasks.length > 0 ? (
+                        <div className="space-y-2">
+                          {lead.tasks
+                            .filter((task: any) => !task.completed)
+                            .slice(0, 3)
+                            .map((task: any) => (
+                              <div key={task.id} className="flex items-center justify-between p-3 border rounded-md">
+                                <div className="flex items-center gap-3">
+                                  <CheckCircle className="h-5 w-5 text-gray-400" />
+                                  <div>
+                                    <p>{task.title}</p>
+                                    <p className="text-xs text-muted-foreground">
+                                      Due: {formatDate(task.due_date)}
+                                    </p>
+                                  </div>
+                                </div>
+                                <Button 
+                                  variant="ghost" 
+                                  size="sm"
+                                  onClick={() => handleToggleTaskComplete(task.id, true)}
+                                >
+                                  Complete
+                                </Button>
+                              </div>
+                            ))}
+                            {lead.tasks.filter((task: any) => !task.completed).length === 0 && (
+                              <p className="text-muted-foreground">No upcoming tasks</p>
+                            )}
+                        </div>
+                      ) : (
+                        <p className="text-muted-foreground">No tasks</p>
+                      )}
+                    </div>
+
+                    {/* Recent Notes */}
+                    <div className="md:col-span-2">
+                      <div className="flex justify-between items-center mb-4">
+                        <h3 className="text-lg font-medium">Recent Notes</h3>
+                        <Button 
+                          variant="outline" 
+                          size="sm"
+                          onClick={() => setShowNoteDialog(true)}
+                        >
+                          Add Note
+                        </Button>
+                      </div>
+                      {lead.notes && lead.notes.length > 0 ? (
+                        <div className="space-y-2">
+                          {lead.notes.slice(0, 3).map((note: any) => (
+                            <div key={note.id} className="p-3 border rounded-md">
+                              <p>{note.body || note.content}</p>
+                              <p className="text-xs text-muted-foreground mt-2">
+                                {formatDistanceToNow(new Date(note.created_at), { addSuffix: true })}
+                              </p>
+                            </div>
+                          ))}
+                        </div>
+                      ) : (
+                        <p className="text-muted-foreground">No notes</p>
+                      )}
+                    </div>
+                  </div>
+                </CardContent>
+              </Card>
+            </TabsContent>
             
             {/* Timeline Tab */}
             <TabsContent value="timeline" className="space-y-4">
@@ -1903,7 +2112,7 @@ function LeadDetailContent() {
           
           {showEditDialog && lead && (
             <LeadEditDialog
-              leadId={leadId.toString()}
+              leadId={leadIdString}
               open={showEditDialog}
               onOpenChange={setShowEditDialog}
               onSuccess={() => router.refresh()}

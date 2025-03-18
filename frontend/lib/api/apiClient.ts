@@ -2,7 +2,7 @@ import axios, { AxiosError, AxiosResponse } from 'axios';
 
 // Base API client configuration
 const apiClient = axios.create({
-  baseURL: '/api', // Force using relative path to ensure we hit the same server
+  baseURL: '', // Remove the '/api' prefix to avoid duplication
   headers: {
     'Content-Type': 'application/json',
   },

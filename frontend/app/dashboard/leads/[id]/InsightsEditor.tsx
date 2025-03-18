@@ -12,9 +12,22 @@ import {
   SelectTrigger,
   SelectValue
 } from '@/components/ui/select';
-import { getLeadInsights } from '@/lib/api/leads';
+import { getLeadInsights } from './api';
 import supabase from '@/lib/supabase/client';
 import { toast } from 'sonner';
+import dynamic from 'next/dynamic';
+import {
+  ChevronDown,
+  ChevronUp,
+  Edit2,
+  Save,
+  XCircle,
+  BarChart2,
+  TrendingUp,
+  AlertTriangle,
+  CheckCircle,
+  RefreshCw
+} from 'lucide-react';
 
 interface InsightsEditorProps {
   leadId: number;
@@ -37,7 +50,7 @@ export default function InsightsEditor({ leadId, onClose, onUpdate }: InsightsEd
     const loadInsights = async () => {
       try {
         setLoading(true);
-        const data = await getLeadInsights(leadId);
+        const data = await getLeadInsights(String(leadId));
         setInsights(data);
         setConversionProbability(data.conversion_probability || 0.5);
         setFactors(data.score_factors || []);

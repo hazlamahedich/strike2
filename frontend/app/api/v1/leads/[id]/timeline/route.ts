@@ -10,23 +10,26 @@ export async function GET(
   request: NextRequest,
   { params }: { params: { id: string } }
 ) {
+  console.log('⭐⭐⭐ TIMELINE ROUTE - Request received:', request.url);
+  console.log('⭐⭐⭐ TIMELINE ROUTE - Params:', params);
+  
   try {
     // Convert id to string to ensure compatibility
     const id = params.id;
-    console.log(`Received GET request for v1/leads/${id}/timeline`);
+    console.log(`⭐⭐⭐ TIMELINE ROUTE - Received GET request for v1/leads/${id}/timeline`);
     
     // Check authentication
     const session = await getServerSession(authOptions);
-    console.log('Auth session:', session ? 'Authenticated' : 'Not authenticated');
+    console.log('⭐⭐⭐ TIMELINE ROUTE - Auth session:', session ? 'Authenticated' : 'Not authenticated');
     
     if (!session) {
-      console.log('Unauthorized request for fetching lead timeline');
+      console.log('⭐⭐⭐ TIMELINE ROUTE - Unauthorized request for fetching lead timeline');
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
 
     // Use mock data for development
     const useMockData = getMockDataStatus();
-    console.log('Using mock lead timeline data:', useMockData);
+    console.log('⭐⭐⭐ TIMELINE ROUTE - Using mock lead timeline data:', useMockData);
 
     if (useMockData) {
       // Use mock data
@@ -83,10 +86,12 @@ export async function GET(
         }
       ];
       
-      console.log('Returning mock lead timeline data for ID:', id);
+      console.log('⭐⭐⭐ TIMELINE ROUTE - Returning mock lead timeline data for ID:', id);
       return NextResponse.json(mockTimeline);
     } else {
       // Forward the request to the backend API
+      console.log(`⭐⭐⭐ TIMELINE ROUTE - Forwarding request to backend: ${BACKEND_API_URL}/api/leads/${id}/timeline`);
+      
       const response = await fetch(`${BACKEND_API_URL}/api/leads/${id}/timeline`, {
         method: 'GET',
         headers: {
@@ -97,7 +102,7 @@ export async function GET(
       });
 
       if (!response.ok) {
-        console.error(`Backend API error: ${response.status} ${response.statusText}`);
+        console.error(`⭐⭐⭐ TIMELINE ROUTE - Backend API error: ${response.status} ${response.statusText}`);
         return NextResponse.json(
           { error: `Backend API error: ${response.status} ${response.statusText}` },
           { status: response.status }
@@ -105,12 +110,12 @@ export async function GET(
       }
 
       const data = await response.json();
-      console.log('Backend API response with lead timeline data:', data);
+      console.log('⭐⭐⭐ TIMELINE ROUTE - Backend API response with lead timeline data:', data);
 
       return NextResponse.json(data);
     }
   } catch (error) {
-    console.error('Error fetching lead timeline:', error);
+    console.error('⭐⭐⭐ TIMELINE ROUTE - Error fetching lead timeline:', error);
     return NextResponse.json(
       { error: 'Failed to fetch lead timeline', details: String(error) },
       { status: 500 }

@@ -10,23 +10,26 @@ export async function GET(
   request: NextRequest,
   { params }: { params: { id: string } }
 ) {
+  console.log('⭐⭐⭐ INSIGHTS ROUTE - Request received:', request.url);
+  console.log('⭐⭐⭐ INSIGHTS ROUTE - Params:', params);
+  
   try {
     // Convert id to string to ensure compatibility
     const id = params.id;
-    console.log(`Received GET request for v1/leads/${id}/insights`);
+    console.log(`⭐⭐⭐ INSIGHTS ROUTE - Received GET request for v1/leads/${id}/insights`);
     
     // Check authentication
     const session = await getServerSession(authOptions);
-    console.log('Auth session:', session ? 'Authenticated' : 'Not authenticated');
+    console.log('⭐⭐⭐ INSIGHTS ROUTE - Auth session:', session ? 'Authenticated' : 'Not authenticated');
     
     if (!session) {
-      console.log('Unauthorized request for fetching lead insights');
+      console.log('⭐⭐⭐ INSIGHTS ROUTE - Unauthorized request for fetching lead insights');
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
 
     // Use mock data for development
     const useMockData = getMockDataStatus();
-    console.log('Using mock lead insights data:', useMockData);
+    console.log('⭐⭐⭐ INSIGHTS ROUTE - Using mock lead insights data:', useMockData);
 
     if (useMockData) {
       // Use mock data
@@ -53,10 +56,12 @@ export async function GET(
         ]
       };
       
-      console.log('Returning mock lead insights data for ID:', id);
+      console.log('⭐⭐⭐ INSIGHTS ROUTE - Returning mock lead insights data for ID:', id);
       return NextResponse.json(mockInsights);
     } else {
       // Forward the request to the backend API
+      console.log(`⭐⭐⭐ INSIGHTS ROUTE - Forwarding request to backend: ${BACKEND_API_URL}/api/leads/${id}/insights`);
+      
       const response = await fetch(`${BACKEND_API_URL}/api/leads/${id}/insights`, {
         method: 'GET',
         headers: {
@@ -67,7 +72,7 @@ export async function GET(
       });
 
       if (!response.ok) {
-        console.error(`Backend API error: ${response.status} ${response.statusText}`);
+        console.error(`⭐⭐⭐ INSIGHTS ROUTE - Backend API error: ${response.status} ${response.statusText}`);
         return NextResponse.json(
           { error: `Backend API error: ${response.status} ${response.statusText}` },
           { status: response.status }
@@ -75,12 +80,12 @@ export async function GET(
       }
 
       const data = await response.json();
-      console.log('Backend API response with lead insights data:', data);
+      console.log('⭐⭐⭐ INSIGHTS ROUTE - Backend API response with lead insights data:', data);
 
       return NextResponse.json(data);
     }
   } catch (error) {
-    console.error('Error fetching lead insights:', error);
+    console.error('⭐⭐⭐ INSIGHTS ROUTE - Error fetching lead insights:', error);
     return NextResponse.json(
       { error: 'Failed to fetch lead insights', details: String(error) },
       { status: 500 }
