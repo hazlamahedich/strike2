@@ -77,33 +77,36 @@ export function LeadPhoneDialogProvider({ children }: { children: React.ReactNod
     >
       {children}
       
-      {/* Add an overlay when the phone dialog is open to ensure visibility */}
-      {isPhoneDialogOpen && (
-        <div 
-          style={{
-            position: 'fixed',
-            top: 0,
-            left: 0,
-            right: 0,
-            bottom: 0,
-            backgroundColor: 'rgba(0, 0, 0, 0.5)',
-            zIndex: 9990,
-            display: 'flex',
-            justifyContent: 'center',
-            alignItems: 'center'
-          }}
-        >
-          {currentLead && (
-            <div style={{ zIndex: 9999, position: 'relative' }}>
-              <ContextualLeadPhoneDialog
-                dialogId={dialogId}
-                leadName={currentLead.name}
-                leadPhone={currentLead.phone}
-                handleClose={closePhoneDialog}
-                onSuccess={handlePhoneCallSuccess}
-              />
-            </div>
-          )}
+      {/* Render phone dialog with proper positioning and dimensions */}
+      {isPhoneDialogOpen && currentLead && (
+        <div style={{ 
+          position: 'fixed',
+          top: 0,
+          left: 0,
+          right: 0,
+          bottom: 0,
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          pointerEvents: 'none',
+          zIndex: 9999
+        }}>
+          <div style={{
+            position: 'relative',
+            width: '95%',
+            maxWidth: '600px',
+            maxHeight: '90vh',
+            pointerEvents: 'auto',
+            margin: '20px'
+          }}>
+            <ContextualLeadPhoneDialog
+              dialogId={dialogId}
+              leadName={currentLead.name}
+              leadPhone={currentLead.phone}
+              handleClose={closePhoneDialog}
+              onSuccess={handlePhoneCallSuccess}
+            />
+          </div>
         </div>
       )}
     </LeadPhoneDialogContext.Provider>
