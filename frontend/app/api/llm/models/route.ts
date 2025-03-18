@@ -1,38 +1,36 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { cookies } from 'next/headers';
+import { LLMModel } from '@/lib/types/llm';
+import { createClient } from '@supabase/supabase-js';
 
-// Default backend URL if environment variable is not set
-const DEFAULT_BACKEND_URL = 'http://localhost:8001';
+// Initialize Supabase client
+const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || 'https://elpqvskcixfsgeavjfhb.supabase.co';
+const supabaseKey = process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
+const supabase = createClient(supabaseUrl, supabaseKey as string);
 
-export async function GET() {
+/**
+ * Get all LLM models
+ * 
+ * GET /api/llm/models
+ */
+export async function GET(request: NextRequest): Promise<NextResponse> {
   try {
-    // Get cookies - properly await them in Next.js 14
-    const cookieStore = await cookies();
-    const sessionCookie = cookieStore.get('session');
+    const { data: models, error } = await supabase
+      .from('llm_models')
+      .select('*')
+      .order('is_default', { ascending: false })
+      .order('created_at', { ascending: false });
     
-    // Use environment variable with fallback
-    const backendUrl = process.env.BACKEND_URL || DEFAULT_BACKEND_URL;
-    
-    // Make request to backend API
-    const response = await fetch(`${backendUrl}/api/llm/models`, {
-      headers: {
-        'Content-Type': 'application/json',
-        'Authorization': `Bearer ${sessionCookie?.value || ''}`,
-      },
-    });
-
-    if (!response.ok) {
-      const errorData = await response.json().catch(() => ({ detail: `HTTP error ${response.status}` }));
+    if (error) {
+      console.error('Error fetching LLM models:', error);
       return NextResponse.json(
-        { error: errorData.detail || 'Failed to fetch LLM models' },
-        { status: response.status }
+        { error: 'Failed to fetch LLM models' },
+        { status: 500 }
       );
     }
-
-    const data = await response.json();
-    return NextResponse.json(data);
+    
+    return NextResponse.json(models || []);
   } catch (error) {
-    console.error('Error fetching LLM models:', error);
+    console.error('Error in GET /api/llm/models:', error);
     return NextResponse.json(
       { error: 'Internal server error' },
       { status: 500 }
@@ -40,40 +38,66 @@ export async function GET() {
   }
 }
 
-export async function POST(request: NextRequest) {
+/**
+ * Create a new LLM model
+ * 
+ * POST /api/llm/models
+ */
+export async function POST(request: NextRequest): Promise<NextResponse> {
   try {
-    // Get cookies - properly await them in Next.js 14
-    const cookieStore = await cookies();
-    const sessionCookie = cookieStore.get('session');
+    // Parse the request body
+    const modelData = await request.json();
     
-    // Use environment variable with fallback
-    const backendUrl = process.env.BACKEND_URL || DEFAULT_BACKEND_URL;
-    
-    // Get request body
-    const body = await request.json();
-    
-    // Make request to backend API
-    const response = await fetch(`${backendUrl}/api/llm/models`, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'Authorization': `Bearer ${sessionCookie?.value || ''}`,
-      },
-      body: JSON.stringify(body),
-    });
-
-    if (!response.ok) {
-      const errorData = await response.json().catch(() => ({ detail: `HTTP error ${response.status}` }));
+    // Validate required fields
+    if (!modelData.provider || !modelData.model_name) {
       return NextResponse.json(
-        { error: errorData.detail || 'Failed to create LLM model' },
-        { status: response.status }
+        { error: 'Provider and model name are required' },
+        { status: 400 }
       );
     }
-
-    const data = await response.json();
+    
+    // Add timestamps
+    const now = new Date().toISOString();
+    const newModel = {
+      ...modelData,
+      created_at: now,
+      updated_at: now,
+    };
+    
+    // If this is marked as default, first update all other models
+    if (modelData.is_default) {
+      const { error: updateError } = await supabase
+        .from('llm_models')
+        .update({ is_default: false })
+        .neq('id', 0); // Update all rows
+      
+      if (updateError) {
+        console.error('Error updating existing models:', updateError);
+        return NextResponse.json(
+          { error: 'Failed to update existing models' },
+          { status: 500 }
+        );
+      }
+    }
+    
+    // Insert the new model
+    const { data, error } = await supabase
+      .from('llm_models')
+      .insert([newModel])
+      .select()
+      .single();
+    
+    if (error) {
+      console.error('Error creating LLM model:', error);
+      return NextResponse.json(
+        { error: 'Failed to create LLM model' },
+        { status: 500 }
+      );
+    }
+    
     return NextResponse.json(data);
   } catch (error) {
-    console.error('Error creating LLM model:', error);
+    console.error('Error in POST /api/llm/models:', error);
     return NextResponse.json(
       { error: 'Internal server error' },
       { status: 500 }

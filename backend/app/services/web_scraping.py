@@ -8,15 +8,13 @@ from urllib.parse import urlparse
 
 import aiohttp
 from bs4 import BeautifulSoup
-from openai import AsyncOpenAI
 from langchain.text_splitter import RecursiveCharacterTextSplitter
 
 from app.core.config import settings
 from app.core.database import fetch_one, update_row, insert_row
 from app.models.lead import Lead
 
-# Initialize OpenAI client
-client = AsyncOpenAI(api_key=settings.OPENAI_API_KEY)
+# Remove OpenAI client initialization
 logger = logging.getLogger(__name__)
 
 # Constants
@@ -176,7 +174,7 @@ async def scrape_subpages(subpages: List[str]) -> Dict[str, str]:
 
 async def analyze_company_content(main_content: str, title: str, subpage_contents: Dict[str, str], company_name: str) -> Dict[str, Any]:
     """
-    Analyze company website content using LLM.
+    Analyze company website content using the centralized LLM service.
     """
     # Combine all content
     all_content = main_content
@@ -198,20 +196,30 @@ async def analyze_company_content(main_content: str, title: str, subpage_content
         
         for i, chunk in enumerate(chunks):
             try:
-                response = await client.chat.completions.create(
-                    model=settings.DEFAULT_MODEL,
-                    messages=[
-                        {"role": "system", "content": "You are a business analyst assistant. Summarize the key information from this website content."},
-                        {"role": "user", "content": f"Summarize the following website content for {company_name}. Focus on extracting key business information:\n\n{chunk}"}
-                    ],
-                    max_tokens=1000
-                )
-                summaries.append(response.choices[0].message.content)
+                # Use centralized LLM service instead of direct OpenAI API call
+                async with aiohttp.ClientSession() as session:
+                    async with session.post(f"{settings.LLM_API_BASE_URL}/api/llm/generate", json={
+                        "prompt": f"Summarize the following website content for {company_name}. Focus on extracting key business information:\n\n{chunk}",
+                        "temperature": 0.3,
+                        "feature_name": "company_analysis",
+                        "max_tokens": 1000
+                    }) as resp:
+                        if resp.status != 200:
+                            error_text = await resp.text()
+                            logger.error(f"Error from LLM service: {error_text}")
+                            # Continue with other chunks, don't fail completely
+                            continue
+                        
+                        result = await resp.json()
+                        summary_text = result.get("text", "")
+                        if summary_text:
+                            summaries.append(summary_text)
             except Exception as e:
                 logger.error(f"Error summarizing chunk {i}: {str(e)}")
+                # Continue with other chunks
         
         # Combine summaries
-        combined_content = "\n\n".join(summaries)
+        combined_content = "\n\n".join(summaries) if summaries else all_content[:8000]
     else:
         combined_content = all_content
     
@@ -242,30 +250,144 @@ async def analyze_company_content(main_content: str, title: str, subpage_content
         Respond with ONLY the JSON object, no additional text.
         """
         
-        response = await client.chat.completions.create(
-            model=settings.DEFAULT_MODEL,
-            response_format={"type": "json_object"},
-            messages=[
-                {"role": "system", "content": "You are a business analyst assistant. Analyze website content and provide structured insights in JSON format only."},
-                {"role": "user", "content": prompt}
-            ]
-        )
-        
-        # Parse the result
-        result = json.loads(response.choices[0].message.content)
-        
-        # Add metadata
-        result["analysis_timestamp"] = datetime.now().isoformat()
-        result["content_length"] = len(all_content)
-        result["subpages_analyzed"] = len(subpage_contents)
-        
-        return result
+        # Try multiple times in case of transient errors
+        max_attempts = 3
+        for attempt in range(max_attempts):
+            try:
+                # Use centralized LLM service
+                async with aiohttp.ClientSession() as session:
+                    async with session.post(f"{settings.LLM_API_BASE_URL}/api/llm/generate", json={
+                        "prompt": prompt,
+                        "temperature": 0.2,
+                        "feature_name": "company_analysis",
+                        "response_format": {"type": "json_object"}
+                    }, timeout=60) as resp:
+                        if resp.status != 200:
+                            error_text = await resp.text()
+                            logger.error(f"Error from LLM service (attempt {attempt+1}/{max_attempts}): {error_text}")
+                            if attempt == max_attempts - 1:  # Last attempt
+                                return {
+                                    "company_summary": f"Error analyzing content for {company_name}. Please try again later.",
+                                    "industry": "Unknown",
+                                    "products_services": [],
+                                    "value_proposition": "",
+                                    "target_audience": "",
+                                    "company_size_estimate": "",
+                                    "strengths": [],
+                                    "opportunities": [],
+                                    "conversion_strategy": "",
+                                    "key_topics": [],
+                                    "potential_pain_points": [],
+                                    "lead_score_factors": []
+                                }
+                            # Wait before retrying
+                            await asyncio.sleep(2 ** attempt)  # Exponential backoff
+                            continue
+                        
+                        result = await resp.json()
+                        response_text = result.get("text", "{}")
+                
+                # Parse JSON from the response
+                try:
+                    analysis_result = json.loads(response_text)
+                    # Validate that we have the expected fields
+                    expected_fields = [
+                        "company_summary", "industry", "products_services", "value_proposition",
+                        "target_audience", "company_size_estimate", "strengths", "opportunities",
+                        "conversion_strategy", "key_topics", "potential_pain_points", "lead_score_factors"
+                    ]
+                    
+                    missing_fields = [field for field in expected_fields if field not in analysis_result]
+                    if missing_fields:
+                        logger.warning(f"Analysis result missing fields: {missing_fields}")
+                        # Add empty values for missing fields
+                        for field in missing_fields:
+                            if field in ["company_summary", "industry", "value_proposition", 
+                                       "target_audience", "company_size_estimate", "conversion_strategy"]:
+                                analysis_result[field] = ""
+                            else:
+                                analysis_result[field] = []
+                    
+                    # Add metadata about the analysis
+                    analysis_result["content_length"] = len(all_content)
+                    analysis_result["subpages_analyzed"] = len(subpage_contents)
+                    analysis_result["analysis_timestamp"] = datetime.now().isoformat()
+                    
+                    return analysis_result
+                except json.JSONDecodeError:
+                    # Try to extract JSON from the response text if it's not already in JSON format
+                    import re
+                    match = re.search(r"```json\s*(.*?)\s*```", response_text, re.DOTALL)
+                    if match:
+                        json_str = match.group(1)
+                        try:
+                            return json.loads(json_str)
+                        except json.JSONDecodeError:
+                            logger.error(f"Failed to parse extracted JSON from LLM response on attempt {attempt+1}")
+                            if attempt == max_attempts - 1:  # Last attempt
+                                raise
+                    else:
+                        logger.error(f"Failed to find JSON in LLM response on attempt {attempt+1}")
+                        if attempt == max_attempts - 1:  # Last attempt
+                            raise
+                    
+                # Wait before retrying
+                await asyncio.sleep(2 ** attempt)  # Exponential backoff
+            except asyncio.TimeoutError:
+                logger.error(f"Timeout from LLM service (attempt {attempt+1}/{max_attempts})")
+                if attempt == max_attempts - 1:  # Last attempt
+                    return {
+                        "company_summary": f"Timeout analyzing content for {company_name}. Please try again later.",
+                        "industry": "Unknown",
+                        "products_services": [],
+                        "value_proposition": "",
+                        "target_audience": "",
+                        "company_size_estimate": "",
+                        "strengths": [],
+                        "opportunities": [],
+                        "conversion_strategy": "",
+                        "key_topics": [],
+                        "potential_pain_points": [],
+                        "lead_score_factors": []
+                    }
+                # Wait before retrying
+                await asyncio.sleep(2 ** attempt)  # Exponential backoff
+            except Exception as e:
+                logger.error(f"Error analyzing company content (attempt {attempt+1}/{max_attempts}): {str(e)}")
+                if attempt == max_attempts - 1:  # Last attempt
+                    # Return a fallback result on final failure
+                    return {
+                        "company_summary": f"Error analyzing content for {company_name}: {str(e)[:100]}...",
+                        "industry": "Unknown",
+                        "products_services": [],
+                        "value_proposition": "",
+                        "target_audience": "",
+                        "company_size_estimate": "",
+                        "strengths": [],
+                        "opportunities": [],
+                        "conversion_strategy": "",
+                        "key_topics": [],
+                        "potential_pain_points": [],
+                        "lead_score_factors": []
+                    }
+                # Wait before retrying
+                await asyncio.sleep(2 ** attempt)  # Exponential backoff
     except Exception as e:
-        logger.error(f"Error analyzing content: {str(e)}")
+        logger.error(f"Fatal error analyzing company content: {str(e)}")
+        # Return a fallback result on error
         return {
-            "company_summary": f"Failed to analyze content for {company_name}",
-            "error": str(e),
-            "analysis_timestamp": datetime.now().isoformat()
+            "company_summary": f"Error analyzing content for {company_name}. Please try again later.",
+            "industry": "Unknown",
+            "products_services": [],
+            "value_proposition": "",
+            "target_audience": "",
+            "company_size_estimate": "",
+            "strengths": [],
+            "opportunities": [],
+            "conversion_strategy": "",
+            "key_topics": [],
+            "potential_pain_points": [],
+            "lead_score_factors": []
         }
 
 async def update_lead_score_from_analysis(lead_id: int, analysis: Dict[str, Any]) -> float:

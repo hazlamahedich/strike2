@@ -128,7 +128,7 @@ import { LeadNotesProvider } from '@/lib/contexts/LeadNotesContext';
 import { LeadNoteDialogManager } from '@/components/leads/LeadNoteDialogManager';
 import { useLeadNotes } from '@/lib/contexts/LeadNotesContext';
 import { TaskButton } from '@/components/tasks/TaskButton';
-import { useTaskDialog, TaskDialogType, TaskDialogProvider } from '@/contexts/TaskDialogContext';
+import { useTaskDialog, TaskDialogType } from '@/contexts/TaskDialogContext';
 import { ContextualTaskDialog } from '@/components/tasks/ContextualTaskDialog';
 
 // Define Campaign type
@@ -168,21 +168,25 @@ enum LeadSource {
 }
 
 export default function LeadsPage() {
+  // Add this line for debugging
+  console.log("🔄 LeadsPage rendering - No TaskDialogProvider wrapper");
+  
   return (
-    <TaskDialogProvider>
-      <LeadNotesProvider>
-        <EmailDialogProvider>
-          <LeadPhoneDialogProvider>
-            <LeadsContent />
-            <LeadNoteDialogManager />
-          </LeadPhoneDialogProvider>
-        </EmailDialogProvider>
-      </LeadNotesProvider>
-    </TaskDialogProvider>
+    <LeadNotesProvider>
+      <EmailDialogProvider>
+        <LeadPhoneDialogProvider>
+          <LeadsContent />
+          <LeadNoteDialogManager />
+        </LeadPhoneDialogProvider>
+      </EmailDialogProvider>
+    </LeadNotesProvider>
   );
 }
 
 function LeadsContent() {
+  // Add this line for debugging
+  console.log("🔄 LeadsContent rendering - Using TaskDialogContext from parent");
+  
   console.log("⭐⭐⭐ LEADS CONTENT - Rendering");
   
   const router = useRouter();

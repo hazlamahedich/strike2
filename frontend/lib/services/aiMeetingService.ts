@@ -12,6 +12,8 @@ import {
   getMeetingSummary 
 } from '../api/meetings/index';
 import { getMockDataStatus } from '@/lib/utils/mockDataUtils';
+import { generateText } from '@/lib/services/llmService';
+import { LLMGenerateRequest } from '@/lib/types/llm';
 import axios from 'axios';
 
 // Define a modified ApiResponse type that allows null data
@@ -460,28 +462,126 @@ export const getComprehensiveMeetingSummary = async (
       }
     }
     
-    // Use the frontend API endpoint instead of trying to call the backend directly
+    // First, try to fetch the meeting details to get context for the summary
     try {
-      console.log('Calling frontend API for comprehensive summary');
+      // Fetch meeting details
+      console.log('Fetching meeting details for summary generation');
+      const meetingResponse = await apiClient.get<Meeting>(`v1/meetings/${meetingId}`);
+      const meeting = meetingResponse.data;
       
-      // Check if we're using mock data mode
-      if (typeof window !== 'undefined') {
-        const useMockData = getMockDataStatus() || 
-                           process.env.NODE_ENV === 'development';
-        
-        if (useMockData) {
-          console.log('Using mock data for comprehensive summary');
-          return getMockComprehensiveSummary();
-        }
+      if (!meeting) {
+        console.log('Meeting not found, using mock data');
+        return getMockComprehensiveSummary();
       }
       
-      // Add a timeout to prevent hanging requests
-      const controller = new AbortController();
-      const timeoutId = setTimeout(() => controller.abort(), 30000); // 30 seconds timeout
+      console.log('Generating comprehensive summary using centralized LLM service');
       
+      // Create a prompt for the LLM
+      const prompt = `Generate a comprehensive meeting summary for a ${meeting.meeting_type || 'sales'} meeting.
+      
+Meeting Title: ${meeting.title || 'Sales Discussion'}
+Date: ${meeting.start_time ? new Date(meeting.start_time).toLocaleDateString() : 'recent'}
+Lead: ${meeting.lead ? `${meeting.lead.first_name} ${meeting.lead.last_name}` : 'Potential client'}
+Context: ${meeting.notes || 'Sales discussion with potential client'}
+      
+Please provide:
+1. A summary of the meeting
+2. Key insights from the discussion
+3. Action items that were identified
+4. Recommended next steps
+5. Company analysis including strengths and potential pain points
+      
+Format the response as JSON with the following structure:
+{
+  "summary": "detailed meeting summary",
+  "insights": ["insight 1", "insight 2", ...],
+  "action_items": ["action 1", "action 2", ...],
+  "next_steps": ["next step 1", "next step 2", ...],
+  "company_analysis": {
+    "company_summary": "brief company description",
+    "industry": "company industry",
+    "company_size_estimate": "size estimate",
+    "strengths": ["strength 1", "strength 2", ...],
+    "potential_pain_points": ["pain point 1", "pain point 2", ...]
+  }
+}`;
+      
+      // Generate the summary using the LLM service
+      const generateRequest: LLMGenerateRequest = {
+        prompt,
+        max_tokens: 1000, // Ensure we have enough tokens for a comprehensive response
+        temperature: 0.7 // Balanced between creativity and consistency
+      };
+      
+      const response = await generateText(generateRequest);
+      
+      // Parse the generated text as JSON
+      let summaryData;
+      try {
+        // Handle possible text formatting in the response
+        const jsonText = response.text.trim();
+        const jsonStartIndex = jsonText.indexOf('{');
+        const jsonEndIndex = jsonText.lastIndexOf('}') + 1;
+        
+        if (jsonStartIndex >= 0 && jsonEndIndex > jsonStartIndex) {
+          const cleanJson = jsonText.substring(jsonStartIndex, jsonEndIndex);
+          summaryData = JSON.parse(cleanJson);
+        } else {
+          throw new Error('No valid JSON found in response');
+        }
+      } catch (parseError) {
+        console.error('Error parsing LLM response as JSON:', parseError);
+        console.error('Raw response:', response.text);
+        
+        // Fall back to mock data if parsing fails
+        return getMockComprehensiveSummary();
+      }
+      
+      // Validate the response data has the expected fields
+      if (!summaryData.summary || !Array.isArray(summaryData.insights) || 
+          !Array.isArray(summaryData.action_items) || !Array.isArray(summaryData.next_steps)) {
+        console.error('Response data missing required fields:', summaryData);
+        return getMockComprehensiveSummary();
+      }
+      
+      // Store the summary in the meeting_summaries table
+      try {
+        const summaryCreateData: MeetingSummaryCreate = {
+          meeting_id: meetingId,
+          summary_type: MeetingSummaryType.COMPREHENSIVE,
+          summary: summaryData.summary,
+          insights: summaryData.insights,
+          action_items: summaryData.action_items,
+          next_steps: summaryData.next_steps,
+          company_analysis: summaryData.company_analysis
+        };
+        
+        const createResult = await createMeetingSummary(summaryCreateData);
+        console.log('Created meeting summary:', createResult);
+      } catch (storeError) {
+        // If there's an error storing the summary, just log it
+        console.error('Error storing comprehensive summary:', storeError);
+      }
+      
+      return {
+        data: summaryData,
+        error: null
+      };
+      
+    } catch (error) {
+      console.error('Error generating comprehensive summary with LLM:', error);
+      
+      // If we get an error using the centralized LLM service, fall back to the original API approach
+      console.log('Falling back to original API approach');
+      
+      // Now try the original implementation that uses the API
       try {
         // Use a simple fetch with error handling
         console.log(`Fetching from /api/v1/ai/meetings/comprehensive-summary/${meetingId}`);
+        
+        // Add a timeout to prevent hanging requests
+        const controller = new AbortController();
+        const timeoutId = setTimeout(() => controller.abort(), 30000); // 30 seconds timeout
         
         const response = await fetch(`/api/v1/ai/meetings/comprehensive-summary/${meetingId}`, {
           method: 'GET',
@@ -499,13 +599,13 @@ export const getComprehensiveMeetingSummary = async (
         console.log('Response status:', response.status);
         
         if (!response.ok) {
-          // If we get a 401 Unauthorized error, use mock data
+          // Handle the error response
           if (response.status === 401) {
             console.log('Authentication error, using mock data');
             return getMockComprehensiveSummary();
           }
           
-          // Try to get the error details from the response
+          // Try to get the error details
           const errorText = await response.text();
           console.error('API error response:', {
             status: response.status,
@@ -513,7 +613,6 @@ export const getComprehensiveMeetingSummary = async (
             body: errorText
           });
           
-          // If the error response is empty or just contains {}, use mock data
           if (!errorText || errorText.trim() === '' || errorText.trim() === '{}') {
             console.log('Empty error response, using mock data');
             return getMockComprehensiveSummary();
@@ -582,40 +681,16 @@ export const getComprehensiveMeetingSummary = async (
           data: data,
           error: null
         };
-      } catch (fetchError: unknown) {
-        // Clear the timeout if there was an error
-        clearTimeout(timeoutId);
+      } catch (apiError) {
+        console.error('Error with API fallback approach:', apiError);
         
-        console.error('Fetch error in getComprehensiveMeetingSummary:', fetchError);
-        
-        // If the error is due to timeout or network issues, use mock data
-        if (fetchError instanceof Error && fetchError.name === 'AbortError') {
-          console.log('Request timed out, using mock data');
-          return getMockComprehensiveSummary();
-        }
-        
-        if (!navigator.onLine || 
-            (fetchError instanceof Error && 
-             (fetchError.message.includes('network') || fetchError.message.includes('fetch')))) {
-          console.log('Network error, using mock data');
-          return getMockComprehensiveSummary();
-        }
-        
-        // For any other error, use mock data
-        console.log('Other error, using mock data:', fetchError);
+        // If both approaches fail, return mock data
+        console.log('Both LLM and API approaches failed, using mock data');
         return getMockComprehensiveSummary();
       }
-    } catch (error) {
-      console.error('Error fetching from frontend API:', error);
-      
-      // Always fall back to mock data on any error
-      console.log('Falling back to mock data due to error');
-      return getMockComprehensiveSummary();
     }
-  } catch (error) {
-    console.error('Error in getComprehensiveMeetingSummary:', error);
-    
-    // Always return mock data on any error
+  } catch (outerError) {
+    console.error('Outer error in getComprehensiveMeetingSummary:', outerError);
     return getMockComprehensiveSummary();
   }
 };

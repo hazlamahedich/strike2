@@ -289,6 +289,140 @@ app.get('/api/llm/providers', async (req, res) => {
   }
 });
 
+// LLM Generate endpoint
+app.post('/api/llm/generate', async (req, res) => {
+  try {
+    // Get request data
+    const { provider, model_name, prompt, temperature = 0.7, max_tokens = 1024, stop_sequences } = req.body;
+    
+    // Get auth token for user tracking (optional)
+    const authHeader = req.headers.authorization || '';
+    const token = authHeader.startsWith('Bearer ') ? authHeader.substring(7) : '';
+    
+    // Get the model configuration from the database if not explicitly provided
+    let modelConfig;
+    if (!model_name || !provider) {
+      const modelResult = await pool.query(
+        'SELECT * FROM llm_models WHERE is_default = TRUE LIMIT 1'
+      );
+      
+      if (modelResult.rows.length === 0) {
+        return res.status(404).json({ error: 'No default LLM model found' });
+      }
+      
+      modelConfig = modelResult.rows[0];
+    } else {
+      modelConfig = { provider, model_name, temperature, max_tokens };
+    }
+    
+    // Different providers require different API handling
+    let completionText = '';
+    let usageStats = { prompt_tokens: 0, completion_tokens: 0, total_tokens: 0 };
+    
+    // Get the user ID from the token if available - this is a placeholder function
+    // In a real implementation, you would verify the JWT and extract the user ID
+    const getUserIdFromToken = (token) => {
+      if (!token) return null;
+      try {
+        // This is just a placeholder - in a real app, you'd decode and verify the JWT
+        // const decoded = jwt.verify(token, process.env.JWT_SECRET);
+        // return decoded.sub || decoded.user_id;
+        return null;
+      } catch (err) {
+        console.error('Error decoding token:', err);
+        return null;
+      }
+    };
+    
+    // Calculate cost based on token usage and model pricing - this is a placeholder function
+    const calculateCost = (model, usage) => {
+      // In a real implementation, you would have pricing data for different models
+      // and calculate the cost based on the number of tokens used
+      const tokenRate = 0.00002; // $0.02 per 1000 tokens, as a simple default
+      return (usage.prompt_tokens + usage.completion_tokens) * tokenRate;
+    };
+    
+    // For demonstration purposes, we're using a mock implementation
+    // In a real implementation, you would call the appropriate API based on the provider
+    
+    // Simple mock implementation for development
+    if (process.env.NODE_ENV !== 'production') {
+      // Simulate an API call with some delay
+      await new Promise(resolve => setTimeout(resolve, 500));
+      
+      // Generate a response based on the prompt
+      if (prompt.toLowerCase().includes('summarize')) {
+        completionText = `Summary: ${prompt.substring(0, 100)}...`;
+      } else if (prompt.toLowerCase().includes('question')) {
+        completionText = `Answer: Based on the information provided, the answer is...`;
+      } else {
+        completionText = `Response: Here is a response to your prompt about ${prompt.substring(0, 50)}...`;
+      }
+      
+      // Simulate token usage
+      usageStats = {
+        prompt_tokens: Math.ceil(prompt.length / 4),
+        completion_tokens: Math.ceil(completionText.length / 4),
+        total_tokens: Math.ceil(prompt.length / 4) + Math.ceil(completionText.length / 4)
+      };
+    } 
+    // In production, use the actual provider APIs
+    else {
+      // This would contain the real implementation for different providers
+      switch (modelConfig.provider) {
+        case 'openai':
+          // Implementation for OpenAI would go here
+          break;
+        case 'anthropic':
+          // Implementation for Anthropic would go here
+          break;
+        case 'azure':
+          // Implementation for Azure OpenAI would go here
+          break;
+        default:
+          return res.status(400).json({ error: `Unsupported provider: ${modelConfig.provider}` });
+      }
+    }
+    
+    // Record usage in the database if we have a model ID and we're not in development mode
+    // or if we're explicitly tracking usage in development
+    const userId = getUserIdFromToken(token);
+    const shouldRecordUsage = modelConfig.id && (process.env.NODE_ENV === 'production' || process.env.TRACK_DEV_USAGE === 'true');
+    
+    if (shouldRecordUsage) {
+      try {
+        await pool.query(
+          `INSERT INTO llm_usage_records 
+          (model_id, prompt_tokens, completion_tokens, total_tokens, cost, request_type, user_id)
+          VALUES 
+          ($1, $2, $3, $4, $5, $6, $7)`,
+          [
+            modelConfig.id,
+            usageStats.prompt_tokens,
+            usageStats.completion_tokens, 
+            usageStats.total_tokens,
+            calculateCost(modelConfig, usageStats),
+            'text_generation',
+            userId
+          ]
+        );
+      } catch (dbError) {
+        // Log the error but don't fail the request
+        console.error('Error recording LLM usage:', dbError);
+      }
+    }
+    
+    // Return the completion
+    res.json({
+      text: completionText,
+      usage: usageStats
+    });
+  } catch (error) {
+    console.error('Error generating LLM completion:', error);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
 // Start the server
 app.listen(port, () => {
   console.log(`LLM API server running on port ${port}`);

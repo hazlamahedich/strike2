@@ -1210,7 +1210,7 @@ class CommunicationService:
             
     async def transcribe_recording_with_whisper(self, recording_url: str, call_sid: str) -> str:
         """
-        Transcribe a call recording using OpenAI's Whisper model
+        Transcribe a call recording using the centralized LLM service
         
         Args:
             recording_url: URL to the recording file
@@ -1221,17 +1221,13 @@ class CommunicationService:
         """
         import tempfile
         import requests
-        from openai import AsyncOpenAI
+        import aiohttp
         from app.db.supabase import insert_row, insert_related_activity, get_call_activity_id
         
         try:
-            # Check if OpenAI API key is configured
-            openai_api_key = os.getenv("OPENAI_API_KEY")
-            if not openai_api_key:
-                raise ValueError("OpenAI API key is not configured")
-            
-            # Initialize OpenAI client
-            client = AsyncOpenAI(api_key=openai_api_key)
+            # Check if we have the required configuration
+            if not settings.LLM_API_BASE_URL:
+                raise ValueError("LLM API base URL is not configured")
             
             # Download the recording from Twilio
             # Twilio recording URLs require authentication
@@ -1248,17 +1244,28 @@ class CommunicationService:
             
             logger.info(f"Downloaded recording to {temp_file_path}")
             
-            # Transcribe with OpenAI Whisper
+            # Encode the audio file to base64 for transmission
             with open(temp_file_path, "rb") as audio_file:
-                transcript_response = await client.audio.transcriptions.create(
-                    model="whisper-1",
-                    file=audio_file
-                )
+                audio_content = audio_file.read()
+                audio_base64 = base64.b64encode(audio_content).decode('utf-8')
+            
+            # Transcribe with the centralized LLM service's audio endpoint
+            async with aiohttp.ClientSession() as session:
+                async with session.post(f"{settings.LLM_API_BASE_URL}/api/llm/audio/transcribe", json={
+                    "audio_base64": audio_base64,
+                    "feature_name": "call_transcription",
+                    "language": "en"
+                }) as resp:
+                    if resp.status != 200:
+                        error_text = await resp.text()
+                        logger.error(f"Error from LLM audio transcription service: {error_text}")
+                        raise ValueError(f"Failed to transcribe audio: {error_text}")
+                    
+                    result = await resp.json()
+                    transcription_text = result.get("text", "")
             
             # Clean up the temporary file
             os.unlink(temp_file_path)
-            
-            transcription_text = transcript_response.text
             
             # Update the call log with the transcription
             await self._update_call_log_transcription(call_sid, transcription_text)
@@ -1274,7 +1281,7 @@ class CommunicationService:
                 metadata = {
                     "call_sid": call_sid,
                     "recording_url": recording_url,
-                    "transcription_method": "whisper",
+                    "transcription_method": "centralized_llm_service",
                     "transcription_timestamp": datetime.now().isoformat(),
                     "duration": call_info.get("duration", 0),
                     "caller": call_info.get("caller", ""),
@@ -1286,7 +1293,7 @@ class CommunicationService:
                     "lead_id": lead_id,
                     "user_id": call_info.get("user_id"),
                     "activity_type": "call_transcription",
-                    "description": f"Call transcribed with Whisper",
+                    "description": f"Call transcribed with AI",
                     "metadata": metadata
                 }
                 
@@ -1299,46 +1306,19 @@ class CommunicationService:
                     parent_activity_id=call_activity_id,
                     group_id=f"call_{call_sid}"
                 )
-                
-                # Also log a separate activity for the recording if it's not already logged
-                recording_activity_data = {
-                    "lead_id": lead_id,
-                    "user_id": call_info.get("user_id"),
-                    "activity_type": "call_recording",
-                    "description": f"Call recording available",
-                    "metadata": {
-                        "call_sid": call_sid,
-                        "recording_url": recording_url,
-                        "duration": call_info.get("duration", 0),
-                        "caller": call_info.get("caller", ""),
-                        "recipient": call_info.get("recipient", "")
-                    }
-                }
-                
-                # Insert recording activity with relationship to the call activity
-                await insert_related_activity(
-                    activity_data=recording_activity_data,
-                    parent_activity_id=call_activity_id,
-                    group_id=f"call_{call_sid}"
-                )
-                
-                # Update lead score to reflect the new activity
-                from app.services.ai import AIService
-                ai_service = AIService()
-                await ai_service.calculate_lead_score(lead_id, force_recalculate=True)
             
-            logger.info(f"Successfully transcribed recording for call {call_sid}")
             return transcription_text
         
         except Exception as e:
-            logger.error(f"Failed to transcribe recording with Whisper: {str(e)}")
-            # Clean up temp file if it exists
+            logger.error(f"Error transcribing recording: {str(e)}")
+            # Try to clean up temporary file if it exists
             try:
                 if 'temp_file_path' in locals():
                     os.unlink(temp_file_path)
             except:
                 pass
-            raise
+            
+            return f"Transcription failed: {str(e)}"
     
     async def _update_call_log_transcription(self, call_sid: str, transcription: str) -> None:
         """

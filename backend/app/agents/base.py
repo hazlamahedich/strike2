@@ -5,6 +5,8 @@ This module provides common functionality and base classes for all agents in the
 """
 
 import logging
+import aiohttp
+import json
 from typing import Any, Dict, List, Callable, Optional, TypeVar, Generic, Union
 from pydantic import BaseModel, Field
 from langchain.schema import HumanMessage, AIMessage, SystemMessage, BaseMessage
@@ -89,8 +91,90 @@ class CRMTool(BaseTool):
         """Run the tool."""
         raise NotImplementedError("Subclasses must implement this method")
 
-async def create_llm(model_name: Optional[str] = None, temperature: float = 0.0):
-    """Create a language model instance with specified parameters."""
+class CentralizedLLM:
+    """Wrapper for the centralized LLM service."""
+    
+    def __init__(self, temperature: float = 0.0, model_name: Optional[str] = None, feature_name: str = "agent"):
+        self.temperature = temperature
+        self.model_name = model_name
+        self.feature_name = feature_name
+        self.base_url = settings.LLM_API_BASE_URL
+        
+    async def apredict(self, prompt: str) -> str:
+        """Generate a prediction from the LLM service."""
+        if not self.base_url:
+            raise ValueError("LLM_API_BASE_URL not configured")
+            
+        try:
+            async with aiohttp.ClientSession() as session:
+                async with session.post(f"{self.base_url}/api/llm/generate", json={
+                    "prompt": prompt,
+                    "temperature": self.temperature,
+                    "feature_name": self.feature_name,
+                    "model_name": self.model_name
+                }) as resp:
+                    if resp.status != 200:
+                        error_text = await resp.text()
+                        logger.error(f"Error from LLM service: {error_text}")
+                        raise ValueError(f"LLM service error: {error_text}")
+                    
+                    result = await resp.json()
+                    return result.get("text", "")
+        except Exception as e:
+            logger.error(f"Error calling LLM service: {str(e)}")
+            raise
+
+    async def apredict_json(self, prompt: str) -> Dict[str, Any]:
+        """Generate a JSON prediction from the LLM service."""
+        if not self.base_url:
+            raise ValueError("LLM_API_BASE_URL not configured")
+            
+        try:
+            async with aiohttp.ClientSession() as session:
+                async with session.post(f"{self.base_url}/api/llm/generate", json={
+                    "prompt": prompt,
+                    "temperature": self.temperature,
+                    "feature_name": self.feature_name,
+                    "model_name": self.model_name,
+                    "response_format": {"type": "json_object"}
+                }) as resp:
+                    if resp.status != 200:
+                        error_text = await resp.text()
+                        logger.error(f"Error from LLM service: {error_text}")
+                        raise ValueError(f"LLM service error: {error_text}")
+                    
+                    result = await resp.json()
+                    response_text = result.get("text", "{}")
+                    
+                    try:
+                        return json.loads(response_text)
+                    except json.JSONDecodeError:
+                        # Try to extract JSON from the response text
+                        import re
+                        match = re.search(r"```json\s*(.*?)\s*```", response_text, re.DOTALL)
+                        if match:
+                            json_str = match.group(1)
+                            return json.loads(json_str)
+                        
+                        logger.error("Failed to parse JSON from LLM response")
+                        raise ValueError("Invalid JSON response from LLM service")
+        except Exception as e:
+            logger.error(f"Error calling LLM service for JSON: {str(e)}")
+            raise
+
+async def create_llm(model_name: Optional[str] = None, temperature: float = 0.0, feature_name: str = "agent"):
+    """Create a centralized language model instance with specified parameters."""
+    # First check if we should use the centralized LLM service
+    if settings.LLM_API_BASE_URL:
+        logger.info(f"Using centralized LLM service at {settings.LLM_API_BASE_URL}")
+        return CentralizedLLM(
+            temperature=temperature,
+            model_name=model_name or settings.DEFAULT_MODEL,
+            feature_name=feature_name
+        )
+    
+    # Fallback to direct OpenAI usage if centralized service not available
+    logger.warning("Centralized LLM service not configured, falling back to direct OpenAI usage")
     return ChatOpenAI(
         api_key=settings.OPENAI_API_KEY,
         model_name=model_name or settings.DEFAULT_MODEL,

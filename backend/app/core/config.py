@@ -36,6 +36,9 @@ class Settings(BaseSettings):
     LITELLM_LOGGING_ENABLED: bool = True
     LITELLM_LOGGING_LEVEL: str = "INFO"
     
+    # Centralized LLM service settings
+    LLM_API_BASE_URL: str = os.getenv("LLM_API_BASE_URL", "http://localhost:8001")
+    
     # Anthropic settings
     ANTHROPIC_API_KEY: Optional[str] = None
     

@@ -31,7 +31,13 @@ import {
   PencilIcon,
   XCircle,
   Mic,
-  Eye
+  Eye,
+  ChevronDown,
+  ClipboardEdit,
+  FileEdit,
+  MoreHorizontal,
+  Send,
+  X
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription, CardFooter } from '@/components/ui/card';
@@ -41,7 +47,6 @@ import { toast } from 'sonner';
 import { LeadStatus, LeadSource } from '@/lib/types/lead';
 import { StatusChangeDialog } from '@/components/leads/StatusChangeDialog';
 import { NoteDialog } from '@/components/leads/NoteDialog';
-import { TaskDialog } from '@/components/leads/TaskDialog';
 import { EmailDialog } from '@/components/communications/EmailDialog';
 import { PhoneDialog } from '@/components/communications/PhoneDialog';
 import { MeetingDialog } from '@/components/meetings/MeetingDialog';
@@ -93,10 +98,15 @@ import { MeetingDialogProvider, useMeetingDialog, MeetingDialogType } from '@/co
 import { Meeting, MeetingStatus, MeetingType } from '@/lib/types/meeting';
 import { ContextualRescheduleDialog } from '@/components/meetings/ContextualRescheduleDialog';
 import { MeetingDialogContainer } from '@/components/ui/meeting-dialog';
-import { LeadNotesProvider, useLeadNotes, LeadNoteDialogType } from '@/lib/contexts/LeadNotesContext';
+import { LeadNotesProvider, useLeadNotes, LeadNoteDialogType, LeadNote } from '@/lib/contexts/LeadNotesContext';
 import { LeadNoteDialogManager } from '@/components/leads/LeadNoteDialogManager';
 import { Lead } from '@/lib/types/lead';
 import { ContextualLeadNoteDialog } from '@/components/leads/ContextualLeadNoteDialog';
+import { TaskButton } from '@/components/tasks/TaskButton';
+import { cn } from '@/lib/utils';
+import { useTaskDialog, TaskDialogType } from '@/contexts/TaskDialogContext';
+import { ContextualTaskDialog } from '@/components/tasks/ContextualTaskDialog';
+import { ContextualEditTaskDialog } from '@/components/tasks/ContextualEditTaskDialog';
 
 // Configuration flag to toggle between mock and real data
 // Set this to false to use the API's decision on whether to use mock data
@@ -235,6 +245,7 @@ function LeadDetailContent() {
   const { openPhoneDialog } = useLeadPhoneDialog();
   const { openMeetingDialog, closeMeetingDialog } = useMeetingDialog();
   const { openAddNoteDialog, openDialogs } = useLeadNotes();
+  const { openTaskDialog, closeTaskDialog } = useTaskDialog();
   
   // Log the hooks for debugging
   console.log("Available hooks from contexts:", { 
@@ -254,16 +265,11 @@ function LeadDetailContent() {
   const [timelineFilters, setTimelineFilters] = useState<string[]>([]);
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
   const [showAddToCampaign, setShowAddToCampaign] = useState(false);
-  const [showTaskModal, setShowTaskModal] = useState(false);
-  const [currentTask, setCurrentTask] = useState<any>(null);
-  const [isEditingTask, setIsEditingTask] = useState(false);
   const [showInsightsEditor, setShowInsightsEditor] = useState(false);
   
   // State for dialogs - remove email and call dialogs as they'll be handled by contexts
   const [showStatusDialog, setShowStatusDialog] = useState(false);
   const [statusToChange, setStatusToChange] = useState<LeadStatus | null>(null);
-  const [showNoteDialog, setShowNoteDialog] = useState(false);
-  const [showTaskDialog, setShowTaskDialog] = useState(false);
   const [showEditDialog, setShowEditDialog] = useState(false);
   const [showCampaignDialog, setShowCampaignDialog] = useState(false);
   const [showScheduleForm, setShowScheduleForm] = useState(false); // Add this state for scheduling
@@ -636,13 +642,6 @@ function LeadDetailContent() {
     }
   };
   
-  // Handle task edit
-  const handleEditTask = (task: any) => {
-    setCurrentTask(task);
-    setIsEditingTask(true);
-    setShowTaskDialog(true);
-  };
-  
   // Handle task delete
   const handleDeleteTask = (taskId: number) => {
     if (USE_MOCK_DATA) {
@@ -725,182 +724,6 @@ function LeadDetailContent() {
       });
       
       deleteTaskMutation.mutate();
-    }
-  };
-  
-  // Handle task update
-  const handleTaskUpdate = (updatedTask: any) => {
-    if (USE_MOCK_DATA) {
-      // Mock data implementation
-      const lead = mockLeadDetails[leadId];
-      if (lead && lead.tasks) {
-        // Find the task
-        const taskIndex = lead.tasks.findIndex((t: any) => t.id === updatedTask.id);
-        if (taskIndex !== -1) {
-          // Update the task
-          lead.tasks[taskIndex] = {
-            ...lead.tasks[taskIndex],
-            ...updatedTask,
-            updated_at: new Date().toISOString()
-          };
-          
-          // Add to timeline
-          const timelineEntry = {
-            id: mockLeadTimeline.length + 1,
-            type: 'task_update',
-            content: `Updated task: "${updatedTask.title}"`,
-            created_at: new Date().toISOString(),
-            user: { id: 1, name: 'Jane Doe' }
-          };
-          
-          // Add to the beginning of the timeline
-          mockLeadTimeline.unshift(timelineEntry);
-          
-          // Force re-render
-          router.refresh();
-          
-          // Show toast
-          toast.success('Task updated');
-        }
-      }
-    } else {
-      // Real API implementation
-      const updateTaskMutation = useMutation({
-        mutationFn: async () => {
-          const taskData = {
-            ...updatedTask,
-            updated_at: new Date().toISOString()
-          };
-          
-          const { data, error } = await supabase
-            .from('lead_tasks')
-            .update(taskData)
-            .eq('id', updatedTask.id)
-            .select()
-            .single();
-          
-          if (error) throw error;
-          
-          // Add to timeline
-          await supabase.from('lead_timeline').insert({
-            lead_id: leadId,
-            type: 'task_update',
-            content: `Updated task: "${updatedTask.title}"`,
-            created_at: new Date().toISOString(),
-            user_id: (await supabase.auth.getUser()).data.user?.id
-          });
-          
-          return data;
-        },
-        onSuccess: () => {
-          // Invalidate queries to refresh data
-          queryClient.invalidateQueries({ queryKey: leadKeys.detail(leadId) });
-          queryClient.invalidateQueries({ queryKey: leadKeys.timeline(leadId) });
-          
-          // Show toast
-          toast.success('Task updated');
-        },
-        onError: (error) => {
-          console.error('Failed to update task:', error);
-          toast.error('Failed to update task');
-        }
-      });
-      
-      updateTaskMutation.mutate();
-    }
-  };
-  
-  // Handle task creation
-  const handleTaskCreate = (newTask: any) => {
-    if (USE_MOCK_DATA) {
-      // Mock data implementation
-      const lead = mockLeadDetails[leadId];
-      if (lead) {
-        // Initialize tasks array if it doesn't exist
-        if (!lead.tasks) {
-          lead.tasks = [];
-        }
-        
-        // Create a new task with a unique ID
-        const taskId = lead.tasks.length > 0 
-          ? Math.max(...lead.tasks.map((t: any) => t.id)) + 1 
-          : 1;
-        
-        const task = {
-          id: taskId,
-          ...newTask,
-          created_at: new Date().toISOString(),
-          updated_at: new Date().toISOString()
-        };
-        
-        // Add the task to the lead
-        lead.tasks.push(task);
-        lead.updated_at = new Date().toISOString();
-        
-        // Add to timeline
-        const timelineEntry = {
-          id: mockLeadTimeline.length + 1,
-          type: 'task_create',
-          content: `Created task: "${task.title}"`,
-          created_at: new Date().toISOString(),
-          user: { id: 1, name: 'Jane Doe' }
-        };
-        
-        // Add to the beginning of the timeline
-        mockLeadTimeline.unshift(timelineEntry);
-        
-        // Force re-render
-        router.refresh();
-        
-        // Show toast
-        toast.success('Task created');
-      }
-    } else {
-      // Real API implementation
-      const createTaskMutation = useMutation({
-        mutationFn: async () => {
-          const taskData = {
-            ...newTask,
-            lead_id: leadIdString,
-            created_at: new Date().toISOString(),
-            updated_at: new Date().toISOString(),
-            created_by: (await supabase.auth.getUser()).data.user?.id
-          };
-          
-          const { data, error } = await supabase
-            .from('lead_tasks')
-            .insert(taskData)
-            .select()
-            .single();
-          
-          if (error) throw error;
-          
-          // Add to timeline
-          await supabase.from('lead_timeline').insert({
-            lead_id: leadIdString,
-            type: 'task_create',
-            content: `Created task: "${newTask.title}"`,
-            created_at: new Date().toISOString(),
-            user_id: (await supabase.auth.getUser()).data.user?.id
-          });
-          
-          return data;
-        },
-        onSuccess: () => {
-          // Invalidate queries to refresh data
-          queryClient.invalidateQueries({ queryKey: leadKeys.detail(leadId) });
-          queryClient.invalidateQueries({ queryKey: leadKeys.timeline(leadId) });
-          
-          // Show toast
-          toast.success('Task created');
-        },
-        onError: (error) => {
-          console.error('Failed to create task:', error);
-          toast.error('Failed to create task');
-        }
-      });
-      
-      createTaskMutation.mutate();
     }
   };
   
@@ -1069,6 +892,11 @@ function LeadDetailContent() {
           handleNoteSuccess={(note) => {
             console.log(`📝 LeadDetailPage - Note saved successfully for ${dialogId}`);
             toast.success(`Note saved for ${leadForNote.first_name} ${leadForNote.last_name}`);
+            
+            // Invalidate queries to refresh lead data
+            queryClient.invalidateQueries({ queryKey: leadKeys.detail(leadId) });
+            queryClient.invalidateQueries({ queryKey: leadKeys.notes(leadId) });
+            
             closeMeetingDialog(dialogId);
           }}
         />
@@ -1089,6 +917,73 @@ function LeadDetailContent() {
       
     } catch (error) {
       console.error("📝 LeadDetailPage - Error in handleContextAddNote:", error);
+      toast.error("Error opening note dialog");
+    }
+  };
+  
+  // Handle viewing a note
+  const handleViewNote = (note: any) => {
+    if (!lead) {
+      console.error("📝 LeadDetailPage - Cannot view note: lead is null or undefined");
+      return;
+    }
+    
+    console.log("📝 LeadDetailPage - handleViewNote called for note:", note);
+    
+    try {
+      // Create a Lead object from the current lead data
+      const leadForNote: Lead = {
+        id: leadIdString,
+        first_name: lead.first_name || '',
+        last_name: lead.last_name || '',
+        email: lead.email || '',
+        phone: lead.phone || '',
+        company: lead.company || '',
+        status: lead.status as any,
+        source: lead.source as any,
+        created_at: lead.created_at || new Date().toISOString(),
+        updated_at: lead.updated_at || new Date().toISOString(),
+      };
+      
+      // Prepare the note object for the dialog
+      const noteForDialog: LeadNote = {
+        id: note.id,
+        lead_id: parseInt(leadIdString, 10),
+        body: note.body || note.content,
+        created_by: note.created_by || '',
+        created_at: note.created_at,
+        updated_at: note.updated_at || note.created_at,
+        attachments: note.attachments || []
+      };
+      
+      // Open the note dialog using the MeetingDialogContext
+      const dialogId = `lead-note-view-${leadIdString}-${note.id}-${Date.now()}`;
+      
+      // Create the note dialog content
+      const dialogContent = (
+        <ContextualLeadNoteDialog
+          dialogId={dialogId}
+          lead={leadForNote}
+          note={noteForDialog}
+          dialogType={LeadNoteDialogType.VIEW}
+          handleClose={() => {
+            console.log(`📝 LeadDetailPage - Closing note dialog ${dialogId}`);
+            closeMeetingDialog(dialogId);
+          }}
+        />
+      );
+      
+      // Open the dialog using the meeting dialog context
+      openMeetingDialog(
+        dialogId,
+        MeetingDialogType.DETAILS,
+        dialogContent,
+        { lead: leadForNote }
+      );
+      
+      console.log(`📝 LeadDetailPage - Opened note view dialog with ID: ${dialogId}`);
+    } catch (error) {
+      console.error("📝 LeadDetailPage - Error in handleViewNote:", error);
       toast.error("Error opening note dialog");
     }
   };
@@ -1366,11 +1261,20 @@ function LeadDetailContent() {
               </Button>
               
               <div className="flex gap-2">
-                <Button onClick={() => setShowTaskDialog(true)} variant="default">
-                  <Plus className="h-4 w-4 mr-2" />
-                  Add Task
-                </Button>
-                <Button onClick={() => setShowNoteDialog(true)} variant="outline">
+                <TaskButton
+                  leadId={leadId}
+                  leadName={lead?.full_name || ''}
+                  onTaskAdded={(taskData: any) => {
+                    console.log("Task created successfully:", taskData);
+                    toast.success(`Task "${taskData.title}" was created successfully`);
+                    
+                    // Refresh the page to show the updated timeline
+                    // This is simpler than trying to manually update the timeline
+                    router.refresh();
+                  }}
+                  variant="default"
+                />
+                <Button onClick={handleContextAddNote} variant="outline">
                   <MessageSquare className="h-4 w-4 mr-2" />
                   Add Note
                 </Button>
@@ -1528,8 +1432,25 @@ function LeadDetailContent() {
               <MessageSquare className="mr-2 h-4 w-4" />
               Add Note
             </Button>
-            <Button onClick={() => setShowTaskDialog(true)}>
-              <CheckCircle className="mr-2 h-4 w-4" />
+            <Button size="sm" onClick={() => {
+              const dialogId = `add-task-${leadId || 'new'}-${Date.now()}`;
+              
+              openTaskDialog(
+                dialogId,
+                TaskDialogType.ADD,
+                <ContextualTaskDialog
+                  dialogId={dialogId}
+                  leadId={leadId}
+                  leadName={lead.full_name || ''}
+                  handleClose={() => closeTaskDialog(dialogId)}
+                  handleTaskSuccess={(task) => {
+                    console.log("Task created successfully:", task);
+                    toast.success(`Task "${task.title}" was created successfully`);
+                  }}
+                />
+              );
+            }}>
+              <Plus className="h-4 w-4 mr-2" />
               Add Task
             </Button>
           </div>
@@ -1744,7 +1665,7 @@ function LeadDetailContent() {
                   <CardTitle>Activity Timeline</CardTitle>
                 </CardHeader>
                 <CardContent>
-                  {timeline && timeline.length > 0 ? (
+                  {timeline && Array.isArray(timeline) && timeline.length > 0 ? (
                     <div className="space-y-4">
                       {/* Group activities by parent_activity_id or group_id */}
                       {(() => {
@@ -1752,18 +1673,20 @@ function LeadDetailContent() {
                         const groupedTimeline: { [key: string]: any[] } = {};
                         
                         // First pass: organize items by their group
-                        timeline.forEach((item: any) => {
-                          // Create a unique key for grouping
-                          const groupKey = item.parent_activity_id 
-                            ? `parent_${item.parent_activity_id}` 
-                            : (item.group_id ? `group_${item.group_id}` : `item_${item.id}`);
-                          
-                          if (!groupedTimeline[groupKey]) {
-                            groupedTimeline[groupKey] = [];
-                          }
-                          
-                          groupedTimeline[groupKey].push(item);
-                        });
+                        if (Array.isArray(timeline)) {
+                          timeline.forEach((item: any) => {
+                            // Create a unique key for grouping
+                            const groupKey = item.parent_activity_id 
+                              ? `parent_${item.parent_activity_id}` 
+                              : (item.group_id ? `group_${item.group_id}` : `item_${item.id}`);
+                            
+                            if (!groupedTimeline[groupKey]) {
+                              groupedTimeline[groupKey] = [];
+                            }
+                            
+                            groupedTimeline[groupKey].push(item);
+                          });
+                        }
                         
                         // Sort groups by the most recent activity in each group
                         const sortedGroups = Object.values(groupedTimeline).sort((a, b) => {
@@ -1842,9 +1765,8 @@ function LeadDetailContent() {
                       })()}
                     </div>
                   ) : (
-                    <div className="text-center py-8 text-muted-foreground">
-                      <Activity className="h-12 w-12 mx-auto mb-2 opacity-20" />
-                      <p>No activity recorded yet</p>
+                    <div className="text-center py-6 text-muted-foreground">
+                      No activity found.
                     </div>
                   )}
                 </CardContent>
@@ -1857,9 +1779,22 @@ function LeadDetailContent() {
                 <CardHeader className="flex flex-row items-center justify-between">
                   <CardTitle>Tasks</CardTitle>
                   <Button size="sm" onClick={() => {
-                    setCurrentTask(null);
-                    setIsEditingTask(false);
-                    setShowTaskDialog(true);
+                    const dialogId = `add-task-${leadId || 'new'}-${Date.now()}`;
+                    
+                    openTaskDialog(
+                      dialogId,
+                      TaskDialogType.ADD,
+                      <ContextualTaskDialog
+                        dialogId={dialogId}
+                        leadId={leadId}
+                        leadName={lead.full_name || ''}
+                        handleClose={() => closeTaskDialog(dialogId)}
+                        handleTaskSuccess={(task) => {
+                          console.log("Task created successfully:", task);
+                          toast.success(`Task "${task.title}" was created successfully`);
+                        }}
+                      />
+                    );
                   }}>
                     <Plus className="h-4 w-4 mr-2" />
                     Add Task
@@ -1912,7 +1847,26 @@ function LeadDetailContent() {
                           <TaskActionsMenu 
                             task={task}
                             onMarkComplete={handleToggleTaskComplete}
-                            onEdit={handleEditTask}
+                            onEdit={(task) => {
+                              const dialogId = `edit-task-${task.id}-${Date.now()}`;
+                              openTaskDialog(
+                                dialogId,
+                                TaskDialogType.EDIT,
+                                <ContextualEditTaskDialog
+                                  dialogId={dialogId}
+                                  taskId={task.id}
+                                  task={task}
+                                  leadId={leadId}
+                                  leadName={lead.full_name || ''}
+                                  handleClose={() => closeTaskDialog(dialogId)}
+                                  handleEditSuccess={(updatedTask) => {
+                                    console.log("Task updated successfully:", updatedTask);
+                                    toast.success(`Task "${updatedTask.title}" was updated successfully`);
+                                    // Refresh tasks if needed
+                                  }}
+                                />
+                              );
+                            }}
                             onDelete={handleDeleteTask}
                           />
                         </div>
@@ -1930,7 +1884,7 @@ function LeadDetailContent() {
               <Card>
                 <CardHeader className="flex flex-row items-center justify-between">
                   <CardTitle>Notes</CardTitle>
-                  <Button size="sm" onClick={() => setShowNoteDialog(true)}>
+                  <Button size="sm" onClick={handleContextAddNote}>
                     <Plus className="h-4 w-4 mr-2" />
                     Add Note
                   </Button>
@@ -1939,7 +1893,11 @@ function LeadDetailContent() {
                   {lead.notes && lead.notes.length > 0 ? (
                     <div className="space-y-4">
                       {lead.notes.map((note: any) => (
-                        <div key={note.id} className="p-4 border rounded-md">
+                        <div 
+                          key={note.id} 
+                          className="p-4 border rounded-md hover:bg-muted cursor-pointer transition-colors"
+                          onClick={() => handleViewNote(note)}
+                        >
                           <p>{note.body || note.content}</p>
                           <p className="text-sm text-muted-foreground mt-2">
                             {new Date(note.created_at).toLocaleString()}
@@ -2144,30 +2102,6 @@ function LeadDetailContent() {
           </Tabs>
           
           {/* Dialog Components */}
-          {showTaskDialog && lead && (
-            <TaskDialog
-              open={showTaskDialog}
-              onOpenChange={setShowTaskDialog}
-              leadId={leadId}
-              leadName={lead.full_name || ''}
-              isMock={USE_MOCK_DATA}
-              onSuccess={(taskData) => {
-                if (isEditingTask && currentTask && taskData) {
-                  // Handle task update
-                  handleTaskUpdate({
-                    ...currentTask,
-                    ...taskData
-                  });
-                } else if (taskData) {
-                  // Handle task creation
-                  handleTaskCreate(taskData);
-                }
-              }}
-              task={isEditingTask ? currentTask : undefined}
-              isEditing={isEditingTask}
-            />
-          )}
-          
           {showEditDialog && lead && (
             <LeadEditDialog
               leadId={leadIdString}
