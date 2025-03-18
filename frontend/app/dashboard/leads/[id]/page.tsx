@@ -100,6 +100,7 @@ import { TaskButton } from '@/components/tasks/TaskButton';
 import { cn } from '@/lib/utils';
 import { useTaskDialog, TaskDialogType } from '@/contexts/TaskDialogContext';
 import { ContextualTaskDialog } from '@/components/tasks/ContextualTaskDialog';
+import { ContextualEditTaskDialog } from '@/components/tasks/ContextualEditTaskDialog';
 
 // Configuration flag to toggle between mock and real data
 // Set this to false to use the API's decision on whether to use mock data
@@ -1774,12 +1775,14 @@ function LeadDetailContent() {
                               openTaskDialog(
                                 dialogId,
                                 TaskDialogType.EDIT,
-                                <ContextualTaskDialog
+                                <ContextualEditTaskDialog
                                   dialogId={dialogId}
+                                  taskId={task.id}
+                                  task={task}
                                   leadId={leadId}
                                   leadName={lead.full_name || ''}
                                   handleClose={() => closeTaskDialog(dialogId)}
-                                  handleTaskSuccess={(updatedTask) => {
+                                  handleEditSuccess={(updatedTask) => {
                                     console.log("Task updated successfully:", updatedTask);
                                     toast.success(`Task "${updatedTask.title}" was updated successfully`);
                                     // Refresh tasks if needed
