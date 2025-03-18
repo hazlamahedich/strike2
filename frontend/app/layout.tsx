@@ -1,3 +1,4 @@
+import React from 'react';
 import type { Metadata } from "next";
 import { Inter, Montserrat } from "next/font/google";
 import "./globals.css";
@@ -7,7 +8,7 @@ import { BreadcrumbProvider } from "@/components/shared/breadcrumb-provider";
 import { ChatbotProvider } from "@/components/shared/chatbot-provider";
 import { DialogProvider } from "@/lib/contexts/DialogContext";
 import { MeetingDialogProvider } from "@/contexts/MeetingDialogContext";
-import { TaskDialogProvider, TaskDialogContainer } from "@/contexts/TaskDialogContext";
+import { TaskDialogProvider } from "@/contexts/TaskDialogContext";
 import { Providers } from "./providers";
 import { Analytics } from "@/components/shared/analytics";
 import { MeetingDialogContainer } from "@/components/ui/meeting-dialog";
@@ -70,7 +71,6 @@ export default function RootLayout({
                         <Analytics />
                         <MeetingDialogContainer />
                         <MeetingDialogTaskbar />
-                        <TaskDialogContainer />
                       </div>
                     </MeetingDialogProvider>
                   </TaskDialogProvider>

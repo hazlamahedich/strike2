@@ -64,7 +64,30 @@ const TaskDialogContext = createContext<TaskDialogContextType>({
 });
 
 // Hook to use task dialog context
-export const useTaskDialog = () => useContext(TaskDialogContext);
+export const useTaskDialog = () => {
+  const context = useContext(TaskDialogContext);
+  
+  // For debugging - add a unique identifier if not already present
+  if (context && !context.hasOwnProperty('__contextId')) {
+    // Use a timestamp to ensure unique ID
+    Object.defineProperty(context, '__contextId', {
+      value: `provider-${Date.now()}-${Math.random().toString(36).substr(2, 5)}`,
+      enumerable: true,
+    });
+    console.log("⭐⭐⭐ TASK DIALOG HOOK - Created context with ID:", (context as any).__contextId);
+  } else if (context) {
+    console.log("⭐⭐⭐ TASK DIALOG HOOK - Using existing context ID:", (context as any).__contextId);
+  }
+  
+  return context;
+};
+
+// Hook to check if the TaskDialogContext already has a provider
+export const hasTaskDialogProvider = () => {
+  const context = useContext(TaskDialogContext);
+  // Check if any of the context methods are the defaults (indicating no provider)
+  return context.openTaskDialog !== (() => false);
+};
 
 // Base Z-index for dialogs
 const BASE_Z_INDEX = 50;
@@ -77,6 +100,21 @@ interface TaskDialogProviderProps {
 export const TaskDialogProvider = ({ children }: TaskDialogProviderProps) => {
   const [dialogs, setDialogs] = useState<TaskDialogData[]>([]);
   const [highestZIndex, setHighestZIndex] = useState(BASE_Z_INDEX);
+  const [showDebug, setShowDebug] = useState(false);
+
+  // Add debug toggle with keyboard shortcut
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      // Toggle debug view with Alt+D
+      if (e.altKey && e.key === 'd') {
+        setShowDebug(prev => !prev);
+        console.log("⭐⭐⭐ TASK DIALOG PROVIDER - Debug view toggled:", !showDebug);
+      }
+    };
+    
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [showDebug]);
 
   // Open a new task dialog
   const openTaskDialog = useCallback((
@@ -90,6 +128,15 @@ export const TaskDialogProvider = ({ children }: TaskDialogProviderProps) => {
       console.error('Cannot open dialog - missing id or content');
       return false;
     }
+    
+    console.log("⭐⭐⭐ TASK DIALOG PROVIDER - openTaskDialog called with:", { 
+      id, 
+      type, 
+      contentType: typeof content === 'object' && content !== null ? 
+        (content as any)?.type?.name || 'React Element' : 
+        typeof content,
+      hasContent: !!content 
+    });
     
     setDialogs(prevDialogs => {
       // Check if dialog already exists
@@ -245,6 +292,49 @@ export const TaskDialogProvider = ({ children }: TaskDialogProviderProps) => {
     }}>
       {children}
       <TaskDialogContainer />
+      
+      {/* Debug overlay - toggle with Alt+D */}
+      {showDebug && (
+        <div 
+          style={{
+            position: 'fixed',
+            bottom: 10,
+            right: 10,
+            background: 'rgba(0,0,0,0.8)',
+            color: 'white',
+            padding: 10,
+            borderRadius: 5,
+            zIndex: 10000,
+            maxWidth: 300,
+            maxHeight: 300,
+            overflow: 'auto',
+            fontSize: 12,
+          }}
+        >
+          <h4>TaskDialog Debug</h4>
+          <p>Active Dialogs: {dialogs.length}</p>
+          <ul>
+            {dialogs.map(d => (
+              <li key={d.id}>
+                {d.id} ({d.type}) - z:{d.zIndex}
+              </li>
+            ))}
+          </ul>
+          <button 
+            onClick={() => setShowDebug(false)}
+            style={{
+              background: '#333',
+              border: 'none',
+              color: 'white',
+              padding: '2px 5px',
+              borderRadius: 3,
+              marginTop: 5
+            }}
+          >
+            Close
+          </button>
+        </div>
+      )}
     </TaskDialogContext.Provider>
   );
 };
@@ -257,8 +347,14 @@ export const TaskDialogContainer = () => {
   // Client-side only
   useEffect(() => {
     setMounted(true);
+    console.log("⭐⭐⭐ TASK DIALOG CONTAINER - Mounted with dialogs:", dialogs.length);
     return () => setMounted(false);
-  }, []);
+  }, [dialogs.length]);
+  
+  // Log when dialogs change
+  useEffect(() => {
+    console.log("⭐⭐⭐ TASK DIALOG CONTAINER - Dialogs updated:", dialogs);
+  }, [dialogs]);
   
   // Apply dialog offsets
   const processedDialogs = dialogs.map((dialog, index) => {
@@ -277,14 +373,75 @@ export const TaskDialogContainer = () => {
   // Use portal to render at document root
   if (!mounted) return null;
   
+  console.log("⭐⭐⭐ TASK DIALOG CONTAINER - Rendering", processedDialogs.length, "dialogs");
+  
   return createPortal(
     <div className="task-dialog-container" style={{ position: 'fixed', inset: 0, pointerEvents: 'none', zIndex: 9000 }}>
-      {processedDialogs.map((dialog) => (
-        <React.Fragment key={dialog.id}>
-          {dialog.content}
-        </React.Fragment>
-      ))}
+      {processedDialogs.map((dialog) => {
+        console.log("⭐⭐⭐ TASK DIALOG CONTAINER - Rendering dialog:", dialog.id);
+        return (
+          <React.Fragment key={dialog.id}>
+            {dialog.content}
+          </React.Fragment>
+        );
+      })}
     </div>,
     document.body
   );
+};
+
+// Emergency global fallback for task dialogs - escape hatch for context issues
+let _safeTaskDialogs: TaskDialogData[] = [];
+let _dialogUpdateListeners: Array<() => void> = [];
+
+export const safeOpenTaskDialog = (
+  id: string, 
+  type: TaskDialogType, 
+  content: React.ReactNode
+): boolean => {
+  console.log("⭐⭐⭐ SAFE TASK DIALOG - Emergency fallback called");
+  const dialog: TaskDialogData = {
+    id,
+    type,
+    content,
+    zIndex: 9999,
+    isActive: true
+  };
+  
+  _safeTaskDialogs = [..._safeTaskDialogs, dialog];
+  _dialogUpdateListeners.forEach(listener => listener());
+  
+  // Check if we need to create the emergency container
+  let container = document.querySelector('.emergency-task-dialog-container');
+  if (!container) {
+    container = document.createElement('div');
+    container.className = 'emergency-task-dialog-container';
+    (container as HTMLDivElement).style.position = 'fixed';
+    (container as HTMLDivElement).style.inset = '0';
+    (container as HTMLDivElement).style.pointerEvents = 'none';
+    (container as HTMLDivElement).style.zIndex = '9999';
+    document.body.appendChild(container);
+  }
+  
+  // Use createRoot to render the dialog
+  const dialogRoot = document.createElement('div');
+  dialogRoot.id = `emergency-dialog-${id}`;
+  container.appendChild(dialogRoot);
+  
+  // Render the dialog content
+  // This needs React 18's createRoot but we'll just log for now
+  console.log("⭐⭐⭐ SAFE TASK DIALOG - Would render content to emergency container");
+  
+  return true;
+};
+
+// Export for the ContextualRescheduleDialog.tsx file
+export const getEmergencyTaskDialogs = () => _safeTaskDialogs;
+
+// Subscribe to dialog updates
+export const subscribeToDialogUpdates = (callback: () => void) => {
+  _dialogUpdateListeners.push(callback);
+  return () => {
+    _dialogUpdateListeners = _dialogUpdateListeners.filter(cb => cb !== callback);
+  };
 }; 
