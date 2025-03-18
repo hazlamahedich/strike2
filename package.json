@@ -19,6 +19,7 @@
     "@radix-ui/react-dialog": "^1.1.6",
     "@radix-ui/react-separator": "^1.1.2",
     "@supabase/supabase-js": "^2.39.3",
+    "chart.js": "^4.4.8",
     "cmdk": "^1.0.4",
     "concurrently": "^8.2.2",
     "cors": "^2.8.5",
@@ -26,7 +27,8 @@
     "express": "^4.21.2",
     "next": "^15.2.1",
     "next-auth": "^4.24.11",
-    "pg": "^8.13.3"
+    "pg": "^8.13.3",
+    "react-chartjs-2": "^5.3.0"
   },
   "private": true,
   "engines": {

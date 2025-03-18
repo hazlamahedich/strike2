@@ -5,6 +5,9 @@
  * Currently, it's a mock implementation that will be replaced with actual SendGrid integration.
  */
 
+import { generateText } from './llmService';
+import { LLMGenerateRequest, LLMGenerateResponse } from '../types/llm';
+
 interface SendEmailParams {
   to: string;
   subject: string;
@@ -40,7 +43,7 @@ export async function sendEmail(params: SendEmailParams): Promise<EmailResponse>
 }
 
 /**
- * Generate an email using AI (mock implementation)
+ * Generate an email using AI through the centralized LLM service
  */
 export async function generateEmailWithAI(params: {
   context: string;
@@ -49,38 +52,95 @@ export async function generateEmailWithAI(params: {
 }): Promise<{ subject: string; content: string }> {
   console.log('Generating email with AI:', params);
   
-  // Simulate API call delay
-  await new Promise(resolve => setTimeout(resolve, 2000));
-  
-  // Mock AI-generated email
-  const tone = params.tone || 'professional';
-  const purpose = params.purpose || 'general';
-  
-  let subject = '';
-  let content = '';
-  
-  switch (purpose) {
-    case 'follow_up':
-      subject = 'Following up on our previous conversation';
-      content = `<p>I wanted to follow up on our previous conversation about ${params.context}.</p>
-                <p>I'm looking forward to hearing your thoughts on this matter.</p>
-                <p>Best regards,<br>Your Name</p>`;
-      break;
-    case 'introduction':
-      subject = 'Introduction and potential collaboration';
-      content = `<p>I hope this email finds you well. I'm reaching out because I came across ${params.context} and thought there might be an opportunity for us to collaborate.</p>
-                <p>I'd love to schedule a call to discuss this further.</p>
-                <p>Best regards,<br>Your Name</p>`;
-      break;
-    default:
-      subject = 'Regarding our potential collaboration';
-      content = `<p>I hope this email finds you well. I'm writing to you regarding ${params.context}.</p>
-                <p>I believe this could be valuable for both of us and would appreciate your thoughts.</p>
-                <p>Looking forward to your response.</p>
-                <p>Best regards,<br>Your Name</p>`;
+  try {
+    const tone = params.tone || 'professional';
+    const purpose = params.purpose || 'general';
+    
+    // Create a prompt for the LLM
+    const promptText = `Generate a ${tone} email ${purpose === 'general' ? '' : `for ${purpose}`} to ${params.context}.
+    The email should have a subject line and content.
+    Format the response as HTML with proper paragraph tags.`;
+    
+    // Use the centralized LLM service to generate the email
+    const generateRequest: LLMGenerateRequest = {
+      prompt: promptText,
+      max_tokens: 600
+    };
+    
+    const response = await generateText(generateRequest);
+    const generatedText = response.text;
+    
+    // Parse the response to extract subject and content
+    let subject = '';
+    let content = '';
+    
+    // Try to extract subject and content from the response
+    if (generatedText.includes('Subject:')) {
+      // Extract subject
+      const subjectMatch = generatedText.match(/Subject:(.+?)(?:\n|$)/);
+      if (subjectMatch) {
+        subject = subjectMatch[1].trim();
+      }
+      
+      // Extract content (everything after "Subject:" line)
+      const contentMatch = generatedText.split(/Subject:.+?\n/)[1];
+      if (contentMatch) {
+        content = contentMatch.trim();
+      }
+    } else {
+      // If no clear format, try to split by first line break
+      const lines = generatedText.split('\n');
+      if (lines.length > 1) {
+        subject = lines[0].trim();
+        content = lines.slice(1).join('\n').trim();
+      } else {
+        // Fallback to a default
+        subject = 'Regarding our conversation';
+        content = generatedText;
+      }
+    }
+    
+    // Ensure content has HTML formatting
+    if (!content.includes('<p>')) {
+      content = content.split('\n\n')
+        .map(paragraph => `<p>${paragraph}</p>`)
+        .join('');
+    }
+    
+    return { subject, content };
+  } catch (error) {
+    console.error('Error generating email with LLM:', error);
+    
+    // Fallback to mock response if the LLM service fails
+    const tone = params.tone || 'professional';
+    const purpose = params.purpose || 'general';
+    
+    let subject = '';
+    let content = '';
+    
+    switch (purpose) {
+      case 'follow_up':
+        subject = 'Following up on our previous conversation';
+        content = `<p>I wanted to follow up on our previous conversation about ${params.context}.</p>
+                  <p>I'm looking forward to hearing your thoughts on this matter.</p>
+                  <p>Best regards,<br>Your Name</p>`;
+        break;
+      case 'introduction':
+        subject = 'Introduction and potential collaboration';
+        content = `<p>I hope this email finds you well. I'm reaching out because I came across ${params.context} and thought there might be an opportunity for us to collaborate.</p>
+                  <p>I'd love to schedule a call to discuss this further.</p>
+                  <p>Best regards,<br>Your Name</p>`;
+        break;
+      default:
+        subject = 'Regarding our potential collaboration';
+        content = `<p>I hope this email finds you well. I'm writing to you regarding ${params.context}.</p>
+                  <p>I believe this could be valuable for both of us and would appreciate your thoughts.</p>
+                  <p>Looking forward to your response.</p>
+                  <p>Best regards,<br>Your Name</p>`;
+    }
+    
+    return { subject, content };
   }
-  
-  return { subject, content };
 }
 
 /**

@@ -16,7 +16,9 @@ from ..models.analytics import (
     DateRange, 
     LeadAnalytics, 
     CampaignAnalytics, 
-    ConversionFunnel
+    ConversionFunnel,
+    AnalysisRecommendation,
+    TimeRange
 )
 from ..services.analytics import AnalyticsService
 from ..core.security import get_current_user, get_current_active_user
@@ -327,22 +329,58 @@ async def get_conversion_funnel(
     campaign_id: Optional[int] = Query(None),
     current_user: User = Depends(get_current_active_user)
 ):
-    """
-    Get conversion funnel analytics
-    """
-    # Set default date range if not provided
-    if not start_date:
-        start_date = datetime.now() - timedelta(days=30)
-    if not end_date:
-        end_date = datetime.now()
-    
-    date_range = DateRange(start_date=start_date, end_date=end_date)
-    
+    """Get conversion funnel analytics."""
     try:
-        return await AnalyticsService.get_conversion_funnel(
+        # Create date range
+        if not start_date:
+            start_date = datetime.now() - timedelta(days=30)
+        if not end_date:
+            end_date = datetime.now()
+        
+        date_range = DateRange(start_date=start_date, end_date=end_date)
+        
+        return await analytics_service.get_conversion_funnel(
             user_id=current_user.id,
             date_range=date_range,
             campaign_id=campaign_id
         )
     except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Error retrieving conversion funnel: {str(e)}") 
+        raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=str(e))
+
+
+@router.get("/insights", response_model=AnalysisRecommendation)
+async def get_analytics_insights(
+    time_range: Optional[TimeRange] = Query(None, description="Predefined time range"),
+    start_date: Optional[datetime] = Query(None, description="Custom start date"),
+    end_date: Optional[datetime] = Query(None, description="Custom end date"),
+    current_user: User = Depends(get_current_active_user)
+):
+    """
+    Generate AI-powered insights and recommendations based on analytics data.
+    
+    This endpoint analyzes your CRM data using AI to provide strategic insights,
+    identify strengths, weaknesses, opportunities, and make actionable recommendations.
+    
+    You can specify either a predefined time range or a custom date range.
+    """
+    try:
+        date_range = None
+        
+        # If custom dates are provided, use them
+        if start_date and end_date:
+            date_range = DateRange(start_date=start_date, end_date=end_date)
+        
+        # Generate AI-powered insights
+        insights = await analytics_service.generate_analytics_insights(
+            user_id=current_user.id,
+            time_range=time_range,
+            date_range=date_range
+        )
+        
+        return insights
+    except Exception as e:
+        logger.error(f"Error generating analytics insights: {e}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, 
+            detail=f"Failed to generate analytics insights: {str(e)}"
+        ) 

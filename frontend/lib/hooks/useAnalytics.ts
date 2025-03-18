@@ -615,18 +615,25 @@ export const useAnalysisRecommendation = () => {
         return mockAnalysisRecommendation;
       }
       
-      // In a real implementation, this would call an API endpoint that uses an LLM
-      // to analyze the data and generate recommendations
-      const { data, error } = await supabase
-        .from('analytics_analysis')
-        .select('*')
-        .single();
-      
-      if (error) {
-        throw new Error(`Failed to fetch analysis and recommendations: ${error.message}`);
+      try {
+        // Use the new API endpoint that leverages the centralized LLM service
+        const response = await fetch('/api/v1/analytics/insights', {
+          method: 'GET',
+          headers: {
+            'Content-Type': 'application/json',
+          }
+        });
+        
+        if (!response.ok) {
+          throw new Error(`Failed to fetch analytics insights: ${response.status}`);
+        }
+        
+        const data = await response.json();
+        return data as AnalysisRecommendation;
+      } catch (error) {
+        console.error('Error fetching analysis and recommendations:', error);
+        throw new Error(`Failed to fetch analysis and recommendations: ${error instanceof Error ? error.message : String(error)}`);
       }
-      
-      return data as AnalysisRecommendation;
     },
   });
 };

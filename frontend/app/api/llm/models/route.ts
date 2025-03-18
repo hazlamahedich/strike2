@@ -1,96 +1,36 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { cookies } from 'next/headers';
+import { LLMModel } from '@/lib/types/llm';
+import { createClient } from '@supabase/supabase-js';
 
-// Default backend URL if environment variable is not set
-const DEFAULT_BACKEND_URL = 'http://localhost:8001';
+// Initialize Supabase client
+const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || 'https://elpqvskcixfsgeavjfhb.supabase.co';
+const supabaseKey = process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
+const supabase = createClient(supabaseUrl, supabaseKey as string);
 
-// Mock data for LLM models
-const mockLlmModels = [
-  {
-    id: 1,
-    provider: 'openai',
-    model_name: 'gpt-4',
-    is_default: true,
-    max_tokens: 8192,
-    temperature: 0.0,
-    created_at: new Date().toISOString(),
-    updated_at: new Date().toISOString()
-  },
-  {
-    id: 2,
-    provider: 'openai',
-    model_name: 'gpt-3.5-turbo',
-    is_default: false,
-    max_tokens: 4096,
-    temperature: 0.7,
-    created_at: new Date().toISOString(),
-    updated_at: new Date().toISOString()
-  },
-  {
-    id: 3,
-    provider: 'anthropic',
-    model_name: 'claude-3-opus',
-    is_default: false,
-    max_tokens: 100000,
-    temperature: 0.5,
-    created_at: new Date().toISOString(),
-    updated_at: new Date().toISOString()
-  }
-];
-
-export async function GET() {
+/**
+ * Get all LLM models
+ * 
+ * GET /api/llm/models
+ */
+export async function GET(request: NextRequest): Promise<NextResponse> {
   try {
-    // Check if we should use mock data
-    const cookieStore = await cookies();
-    const useMockData = cookieStore.get('use_mock_data')?.value === 'true';
+    const { data: models, error } = await supabase
+      .from('llm_models')
+      .select('*')
+      .order('is_default', { ascending: false })
+      .order('created_at', { ascending: false });
     
-    if (useMockData) {
-      console.log('Using mock data for LLM models');
-      return NextResponse.json(mockLlmModels);
-    }
-    
-    // Get session cookie
-    const sessionCookie = cookieStore.get('session');
-    
-    // Use environment variable with fallback
-    const backendUrl = process.env.BACKEND_URL || DEFAULT_BACKEND_URL;
-    
-    // Make request to backend API
-    const response = await fetch(`${backendUrl}/api/llm/models`, {
-      headers: {
-        'Content-Type': 'application/json',
-        'Authorization': `Bearer ${sessionCookie?.value || ''}`,
-      },
-    });
-
-    if (!response.ok) {
-      const errorData = await response.json().catch(() => ({ detail: `HTTP error ${response.status}` }));
-      
-      // Fallback to mock data on error if enabled globally
-      const globalMockEnabled = process.env.NEXT_PUBLIC_USE_MOCK_DATA === 'true';
-      if (globalMockEnabled) {
-        console.log('Falling back to mock data for LLM models due to API error');
-        return NextResponse.json(mockLlmModels);
-      }
-      
+    if (error) {
+      console.error('Error fetching LLM models:', error);
       return NextResponse.json(
-        { error: errorData.detail || 'Failed to fetch LLM models' },
-        { status: response.status }
+        { error: 'Failed to fetch LLM models' },
+        { status: 500 }
       );
     }
-
-    const data = await response.json();
-    return NextResponse.json(data);
+    
+    return NextResponse.json(models || []);
   } catch (error) {
-    console.error('Error fetching LLM models:', error);
-    
-    // Fallback to mock data on error if enabled globally
-    const globalMockEnabled = process.env.NEXT_PUBLIC_USE_MOCK_DATA === 'true';
-    if (globalMockEnabled) {
-      console.log('Falling back to mock data for LLM models due to error');
-      return NextResponse.json(mockLlmModels);
-    }
-    
+    console.error('Error in GET /api/llm/models:', error);
     return NextResponse.json(
       { error: 'Internal server error' },
       { status: 500 }
@@ -98,89 +38,66 @@ export async function GET() {
   }
 }
 
-export async function POST(request: NextRequest) {
+/**
+ * Create a new LLM model
+ * 
+ * POST /api/llm/models
+ */
+export async function POST(request: NextRequest): Promise<NextResponse> {
   try {
-    // Check if we should use mock data
-    const cookieStore = await cookies();
-    const useMockData = cookieStore.get('use_mock_data')?.value === 'true';
+    // Parse the request body
+    const modelData = await request.json();
     
-    if (useMockData) {
-      // Return success response with mock data
-      console.log('Using mock data for LLM model creation');
-      const body = await request.json();
-      const newModel = {
-        id: mockLlmModels.length + 1,
-        ...body,
-        created_at: new Date().toISOString(),
-        updated_at: new Date().toISOString()
-      };
-      return NextResponse.json(newModel);
-    }
-    
-    // Get session cookie
-    const sessionCookie = cookieStore.get('session');
-    
-    // Use environment variable with fallback
-    const backendUrl = process.env.BACKEND_URL || DEFAULT_BACKEND_URL;
-    
-    // Get request body
-    const body = await request.json();
-    
-    // Make request to backend API
-    const response = await fetch(`${backendUrl}/api/llm/models`, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'Authorization': `Bearer ${sessionCookie?.value || ''}`,
-      },
-      body: JSON.stringify(body),
-    });
-
-    if (!response.ok) {
-      const errorData = await response.json().catch(() => ({ detail: `HTTP error ${response.status}` }));
-      
-      // Fallback to mock data on error if enabled globally
-      const globalMockEnabled = process.env.NEXT_PUBLIC_USE_MOCK_DATA === 'true';
-      if (globalMockEnabled) {
-        console.log('Falling back to mock data for LLM model creation due to API error');
-        const newModel = {
-          id: mockLlmModels.length + 1,
-          ...body,
-          created_at: new Date().toISOString(),
-          updated_at: new Date().toISOString()
-        };
-        return NextResponse.json(newModel);
-      }
-      
+    // Validate required fields
+    if (!modelData.provider || !modelData.model_name) {
       return NextResponse.json(
-        { error: errorData.detail || 'Failed to create LLM model' },
-        { status: response.status }
+        { error: 'Provider and model name are required' },
+        { status: 400 }
       );
     }
-
-    const data = await response.json();
-    return NextResponse.json(data);
-  } catch (error) {
-    console.error('Error creating LLM model:', error);
     
-    // Fallback to mock data on error if enabled globally
-    const globalMockEnabled = process.env.NEXT_PUBLIC_USE_MOCK_DATA === 'true';
-    if (globalMockEnabled && request.body) {
-      try {
-        console.log('Falling back to mock data for LLM model creation due to error');
-        const body = await request.json();
-        const newModel = {
-          id: mockLlmModels.length + 1,
-          ...body,
-          created_at: new Date().toISOString(),
-          updated_at: new Date().toISOString()
-        };
-        return NextResponse.json(newModel);
-      } catch (parseError) {
-        console.error('Error parsing request body:', parseError);
+    // Add timestamps
+    const now = new Date().toISOString();
+    const newModel = {
+      ...modelData,
+      created_at: now,
+      updated_at: now,
+    };
+    
+    // If this is marked as default, first update all other models
+    if (modelData.is_default) {
+      const { error: updateError } = await supabase
+        .from('llm_models')
+        .update({ is_default: false })
+        .neq('id', 0); // Update all rows
+      
+      if (updateError) {
+        console.error('Error updating existing models:', updateError);
+        return NextResponse.json(
+          { error: 'Failed to update existing models' },
+          { status: 500 }
+        );
       }
     }
     
+    // Insert the new model
+    const { data, error } = await supabase
+      .from('llm_models')
+      .insert([newModel])
+      .select()
+      .single();
+    
+    if (error) {
+      console.error('Error creating LLM model:', error);
+      return NextResponse.json(
+        { error: 'Failed to create LLM model' },
+        { status: 500 }
+      );
+    }
+    
+    return NextResponse.json(data);
+  } catch (error) {
+    console.error('Error in POST /api/llm/models:', error);
     return NextResponse.json(
       { error: 'Internal server error' },
       { status: 500 }

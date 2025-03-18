@@ -2,8 +2,9 @@ import json
 import logging
 from datetime import datetime
 from typing import Any, Dict, List, Optional, Union
+import re
 
-from openai import AsyncOpenAI
+import aiohttp
 from langchain.chains import LLMChain
 from langchain_community.chat_models import ChatOpenAI
 from langchain.schema import HumanMessage
@@ -31,8 +32,7 @@ from app.core.database import fetch_one, fetch_all, insert_row, update_row
 from app.agents.agent_manager import agent_manager
 from app.services.litellm_service import LiteLLMService
 
-# Initialize OpenAI client
-client = AsyncOpenAI(api_key=settings.OPENAI_API_KEY)
+# Remove direct OpenAI client initialization
 logger = logging.getLogger(__name__)
 
 async def analyze_sentiment(request: SentimentAnalysisRequest) -> SentimentAnalysisResponse:
@@ -190,7 +190,7 @@ async def calculate_lead_score(lead_id: int, force_recalculate: bool = False) ->
         # Add email engagement to lead data
         lead_data["email_engagement"] = email_engagement
         
-        # Calculate lead score using LLM
+        # Calculate lead score using centralized LLM service
         prompt = f"""
         Analyze the following lead data and calculate a lead score based on multiple factors.
         
@@ -220,17 +220,33 @@ async def calculate_lead_score(lead_id: int, force_recalculate: bool = False) ->
         JSON format only.
         """
         
-        response = await client.chat.completions.create(
-            model=settings.DEFAULT_MODEL,
-            response_format={"type": "json_object"},
-            messages=[
-                {"role": "system", "content": "You are a lead scoring assistant. Respond only with JSON."},
-                {"role": "user", "content": prompt}
-            ]
-        )
+        # Use centralized LLM service instead of direct OpenAI API call
+        async with aiohttp.ClientSession() as session:
+            async with session.post(f"{settings.LLM_API_BASE_URL}/api/llm/generate", json={
+                "prompt": prompt,
+                "temperature": 0.2,
+                "feature_name": "lead_scoring",
+                "response_format": {"type": "json_object"}
+            }) as resp:
+                if resp.status != 200:
+                    logger.error(f"Error from LLM service: {await resp.text()}")
+                    raise Exception("Failed to calculate lead score")
+                
+                response = await resp.json()
+                result_text = response.get("text", "{}")
         
         # Parse the result
-        result = json.loads(response.choices[0].message.content)
+        try:
+            result = json.loads(result_text)
+        except json.JSONDecodeError:
+            # Try to extract JSON from the response if it's not already in JSON format
+            match = re.search(r"```json\s*(.*?)\s*```", result_text, re.DOTALL)
+            if match:
+                json_str = match.group(1)
+                result = json.loads(json_str)
+            else:
+                logger.error("Failed to parse JSON from LLM response")
+                raise Exception("Failed to parse lead score result")
         
         # Create components
         components = [
@@ -253,111 +269,72 @@ async def calculate_lead_score(lead_id: int, force_recalculate: bool = False) ->
             next_best_actions=result.get("next_best_actions", [])
         )
         
-        # Save the score to the database
+        # Save score to database
         score_data = {
             "lead_id": lead_id,
             "overall_score": score_response.overall_score,
             "conversion_probability": score_response.conversion_probability,
-            "components": [comp.dict() for comp in components],
+            "components": [c.dict() for c in components],
             "next_best_actions": score_response.next_best_actions,
             "created_at": datetime.now()
         }
+        
         await insert_row("lead_scores", score_data)
         
-        # Update the lead with the new score
-        await lead_service.update_lead(
-            lead_id, 
-            {"lead_score": score_response.overall_score}
-        )
-        
         return score_response
-        
     except Exception as e:
-        logger.error(f"Error in lead scoring: {str(e)}")
-        # Return a default score
-        components = [
-            LeadScoreComponent(
-                factor=LeadScoreFactors.COMMUNICATION_FREQUENCY,
-                weight=0.5,
-                score=0.5,
-                explanation="Default score due to error in calculation"
-            )
-        ]
-        return LeadScoreResponse(
-            lead_id=lead_id,
-            overall_score=0.5,
-            conversion_probability=0.5,
-            components=components,
-            timestamp=datetime.now(),
-            next_best_actions=[]
-        )
+        logger.error(f"Error calculating lead score: {str(e)}")
+        raise
 
 async def generate_content(request: ContentGenerationRequest) -> ContentGenerationResponse:
     """
-    Generate content for emails, SMS, etc. using OpenAI.
+    Generate content for emails, SMS, etc. using the centralized LLM service.
     """
     try:
-        # Get lead information
-        lead = await lead_service.get_lead_by_id(request.lead_id)
-        if not lead:
-            raise ValueError(f"Lead with ID {request.lead_id} not found")
+        # Prepare the prompt
+        context = request.context or {}
+        context_str = "\n".join([f"{k}: {v}" for k, v in context.items()])
         
-        # Get recent interactions
-        recent_interactions = await lead_service.get_lead_timeline(request.lead_id, limit=5)
-        
-        # Create the prompt
         prompt = f"""
-        Generate content for a {request.content_type} to a lead with the following details:
-        
-        Lead: {lead.first_name} {lead.last_name}
-        Company: {lead.company or 'Not specified'}
-        Title: {lead.title or 'Not specified'}
-        Status: {lead.status}
+        Generate content for: {request.content_type}
         
         Purpose: {request.purpose}
-        Tone: {request.tone}
         
-        Recent interactions:
-        {json.dumps(recent_interactions)}
+        Context:
+        {context_str}
         
-        Key points to include:
-        {json.dumps(request.key_points) if request.key_points else "None specified"}
+        Tone: {request.tone or 'Professional'}
         
-        Respond with a JSON object that includes:
-        1. content: The generated content
-        2. variables: Any variable fields that should be replaced
-        3. alternative_versions (optional): Array of alternative versions
+        Length: {request.max_length or 'Appropriate for the medium'}
         
-        JSON format only.
+        Additional Instructions:
+        {request.additional_instructions or 'N/A'}
         """
         
-        response = await client.chat.completions.create(
-            model=settings.DEFAULT_MODEL,
-            response_format={"type": "json_object"},
-            messages=[
-                {"role": "system", "content": f"You are a {request.tone} copywriter specializing in {request.content_type} content for sales."},
-                {"role": "user", "content": prompt}
-            ]
-        )
+        # Use centralized LLM service instead of direct OpenAI API call
+        async with aiohttp.ClientSession() as session:
+            async with session.post(f"{settings.LLM_API_BASE_URL}/api/llm/generate", json={
+                "prompt": prompt,
+                "temperature": request.creativity or 0.7,
+                "feature_name": "content_generation",
+                "max_tokens": request.max_length or 500
+            }) as resp:
+                if resp.status != 200:
+                    logger.error(f"Error from LLM service: {await resp.text()}")
+                    raise Exception("Failed to generate content")
+                
+                response = await resp.json()
+                content = response.get("text", "")
         
-        # Parse the result
-        result = json.loads(response.choices[0].message.content)
-        
-        # Create response
+        # Create the response
         return ContentGenerationResponse(
-            content=result.get("content", ""),
-            variables=result.get("variables", {}),
-            alternative_versions=result.get("alternative_versions")
+            content=content,
+            content_type=request.content_type,
+            alternative_versions=[]  # For now, we don't generate alternatives
         )
-        
     except Exception as e:
-        logger.error(f"Error in content generation: {str(e)}")
-        # Return a generic message
-        return ContentGenerationResponse(
-            content=f"Hello {lead.first_name}, I wanted to follow up regarding our previous conversation.",
-            variables={},
-            alternative_versions=None
-        )
+        logger.error(f"Error generating content: {str(e)}")
+        raise
 
 async def get_lead_insights(lead_id: int) -> LeadInsightsResponse:
     """
@@ -421,17 +398,33 @@ async def get_lead_insights(lead_id: int) -> LeadInsightsResponse:
         JSON format only.
         """
         
-        response = await client.chat.completions.create(
-            model=settings.DEFAULT_MODEL,
-            response_format={"type": "json_object"},
-            messages=[
-                {"role": "system", "content": "You are a sales intelligence assistant. Respond only with JSON."},
-                {"role": "user", "content": prompt}
-            ]
-        )
+        # Use centralized LLM service instead of direct OpenAI API call
+        async with aiohttp.ClientSession() as session:
+            async with session.post(f"{settings.LLM_API_BASE_URL}/api/llm/generate", json={
+                "prompt": prompt,
+                "temperature": 0.2,
+                "feature_name": "lead_insights",
+                "response_format": {"type": "json_object"}
+            }) as resp:
+                if resp.status != 200:
+                    logger.error(f"Error from LLM service: {await resp.text()}")
+                    raise Exception("Failed to generate lead insights")
+                
+                response = await resp.json()
+                result_text = response.get("text", "{}")
         
         # Parse the result
-        result = json.loads(response.choices[0].message.content)
+        try:
+            result = json.loads(result_text)
+        except json.JSONDecodeError:
+            # Try to extract JSON from the response if it's not already in JSON format
+            match = re.search(r"```json\s*(.*?)\s*```", result_text, re.DOTALL)
+            if match:
+                json_str = match.group(1)
+                result = json.loads(json_str)
+            else:
+                logger.error("Failed to parse JSON from LLM response")
+                raise Exception("Failed to parse lead insights result")
         
         # Create insights
         insights = [
@@ -452,7 +445,6 @@ async def get_lead_insights(lead_id: int) -> LeadInsightsResponse:
             optimal_contact_times=result.get("optimal_contact_times"),
             communication_preferences=result.get("communication_preferences")
         )
-        
     except Exception as e:
         logger.error(f"Error generating lead insights: {str(e)}")
         # Return basic insights
@@ -518,17 +510,33 @@ async def get_follow_up_suggestions(lead_id: int, last_interaction_type: Optiona
         JSON format only.
         """
         
-        response = await client.chat.completions.create(
-            model=settings.DEFAULT_MODEL,
-            response_format={"type": "json_object"},
-            messages=[
-                {"role": "system", "content": "You are a sales follow-up assistant. Respond only with JSON."},
-                {"role": "user", "content": prompt}
-            ]
-        )
+        # Use centralized LLM service instead of direct OpenAI API call
+        async with aiohttp.ClientSession() as session:
+            async with session.post(f"{settings.LLM_API_BASE_URL}/api/llm/generate", json={
+                "prompt": prompt,
+                "temperature": 0.2,
+                "feature_name": "follow_up_suggestions",
+                "response_format": {"type": "json_object"}
+            }) as resp:
+                if resp.status != 200:
+                    logger.error(f"Error from LLM service: {await resp.text()}")
+                    raise Exception("Failed to generate follow-up suggestions")
+                
+                response = await resp.json()
+                result_text = response.get("text", "{}")
         
         # Parse the result
-        result = json.loads(response.choices[0].message.content)
+        try:
+            result = json.loads(result_text)
+        except json.JSONDecodeError:
+            # Try to extract JSON from the response if it's not already in JSON format
+            match = re.search(r"```json\s*(.*?)\s*```", result_text, re.DOTALL)
+            if match:
+                json_str = match.group(1)
+                result = json.loads(json_str)
+            else:
+                logger.error("Failed to parse JSON from LLM response")
+                raise Exception("Failed to parse follow-up suggestions result")
         
         # Create suggestions
         suggestions = [
@@ -547,7 +555,6 @@ async def get_follow_up_suggestions(lead_id: int, last_interaction_type: Optiona
             lead_id=lead_id,
             suggestions=suggestions
         )
-        
     except Exception as e:
         logger.error(f"Error generating follow-up suggestions: {str(e)}")
         # Return a default suggestion

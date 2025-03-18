@@ -23,7 +23,8 @@ from ..models.analytics import (
     CampaignAnalytics, 
     UserPerformance,
     ConversionFunnel,
-    TimeSeriesMetric
+    TimeSeriesMetric,
+    AnalysisRecommendation
 )
 from ..core.database import get_db, fetch_one, fetch_all
 from ..core.exceptions import NotFoundException, BadRequestException, ResourceNotFoundException, DatabaseException
@@ -1056,4 +1057,207 @@ class AnalyticsService:
                 
         except Exception as e:
             logger.error(f"Error getting conversion funnel: {e}")
-            raise DatabaseException(f"Failed to retrieve conversion funnel: {str(e)}") 
+            raise DatabaseException(f"Failed to retrieve conversion funnel: {str(e)}")
+
+    async def generate_analytics_insights(
+        self,
+        user_id: int,
+        time_range: Optional[TimeRange] = None,
+        date_range: Optional[DateRange] = None,
+    ) -> AnalysisRecommendation:
+        """
+        Generate AI-powered insights and recommendations based on analytics data using the centralized LLM service.
+        
+        Args:
+            user_id: ID of the user requesting analytics
+            time_range: Optional time range enum (e.g., THIS_MONTH, LAST_QUARTER)
+            date_range: Optional explicit date range for custom periods
+            
+        Returns:
+            AnalysisRecommendation object with insights and recommendations
+        """
+        try:
+            logger.info(f"Generating analytics insights for user {user_id}")
+            
+            # If time_range is provided, convert it to a concrete date range
+            if time_range and not date_range:
+                date_range = AnalyticsService._get_date_range_from_time_range(time_range)
+            
+            # If neither is provided, default to last 30 days
+            if not date_range:
+                today = date.today()
+                date_range = DateRange(
+                    start_date=today - timedelta(days=30),
+                    end_date=today
+                )
+            
+            # Collect analytics data to send to the LLM for insights generation
+            # Fetch lead stats
+            lead_analytics = await AnalyticsService.get_lead_analytics(
+                user_id=user_id,
+                date_range=date_range
+            )
+            
+            # Fetch campaign stats
+            campaign_analytics = await AnalyticsService.get_campaign_analytics(
+                user_id=user_id,
+                date_range=date_range
+            )
+            
+            # Fetch conversion funnel
+            try:
+                conversion_funnel = await AnalyticsService.get_conversion_funnel(
+                    user_id=user_id,
+                    date_range=date_range
+                )
+            except NotImplementedError:
+                # Handle if not implemented
+                conversion_funnel = None
+            
+            # Prepare the context with analytics data for the LLM
+            context = {
+                "lead_analytics": lead_analytics.dict() if lead_analytics else {},
+                "campaign_analytics": campaign_analytics.dict() if campaign_analytics else {},
+                "conversion_funnel": conversion_funnel.dict() if conversion_funnel else {},
+                "date_range": {
+                    "start_date": date_range.start_date.isoformat(),
+                    "end_date": date_range.end_date.isoformat()
+                }
+            }
+            
+            # Create a prompt for the LLM
+            prompt = f"""
+            Analyze the following CRM analytics data and provide strategic insights and recommendations.
+            
+            Analytics Data: {json.dumps(context, default=str)}
+            
+            Based on this data, generate:
+            1. A summary of overall CRM performance
+            2. Key strengths (what's working well)
+            3. Areas of weakness (what needs improvement)
+            4. Opportunities for growth or optimization
+            5. Strategic recommendations for improving performance
+            6. Detailed insight analysis explaining the reasoning behind your recommendations
+            
+            Return the results in a JSON object with these fields:
+            - summary: A concise overview of CRM performance
+            - strengths: Array of strength points
+            - weaknesses: Array of weakness points
+            - opportunities: Array of opportunity points
+            - recommendations: Array of actionable recommendations
+            - insightDetails: Detailed analysis explaining your reasoning
+            
+            Return only valid JSON.
+            """
+            
+            # Use the centralized LLM service
+            import aiohttp
+            from app.core.config import settings
+            
+            async with aiohttp.ClientSession() as session:
+                async with session.post(f"{settings.LLM_API_BASE_URL}/api/llm/generate", json={
+                    "prompt": prompt,
+                    "temperature": 0.2,
+                    "feature_name": "analytics_insights",
+                    "response_format": {"type": "json_object"}
+                }) as resp:
+                    if resp.status != 200:
+                        error_text = await resp.text()
+                        logger.error(f"Error from LLM service: {error_text}")
+                        raise Exception(f"Failed to generate analytics insights: {error_text}")
+                    
+                    response = await resp.json()
+                    result_text = response.get("text", "{}")
+                    
+                    try:
+                        # Parse the JSON response
+                        insights_data = json.loads(result_text)
+                        
+                        # Store the insights in the database for future reference
+                        await AnalyticsService._store_analytics_insights(
+                            user_id=user_id,
+                            insights_data=insights_data,
+                            date_range=date_range
+                        )
+                        
+                        return insights_data
+                    except json.JSONDecodeError as e:
+                        logger.error(f"Error parsing LLM response: {e}, Response: {result_text}")
+                        raise Exception(f"Failed to parse analytics insights: {str(e)}")
+        
+        except Exception as e:
+            logger.error(f"Error generating analytics insights: {e}")
+            raise DatabaseException(f"Failed to generate analytics insights: {str(e)}")
+
+    @staticmethod
+    async def _store_analytics_insights(
+        user_id: int,
+        insights_data: dict,
+        date_range: DateRange
+    ) -> None:
+        """
+        Store the generated analytics insights in the database.
+        
+        Args:
+            user_id: ID of the user the insights are for
+            insights_data: The insights data to store
+            date_range: The date range the insights cover
+        """
+        try:
+            # Convert arrays to JSON strings for storage
+            strengths = json.dumps(insights_data.get("strengths", []))
+            weaknesses = json.dumps(insights_data.get("weaknesses", []))
+            opportunities = json.dumps(insights_data.get("opportunities", []))
+            recommendations = json.dumps(insights_data.get("recommendations", []))
+            
+            # Store in the analytics_analysis table
+            query = """
+                INSERT INTO analytics_analysis (
+                    summary, 
+                    strengths, 
+                    weaknesses, 
+                    opportunities, 
+                    recommendations, 
+                    insight_details,
+                    created_at,
+                    updated_at,
+                    user_id,
+                    date_range_start,
+                    date_range_end
+                ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
+                ON CONFLICT (user_id) 
+                DO UPDATE SET
+                    summary = EXCLUDED.summary,
+                    strengths = EXCLUDED.strengths,
+                    weaknesses = EXCLUDED.weaknesses,
+                    opportunities = EXCLUDED.opportunities,
+                    recommendations = EXCLUDED.recommendations,
+                    insight_details = EXCLUDED.insight_details,
+                    updated_at = EXCLUDED.updated_at,
+                    date_range_start = EXCLUDED.date_range_start,
+                    date_range_end = EXCLUDED.date_range_end
+                RETURNING id
+            """
+            
+            now = datetime.now()
+            
+            await fetch_one(
+                query, 
+                insights_data.get("summary", ""),
+                strengths,
+                weaknesses,
+                opportunities,
+                recommendations,
+                insights_data.get("insightDetails", ""),
+                now,
+                now,
+                user_id,
+                date_range.start_date,
+                date_range.end_date
+            )
+            
+            logger.info(f"Successfully stored analytics insights for user {user_id}")
+        except Exception as e:
+            logger.error(f"Error storing analytics insights: {e}")
+            # Don't raise the exception - this is a non-critical operation
+            # Just log the error and continue 

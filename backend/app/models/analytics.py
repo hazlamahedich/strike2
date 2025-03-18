@@ -325,4 +325,19 @@ class ConversionFunnel(BaseModel):
     """Conversion funnel analytics"""
     stages: List[Dict[str, Any]] = Field(default_factory=list)
     overall_conversion_rate: float = 0
-    date_range: DateRange 
+    date_range: DateRange
+
+
+class AnalysisRecommendation(BaseModel):
+    """AI-generated analytics insights and recommendations"""
+    summary: str
+    strengths: List[str] = Field(default_factory=list)
+    weaknesses: List[str] = Field(default_factory=list)
+    opportunities: List[str] = Field(default_factory=list)
+    recommendations: List[str] = Field(default_factory=list)
+    insightDetails: str
+    user_id: Optional[int] = None
+    date_range_start: Optional[datetime] = None
+    date_range_end: Optional[datetime] = None
+    created_at: Optional[datetime] = None
+    updated_at: Optional[datetime] = None 

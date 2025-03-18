@@ -57,7 +57,7 @@ from app.models.chatbot import (
     ChatMessage, ChatMessageRole, ChatSession, ChatRequest, 
     ChatResponse, ChatFeedback, ChatbotQueryType
 )
-from app.agents.base import AgentState, create_llm, create_system_message, create_human_message
+from app.agents.base import AgentState, create_llm, create_system_message, create_human_message, CentralizedLLM
 
 # Configure logger
 logger = logging.getLogger(__name__)
@@ -224,22 +224,21 @@ class DatabaseQueryTool(BaseTool):
             logger.error(f"Database query error: {e}")
             return f"Error executing query: {str(e)}"
 
-def classify_query(state: ChatbotState) -> ChatbotState:
+async def classify_query(state: ChatbotState) -> ChatbotState:
     """Classify the type of query being asked."""
     messages = state["messages"]
     
     # Get the latest user message
     latest_message = messages[-1].content if messages else ""
     
-    # Use LLM to classify the query type
-    llm = ChatOpenAI(
-        api_key=settings.OPENAI_API_KEY,
-        model_name=settings.DEFAULT_MODEL,
-        temperature=0,
-    )
-    
-    classification_prompt = ChatPromptTemplate.from_messages([
-        ("system", """
+    try:
+        # Use centralized LLM service
+        llm = await create_llm(
+            temperature=0,
+            feature_name="chatbot_classification"
+        )
+        
+        classification_prompt = """
         Classify the user query into one of the following categories:
         - APP_FUNCTIONALITY: Questions about how to use the CRM application
         - DATABASE_QUERY: Requests for specific data from the database
@@ -247,31 +246,55 @@ def classify_query(state: ChatbotState) -> ChatbotState:
         - FAQ: Common questions about the system
         - GENERAL: General questions or chitchat
         
+        User query: {query}
+        
         Respond with just the category name.
-        """),
-        ("human", latest_message),
-    ])
-    
-    chain = classification_prompt | llm | StrOutputParser()
-    query_type_str = chain.invoke({})
-    
-    # Map the string to the enum
-    query_type_map = {
-        "APP_FUNCTIONALITY": ChatbotQueryType.APP_FUNCTIONALITY,
-        "DATABASE_QUERY": ChatbotQueryType.DATABASE_QUERY,
-        "TROUBLESHOOTING": ChatbotQueryType.TROUBLESHOOTING,
-        "FAQ": ChatbotQueryType.FAQ,
-        "GENERAL": ChatbotQueryType.GENERAL,
-    }
-    
-    query_type = query_type_map.get(query_type_str.strip(), ChatbotQueryType.GENERAL)
-    
-    # Update the state with the query type
-    state["query_type"] = query_type
+        """
+        
+        prompt = classification_prompt.format(query=latest_message)
+        
+        if isinstance(llm, CentralizedLLM):
+            query_type_str = await llm.apredict(prompt)
+        else:
+            # Legacy fallback
+            classification_prompt_template = ChatPromptTemplate.from_messages([
+                ("system", """
+                Classify the user query into one of the following categories:
+                - APP_FUNCTIONALITY: Questions about how to use the CRM application
+                - DATABASE_QUERY: Requests for specific data from the database
+                - TROUBLESHOOTING: Help with solving problems or errors
+                - FAQ: Common questions about the system
+                - GENERAL: General questions or chitchat
+                
+                Respond with just the category name.
+                """),
+                ("human", latest_message),
+            ])
+            
+            chain = classification_prompt_template | llm | StrOutputParser()
+            query_type_str = chain.invoke({})
+        
+        # Map the string to the enum
+        query_type_map = {
+            "APP_FUNCTIONALITY": ChatbotQueryType.APP_FUNCTIONALITY,
+            "DATABASE_QUERY": ChatbotQueryType.DATABASE_QUERY,
+            "TROUBLESHOOTING": ChatbotQueryType.TROUBLESHOOTING,
+            "FAQ": ChatbotQueryType.FAQ,
+            "GENERAL": ChatbotQueryType.GENERAL,
+        }
+        
+        query_type = query_type_map.get(query_type_str.strip(), ChatbotQueryType.GENERAL)
+        
+        # Update the state with the query type
+        state["query_type"] = query_type
+    except Exception as e:
+        logger.error(f"Error classifying query: {e}")
+        # Default to GENERAL if classification fails
+        state["query_type"] = ChatbotQueryType.GENERAL
     
     return state
 
-def generate_db_query(state: ChatbotState) -> ChatbotState:
+async def generate_db_query(state: ChatbotState) -> ChatbotState:
     """Generate a database query based on the user's question."""
     if state["query_type"] != ChatbotQueryType.DATABASE_QUERY:
         # Skip if this is not a database query
@@ -280,15 +303,14 @@ def generate_db_query(state: ChatbotState) -> ChatbotState:
     messages = state["messages"]
     latest_message = messages[-1].content if messages else ""
     
-    # Use LLM to generate a SQL query
-    llm = ChatOpenAI(
-        api_key=settings.OPENAI_API_KEY,
-        model_name=settings.DEFAULT_MODEL,
-        temperature=0,
-    )
-    
-    sql_generation_prompt = ChatPromptTemplate.from_messages([
-        ("system", """
+    try:
+        # Use centralized LLM service
+        llm = await create_llm(
+            temperature=0,
+            feature_name="chatbot_sql_generation"
+        )
+        
+        sql_generation_prompt = """
         You are a SQL expert. Generate a SQL query to answer the user's question.
         
         The database has the following main tables:
@@ -301,27 +323,56 @@ def generate_db_query(state: ChatbotState) -> ChatbotState:
         - meetings: Meeting records (id, title, description, start_time, end_time, lead_id, user_id)
         - campaigns: Marketing campaigns (id, name, description, status, start_date, end_date, team_id)
         
+        User question: {question}
+        
         Generate ONLY a SQL SELECT query. Do not include any explanations or comments.
         Only return the SQL query itself.
-        """),
-        ("human", latest_message),
-    ])
-    
-    chain = sql_generation_prompt | llm | StrOutputParser()
-    sql_query = chain.invoke({})
-    
-    # Execute the query
-    try:
-        db_tool = DatabaseQueryTool()
-        results = db_tool._run(sql_query)
-        state["db_results"] = results
+        """
+        
+        prompt = sql_generation_prompt.format(question=latest_message)
+        
+        if isinstance(llm, CentralizedLLM):
+            sql_query = await llm.apredict(prompt)
+        else:
+            # Legacy fallback
+            sql_generation_prompt_template = ChatPromptTemplate.from_messages([
+                ("system", """
+                You are a SQL expert. Generate a SQL query to answer the user's question.
+                
+                The database has the following main tables:
+                - users: User accounts (id, email, name, role, team_id)
+                - teams: Teams (id, name, settings)
+                - leads: Sales leads (id, first_name, last_name, email, phone, company, status, owner_id, team_id, lead_score)
+                - tasks: Tasks assigned to users (id, title, description, due_date, status, priority, assigned_to, lead_id)
+                - emails: Email communications (id, subject, body, sender, recipient, lead_id, user_id)
+                - calls: Phone call records (id, duration, notes, lead_id, user_id)
+                - meetings: Meeting records (id, title, description, start_time, end_time, lead_id, user_id)
+                - campaigns: Marketing campaigns (id, name, description, status, start_date, end_date, team_id)
+                
+                Generate ONLY a SQL SELECT query. Do not include any explanations or comments.
+                Only return the SQL query itself.
+                """),
+                ("human", latest_message),
+            ])
+            
+            chain = sql_generation_prompt_template | llm | StrOutputParser()
+            sql_query = chain.invoke({})
+        
+        # Execute the query
+        try:
+            db_tool = DatabaseQueryTool()
+            results = db_tool._run(sql_query)
+            state["db_results"] = results
+        except Exception as e:
+            logger.error(f"Error executing generated SQL query: {e}")
+            state["db_results"] = f"Error executing query: {str(e)}"
     except Exception as e:
-        logger.error(f"Error executing generated SQL query: {e}")
-        state["db_results"] = f"Error executing query: {str(e)}"
+        logger.error(f"Error generating SQL query: {e}")
+        state["db_results"] = f"Error generating query: {str(e)}"
     
     return state
 
-def load_documentation():
+async def load_documentation():
     """Load and index the documentation for retrieval."""
     if not os.path.exists(DOCUMENTATION_PATH):
         logger.warning(f"Documentation file not found at {DOCUMENTATION_PATH}")
@@ -335,15 +386,23 @@ def load_documentation():
     text_splitter = MarkdownTextSplitter(chunk_size=1000, chunk_overlap=100)
     chunks = text_splitter.split_text(documentation)
     
-    # Create embeddings
-    embeddings = OpenAIEmbeddings(api_key=settings.OPENAI_API_KEY)
-    
-    # Create a vector store
-    vectorstore = FAISS.from_texts(chunks, embeddings)
-    
-    return vectorstore
+    try:
+        # Instead of directly using OpenAI embeddings, we should ideally use a centralized embeddings service
+        # For now, we'll continue using OpenAI embeddings but make it clear this should be centralized in the future
+        # TODO: Implement centralized embeddings service
+        from langchain_openai import OpenAIEmbeddings
+        
+        embeddings = OpenAIEmbeddings()
+        
+        # Create a vector store
+        vectorstore = FAISS.from_texts(chunks, embeddings)
+        
+        return vectorstore
+    except Exception as e:
+        logger.error(f"Error creating documentation index: {e}")
+        return None
 
-def generate_response(state: ChatbotState) -> ChatbotState:
+async def generate_response(state: ChatbotState) -> ChatbotState:
     """Generate a response based on the query type and available information."""
     messages = state["messages"]
     query_type = state["query_type"]
@@ -381,70 +440,125 @@ def generate_response(state: ChatbotState) -> ChatbotState:
             for i, doc in enumerate(docs):
                 doc_context += f"Document {i+1}:\n{doc.page_content}\n\n"
     
-    # Create the prompt
-    prompt = ChatPromptTemplate.from_messages([
-        ("system", system_prompt + db_context + doc_context),
-        MessagesPlaceholder(variable_name="chat_history"),
-        ("human", "{input}"),
-    ])
-    
-    # Create the LLM
-    llm = ChatOpenAI(
-        api_key=settings.OPENAI_API_KEY,
-        model_name=settings.DEFAULT_MODEL,
-        temperature=0.7,
-    )
-    
-    # Create the chain
-    chain = prompt | llm | StrOutputParser()
-    
-    # Prepare the chat history
-    chat_history = []
-    for msg in messages[:-1]:  # Exclude the latest message which is the input
-        if isinstance(msg, HumanMessage):
-            chat_history.append(("human", msg.content))
-        elif isinstance(msg, AIMessage):
-            chat_history.append(("ai", msg.content))
-    
-    # Generate the response
-    response = chain.invoke({
-        "chat_history": chat_history,
-        "input": messages[-1].content if messages else "",
-    })
-    
-    # Update the state
-    state["current_response"] = response
-    
-    # Generate suggested follow-up questions
-    follow_up_prompt = ChatPromptTemplate.from_messages([
-        ("system", """
+    try:
+        # Use centralized LLM service
+        llm = await create_llm(
+            temperature=0.7,
+            feature_name="chatbot_response"
+        )
+        
+        # Prepare the chat history as a formatted string
+        chat_history_str = ""
+        for msg in messages[:-1]:  # Exclude the latest message which is the input
+            if isinstance(msg, HumanMessage):
+                chat_history_str += f"User: {msg.content}\n"
+            elif isinstance(msg, AIMessage):
+                chat_history_str += f"Assistant: {msg.content}\n"
+        
+        # Create the prompt
+        response_prompt = f"{system_prompt}\n\n{db_context}{doc_context}\n\nChat History:\n{chat_history_str}\nUser: {messages[-1].content if messages else ''}\nAssistant:"
+        
+        if isinstance(llm, CentralizedLLM):
+            response = await llm.apredict(response_prompt)
+        else:
+            # Legacy fallback
+            prompt = ChatPromptTemplate.from_messages([
+                ("system", system_prompt + db_context + doc_context),
+                MessagesPlaceholder(variable_name="chat_history"),
+                ("human", "{input}"),
+            ])
+            
+            # Prepare the chat history
+            chat_history = []
+            for msg in messages[:-1]:
+                if isinstance(msg, HumanMessage):
+                    chat_history.append(("human", msg.content))
+                elif isinstance(msg, AIMessage):
+                    chat_history.append(("ai", msg.content))
+            
+            # Create the chain
+            chain = prompt | llm | StrOutputParser()
+            
+            # Generate the response
+            response = chain.invoke({
+                "chat_history": chat_history,
+                "input": messages[-1].content if messages else "",
+            })
+        
+        # Update the state
+        state["current_response"] = response
+        
+        # Generate suggested follow-up questions
+        follow_up_llm = await create_llm(
+            temperature=0.5,
+            feature_name="chatbot_follow_up"
+        )
+        
+        follow_up_prompt = f"""
         Based on the conversation so far and the assistant's response, suggest 3 follow-up questions 
         that the user might want to ask next. Return them as a JSON array of strings.
-        Example: ["How do I create a new lead?", "Can I export my data?", "How does lead scoring work?"]
-        """),
-        MessagesPlaceholder(variable_name="chat_history"),
-        ("human", "Assistant's response: {response}"),
-    ])
-    
-    follow_up_chain = follow_up_prompt | llm
-    follow_up_response = follow_up_chain.invoke({
-        "chat_history": chat_history + [("human", messages[-1].content if messages else "")],
-        "response": response,
-    })
-    
-    # Parse the follow-up questions
-    try:
-        # Extract JSON array from the response
-        import re
-        json_match = re.search(r'\[.*\]', follow_up_response.content, re.DOTALL)
-        if json_match:
-            json_str = json_match.group(0)
-            suggested_follow_ups = json.loads(json_str)
-            state["suggested_follow_ups"] = suggested_follow_ups
+        
+        User's latest question: {messages[-1].content if messages else ""}
+        
+        Assistant's response: {response}
+        
+        Example output format: ["How do I create a new lead?", "Can I export my data?", "How does lead scoring work?"]
+        """
+        
+        if isinstance(follow_up_llm, CentralizedLLM):
+            follow_up_json = await follow_up_llm.apredict_json(follow_up_prompt)
+            # If the result is already a list, use it directly
+            if isinstance(follow_up_json, list):
+                suggested_follow_ups = follow_up_json
+            else:
+                # Try to extract a list from the JSON object
+                suggested_follow_ups = follow_up_json.get("questions", [])
+                if not suggested_follow_ups:
+                    # As a fallback, look for any list property
+                    for value in follow_up_json.values():
+                        if isinstance(value, list) and len(value) > 0 and all(isinstance(item, str) for item in value):
+                            suggested_follow_ups = value
+                            break
         else:
-            state["suggested_follow_ups"] = []
+            # Legacy fallback
+            follow_up_prompt_template = ChatPromptTemplate.from_messages([
+                ("system", """
+                Based on the conversation so far and the assistant's response, suggest 3 follow-up questions 
+                that the user might want to ask next. Return them as a JSON array of strings.
+                Example: ["How do I create a new lead?", "Can I export my data?", "How does lead scoring work?"]
+                """),
+                MessagesPlaceholder(variable_name="chat_history"),
+                ("human", "Assistant's response: {response}"),
+            ])
+            
+            # Prepare the chat history
+            chat_history = []
+            for msg in messages[:-1]:
+                if isinstance(msg, HumanMessage):
+                    chat_history.append(("human", msg.content))
+                elif isinstance(msg, AIMessage):
+                    chat_history.append(("ai", msg.content))
+            chat_history.append(("human", messages[-1].content if messages else ""))
+            
+            follow_up_chain = follow_up_prompt_template | follow_up_llm
+            follow_up_response = follow_up_chain.invoke({
+                "chat_history": chat_history,
+                "response": response,
+            })
+            
+            # Extract JSON array from the response
+            import re
+            json_match = re.search(r'\[.*\]', follow_up_response.content, re.DOTALL)
+            if json_match:
+                json_str = json_match.group(0)
+                suggested_follow_ups = json.loads(json_str)
+            else:
+                suggested_follow_ups = []
+        
+        state["suggested_follow_ups"] = suggested_follow_ups
     except Exception as e:
-        logger.error(f"Error parsing follow-up questions: {e}")
+        logger.error(f"Error generating response: {e}")
+        state["current_response"] = f"I apologize, but I encountered an error while processing your request. Error details: {str(e)}"
         state["suggested_follow_ups"] = []
     
     return state

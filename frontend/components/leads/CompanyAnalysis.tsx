@@ -6,6 +6,8 @@ import { Progress } from '../ui/progress';
 import { Skeleton } from '../ui/skeleton';
 import { AlertCircle, CheckCircle, RefreshCw, Building, Target, Users, Lightbulb, TrendingUp, AlertTriangle } from 'lucide-react';
 import { useMockData } from '../../hooks/useMockData';
+import { useLLM, useLLMInfo } from '../../contexts/LLMContext';
+import { toast } from 'sonner';
 
 interface CompanyAnalysisProps {
   leadId: number;
@@ -77,6 +79,9 @@ const CompanyAnalysis: React.FC<CompanyAnalysisProps> = ({ leadId }) => {
     autoTriggerAnalysis
   } = useMockData();
   
+  const { settings, loading: llmLoading, error: llmError } = useLLM();
+  const { modelName, provider } = useLLMInfo();
+  
   // Function to fetch company analysis data
   const fetchAnalysisData = async () => {
     setIsLoading(true);
@@ -109,70 +114,219 @@ const CompanyAnalysis: React.FC<CompanyAnalysisProps> = ({ leadId }) => {
     }
   };
   
-  // Function to trigger web scraping
   const triggerAnalysis = async () => {
     setIsAnalyzing(true);
     setProgress(0);
     setError(null);
     
     try {
+      // Handle mock data scenario
       if (useMockFeatures && useCompanyAnalysisMockData) {
-        // Simulate progress updates
-        const interval = setInterval(() => {
-          setProgress(prev => {
-            const newProgress = prev + Math.floor(Math.random() * 15);
-            if (newProgress >= 100) {
-              clearInterval(interval);
-              setTimeout(() => {
-                setAnalysisData(mockAnalysisData);
-                setIsAnalyzing(false);
-              }, 500);
-              return 100;
-            }
-            return newProgress;
-          });
-        }, 800);
+        // Simulate analysis process with delays
+        setProgress(10);
+        await new Promise(resolve => setTimeout(resolve, 1000));
+        setProgress(50);
+        await new Promise(resolve => setTimeout(resolve, 1500));
+        setProgress(100);
+        await new Promise(resolve => setTimeout(resolve, 500));
+        setAnalysisData(mockAnalysisData);
+        setIsAnalyzing(false);
         return;
       }
       
-      // Real API call
-      const response = await fetch(`/api/company-analysis/${leadId}/trigger`, {
-        method: 'POST',
-      });
-      
-      if (!response.ok) {
-        throw new Error('Failed to trigger web scraping');
+      // Check if we have a model configured
+      if (llmLoading) {
+        toast.info('Loading LLM settings...');
+        setProgress(5);
+        
+        // Wait for settings to load
+        let attempt = 0;
+        while (llmLoading && attempt < 10) {
+          await new Promise(resolve => setTimeout(resolve, 500));
+          attempt++;
+        }
+        
+        if (llmLoading || llmError) {
+          throw new Error('LLM settings could not be loaded. Please try again.');
+        }
       }
       
-      // Start polling for status
-      const statusInterval = setInterval(async () => {
-        try {
-          const statusResponse = await fetch(`/api/company-analysis/status/${leadId}`);
-          const statusData = await statusResponse.json();
-          
-          if (statusData.status === 'pending') {
-            setProgress(10);
-          } else if (statusData.status === 'in_progress') {
-            setProgress(50);
-          } else if (statusData.status === 'completed') {
-            setProgress(100);
-            clearInterval(statusInterval);
-            fetchAnalysisData();
-            setIsAnalyzing(false);
-          } else if (['failed', 'invalid_url', 'no_content'].includes(statusData.status)) {
-            setProgress(100);
-            clearInterval(statusInterval);
-            setError(`Analysis ${statusData.status}: ${statusData.message || 'An error occurred'}`);
-            setIsAnalyzing(false);
-          }
-        } catch (err) {
-          console.error('Error checking status:', err);
-        }
-      }, 3000);
+      if (!settings?.defaultModel) {
+        throw new Error('No LLM model configured. Please set up a default model in settings.');
+      }
       
-    } catch (err) {
+      // Get lead information including website URL
+      const leadResponse = await fetch(`/api/leads/${leadId}`);
+      if (!leadResponse.ok) {
+        throw new Error('Failed to fetch lead information');
+      }
+      
+      const leadData = await leadResponse.json();
+      const websiteUrl = leadData.website || leadData.company_website;
+      
+      if (!websiteUrl) {
+        throw new Error('No website URL available for analysis');
+      }
+      
+      // Start the analysis using centralized LLM service
+      setProgress(10);
+      
+      // Prepare a comprehensive, structured prompt for company analysis
+      const analysisPrompt = `
+You are a business analyst tasked with analyzing a company's website and providing structured insights for a sales team.
+
+WEBSITE URL: ${websiteUrl}
+
+Please analyze this company thoroughly and provide a structured analysis with the following components:
+
+1. Company Summary: A 2-3 sentence overview of what the company does
+2. Industry: The primary industry the company operates in
+3. Products/Services: A list of their main products or services (at least 3-5)
+4. Value Proposition: Their core value proposition to customers
+5. Target Audience: Description of their ideal customer profile
+6. Company Size Estimate: Small/Medium/Large (with employee range if detectable)
+7. Strengths: List 3-5 competitive advantages or strengths
+8. Opportunities: List 3-5 potential opportunities for our solutions
+9. Conversion Strategy: Brief strategy on how to approach selling to this company
+10. Key Topics: List 3-5 topics that matter to this company
+11. Potential Pain Points: List 3-5 business challenges they might face
+12. Lead Score Factors: List 3-5 reasons this company would or wouldn't be a good fit
+
+Format your response as a clean JSON object with these exact keys:
+{
+  "company_summary": "string",
+  "industry": "string",
+  "products_services": ["string", "string"],
+  "value_proposition": "string",
+  "target_audience": "string",
+  "company_size_estimate": "string",
+  "strengths": ["string", "string"],
+  "opportunities": ["string", "string"],
+  "conversion_strategy": "string",
+  "key_topics": ["string", "string"],
+  "potential_pain_points": ["string", "string"],
+  "lead_score_factors": ["string", "string"]
+}`;
+
+      const analysisResponse = await fetch('/api/llm/generate', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          prompt: analysisPrompt,
+          feature_name: 'company_analysis',
+          response_format: { type: "json_object" },
+          temperature: 0.2,
+          model_name: settings?.defaultModel?.model_name,
+        }),
+      });
+      
+      if (!analysisResponse.ok) {
+        const errorData = await analysisResponse.json();
+        throw new Error(errorData.error || 'Failed to start company analysis');
+      }
+      
+      // Get the analyzed text
+      const analysisResult = await analysisResponse.json();
+      setProgress(50);
+      
+      // Process the analysis result
+      try {
+        // Convert the LLM response into structured data
+        let processedData;
+        
+        // Try to parse the response as JSON first
+        try {
+          let cleanResponse = analysisResult.text.trim();
+          if (cleanResponse.startsWith('```json')) {
+            cleanResponse = cleanResponse.replace(/```json|```/g, '').trim();
+          }
+          processedData = JSON.parse(cleanResponse);
+        } catch (parseError) {
+          // If not JSON, process it as text
+          console.warn('Analysis result is not valid JSON, processing as text', parseError);
+          
+          const analysisText = analysisResult.text;
+          
+          // Extract sections using regex patterns
+          const extractSection = (section: string, text: string): string => {
+            const regex = new RegExp(`${section}[:\\s]*(.*?)(?=\\n\\n|$)`, 's');
+            const match = text.match(regex);
+            return match ? match[1].trim() : '';
+          };
+          
+          const extractListItems = (section: string, text: string): string[] => {
+            const sectionText = extractSection(section, text);
+            if (!sectionText) return [];
+            
+            // Split by lines and filter out empty lines and bullet points
+            return sectionText.split('\n')
+              .map((line: string) => line.replace(/^[-*•]/, '').trim())
+              .filter((line: string) => line.length > 0);
+          };
+          
+          processedData = {
+            company_summary: extractSection('company summary|summary', analysisText),
+            industry: extractSection('industry', analysisText),
+            products_services: extractListItems('products|services|products_services|products and services', analysisText),
+            value_proposition: extractSection('value proposition|value_proposition', analysisText),
+            target_audience: extractSection('target audience|target_audience', analysisText),
+            company_size_estimate: extractSection('company size|size|company_size', analysisText),
+            strengths: extractListItems('strengths', analysisText),
+            opportunities: extractListItems('opportunities', analysisText),
+            conversion_strategy: extractSection('conversion strategy|conversion_strategy', analysisText),
+            key_topics: extractListItems('key topics|key_topics', analysisText), 
+            potential_pain_points: extractListItems('pain points|pain_points|potential pain points', analysisText),
+            lead_score_factors: extractListItems('lead score factors|lead_score_factors', analysisText),
+          };
+        }
+        
+        // Save analysis to the backend
+        const saveResponse = await fetch(`/api/company-analysis/${leadId}`, {
+          method: 'POST', 
+          headers: {
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({
+            analysis: processedData,
+            website_url: websiteUrl,
+            model_info: {
+              provider: provider || settings?.defaultModel?.provider,
+              model_name: modelName || settings?.defaultModel?.model_name,
+              tokens: analysisResult.usage?.total_tokens || 0
+            }
+          }),
+        });
+        
+        if (!saveResponse.ok) {
+          console.warn('Failed to save analysis results, but continuing to display results');
+        }
+        
+        // Update the analysis data with the processed results
+        setAnalysisData({
+          status: 'completed',
+          website_url: websiteUrl,
+          updated_at: new Date().toISOString(),
+          analysis: processedData,
+          model_info: {
+            provider: provider || settings?.defaultModel?.provider,
+            model_name: modelName || settings?.defaultModel?.model_name,
+            tokens: analysisResult.usage?.total_tokens || 0
+          }
+        });
+        
+        setProgress(100);
+        setIsAnalyzing(false);
+      } catch (processingError) {
+        console.error('Error processing analysis result:', processingError);
+        throw new Error('Failed to process analysis result. Please try again.');
+      }
+      
+    } catch (err: unknown) {
       console.error('Error triggering analysis:', err);
-      setError('Failed to start analysis. Please try again.');
+      const errorMessage = err instanceof Error ? err.message : 'Unknown error';
+      setError(`Failed to start analysis: ${errorMessage}`);
       setIsAnalyzing(false);
     }
   };

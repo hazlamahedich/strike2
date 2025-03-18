@@ -1,267 +1,195 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { cookies } from 'next/headers';
+import { createClient } from '@supabase/supabase-js';
 
-// Default backend URL if environment variable is not set
-const DEFAULT_BACKEND_URL = 'http://localhost:8001';
+// Initialize Supabase client
+const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || 'https://elpqvskcixfsgeavjfhb.supabase.co';
+const supabaseKey = process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
+const supabase = createClient(supabaseUrl, supabaseKey as string);
 
-// Generate dates for the past 30 days
-const generatePastDates = (days: number) => {
-  const dates = [];
-  for (let i = days - 1; i >= 0; i--) {
-    const date = new Date();
-    date.setDate(date.getDate() - i);
-    dates.push(date.toISOString().split('T')[0]);
-  }
-  return dates;
-};
-
-// Generate random function usage data for a specific function type
-const generateMockFunctionData = (functionType: string, days: number = 30) => {
-  const dates = generatePastDates(days);
-  
-  // Create daily usage data
-  const dailyUsage = dates.map(date => {
-    const requestCount = Math.floor(Math.random() * 15) + 5;
-    const promptTokens = Math.floor(Math.random() * 10000) + 2000;
-    const completionTokens = Math.floor(Math.random() * 5000) + 1000;
-    const totalTokens = promptTokens + completionTokens;
-    const cost = parseFloat((totalTokens * 0.00002).toFixed(4));
-    
-    return {
-      date,
-      requestCount,
-      promptTokens,
-      completionTokens,
-      totalTokens,
-      cost
-    };
-  });
-  
-  return {
-    functionUsage: [
-      {
-        functionType,
-        requestCount: dailyUsage.reduce((sum, day) => sum + day.requestCount, 0),
-        promptTokens: dailyUsage.reduce((sum, day) => sum + day.promptTokens, 0),
-        completionTokens: dailyUsage.reduce((sum, day) => sum + day.completionTokens, 0),
-        totalTokens: dailyUsage.reduce((sum, day) => sum + day.totalTokens, 0),
-        totalCost: parseFloat(dailyUsage.reduce((sum, day) => sum + day.cost, 0).toFixed(2)),
-        avgCostPerRequest: parseFloat((dailyUsage.reduce((sum, day) => sum + day.cost, 0) / dailyUsage.reduce((sum, day) => sum + day.requestCount, 0)).toFixed(4)),
-      }
-    ],
-    dailyUsage
-  };
-};
-
-// Mock function usage data for all functions
-const mockFunctionUsageAll = {
-  functionUsage: [
+// Sample mock data
+const MOCK_FUNCTION_USAGE = {
+  functions: [
     {
-      functionType: 'meeting_summarization',
-      requestCount: 187,
-      promptTokens: 280500,
-      completionTokens: 140250,
-      totalTokens: 420750,
-      totalCost: 8.42,
-      avgCostPerRequest: 0.045
+      function_name: 'email_generation',
+      request_count: 158,
+      total_tokens: 62400,
+      cost: 1.248,
+      percentage: 42
     },
     {
-      functionType: 'lead_analysis',
-      requestCount: 412,
-      promptTokens: 618000,
-      completionTokens: 309000,
-      totalTokens: 927000,
-      totalCost: 18.54,
-      avgCostPerRequest: 0.045
+      function_name: 'lead_scoring',
+      request_count: 89,
+      total_tokens: 35600,
+      cost: 0.712,
+      percentage: 24
     },
     {
-      functionType: 'email_generation',
-      requestCount: 326,
-      promptTokens: 489000,
-      completionTokens: 244500,
-      totalTokens: 733500,
-      totalCost: 14.67,
-      avgCostPerRequest: 0.045
+      function_name: 'company_analysis',
+      request_count: 64,
+      total_tokens: 51200,
+      cost: 1.024,
+      percentage: 17
     },
     {
-      functionType: 'task_automation',
-      requestCount: 156,
-      promptTokens: 234000,
-      completionTokens: 117000,
-      totalTokens: 351000,
-      totalCost: 7.02,
-      avgCostPerRequest: 0.045
+      function_name: 'meeting_summary',
+      request_count: 45,
+      total_tokens: 27000,
+      cost: 0.54,
+      percentage: 12
     },
     {
-      functionType: 'conversation_analysis',
-      requestCount: 98,
-      promptTokens: 147000,
-      completionTokens: 73500,
-      totalTokens: 220500,
-      totalCost: 4.41,
-      avgCostPerRequest: 0.045
+      function_name: 'other',
+      request_count: 18,
+      total_tokens: 7200,
+      cost: 0.144,
+      percentage: 5
     }
   ],
-  dailyUsage: []
+  totalRequests: 374,
+  totalTokens: 183400,
+  totalCost: 3.668
 };
 
+// Empty function usage data
+const EMPTY_FUNCTION_USAGE = {
+  functions: [],
+  totalRequests: 0,
+  totalTokens: 0,
+  totalCost: 0
+};
+
+/**
+ * GET /api/llm/function-usage
+ * 
+ * Retrieve LLM function usage statistics
+ */
 export async function GET(request: NextRequest) {
+  // Check if we should use mock data
+  const useMock = process.env.USE_LLM_MOCK_DATA === 'true';
+  if (useMock) {
+    return NextResponse.json(MOCK_FUNCTION_USAGE);
+  }
+  
   try {
-    // Check if we should use mock data
-    const cookieStore = await cookies();
-    const useMockData = cookieStore.get('use_mock_data')?.value === 'true';
+    // Get the period from the URL
+    const urlParams = new URL(request.url).searchParams;
+    const period = urlParams.get('period') || 'month';
     
-    // Get query parameters
-    const searchParams = request.nextUrl.searchParams;
-    const period = searchParams.get('period');
-    const functionType = searchParams.get('function_type');
+    // Create a date for filtering based on the period
+    const now = new Date();
+    let startDate = new Date();
     
-    if (useMockData) {
-      console.log('Using mock data for AI function usage');
-      
-      // If a specific function type is requested, generate data for that function
-      if (functionType) {
-        let days = 30; // default
-        
-        if (period) {
-          if (period === 'day') days = 1;
-          else if (period === 'week') days = 7;
-          else if (period === 'month') days = 30;
-          else if (period === 'year') days = 365;
-        }
-        
-        return NextResponse.json(generateMockFunctionData(functionType, days));
-      }
-      
-      // Otherwise return data for all functions
-      return NextResponse.json(mockFunctionUsageAll);
+    switch (period) {
+      case 'day':
+        startDate.setDate(now.getDate() - 1);
+        break;
+      case 'week':
+        startDate.setDate(now.getDate() - 7);
+        break;
+      case 'month':
+        startDate.setMonth(now.getMonth() - 1);
+        break;
+      case 'year':
+        startDate.setFullYear(now.getFullYear() - 1);
+        break;
+      default:
+        // Default to last 30 days
+        startDate.setMonth(now.getMonth() - 1);
     }
     
-    // Get session cookie
-    const sessionCookie = cookieStore.get('session');
+    // Convert to ISO string for Supabase query
+    const startDateStr = startDate.toISOString();
     
-    // Use environment variable with fallback
-    const backendUrl = process.env.BACKEND_URL || DEFAULT_BACKEND_URL;
-    console.log(`Using backend URL: ${backendUrl}`);
+    // Fetch all usage data for the period
+    const { data, error } = await supabase
+      .from('llm_usage')
+      .select('*')
+      .gte('created_at', startDateStr);
     
-    // Construct URL with query parameters
-    let url = `${backendUrl}/api/llm/function-usage`;
-    const queryParams = new URLSearchParams();
-    
-    if (period) queryParams.append('period', period);
-    if (functionType) queryParams.append('function_type', functionType);
-    
-    const queryString = queryParams.toString();
-    if (queryString) {
-      url += `?${queryString}`;
+    if (error) {
+      console.error('Error fetching LLM usage data:', error);
+      return NextResponse.json(EMPTY_FUNCTION_USAGE);
     }
     
-    console.log(`Fetching AI function usage data from: ${url}`);
+    // If no data, return empty usage data
+    if (!data || data.length === 0) {
+      return NextResponse.json(EMPTY_FUNCTION_USAGE);
+    }
     
-    // Make request to backend API
-    const response = await fetch(url, {
-      headers: {
-        'Content-Type': 'application/json',
-        'Authorization': `Bearer ${sessionCookie?.value || ''}`,
-      },
+    // Get model information to calculate costs
+    const { data: models, error: modelsError } = await supabase
+      .from('llm_models')
+      .select('id, model_name, provider, cost_per_1k_tokens');
+    
+    if (modelsError) {
+      console.error('Error fetching LLM models:', modelsError);
+      return NextResponse.json(EMPTY_FUNCTION_USAGE);
+    }
+    
+    // Create a map of model ID to cost per token
+    const modelCostMap = new Map();
+    models?.forEach(model => {
+      const costPer1k = model.cost_per_1k_tokens || 0;
+      modelCostMap.set(model.id, costPer1k / 1000); // Convert to cost per token
     });
-
-    if (!response.ok) {
-      // Try to get error details from response
-      let errorDetail = '';
-      try {
-        const errorData = await response.json();
-        errorDetail = errorData.detail || errorData.error || `HTTP error ${response.status}`;
-      } catch (e) {
-        errorDetail = `HTTP error ${response.status}`;
+    
+    // Group usage data by feature name
+    const functionUsage = new Map();
+    
+    // Process each usage record
+    data.forEach(record => {
+      const featureName = record.feature_name || 'other';
+      
+      if (!functionUsage.has(featureName)) {
+        functionUsage.set(featureName, {
+          function_name: featureName,
+          request_count: 0,
+          total_tokens: 0,
+          cost: 0
+        });
       }
       
-      console.error('Error response from AI function usage API:', response.status, errorDetail);
+      const functionData = functionUsage.get(featureName);
       
-      // Fallback to mock data on error if enabled globally
-      const globalMockEnabled = process.env.NEXT_PUBLIC_USE_MOCK_DATA === 'true';
-      if (globalMockEnabled) {
-        console.log('Falling back to mock data for AI function usage due to API error');
-        
-        if (functionType) {
-          let days = 30; // default
-          
-          if (period) {
-            if (period === 'day') days = 1;
-            else if (period === 'week') days = 7;
-            else if (period === 'month') days = 30;
-            else if (period === 'year') days = 365;
-          }
-          
-          return NextResponse.json(generateMockFunctionData(functionType, days));
-        }
-        
-        return NextResponse.json(mockFunctionUsageAll);
-      }
+      // Update request count
+      functionData.request_count += 1;
       
-      // For 403 errors (unauthorized), return a more specific message
-      if (response.status === 403) {
-        return NextResponse.json(
-          { error: 'You do not have permission to access AI function usage data' },
-          { status: 403 }
-        );
-      }
+      // Update tokens
+      functionData.total_tokens += record.total_tokens || 0;
       
-      // For 404 errors (not found), return a specific message
-      if (response.status === 404) {
-        return NextResponse.json(
-          { error: 'No function usage data found for the specified period' },
-          { status: 404 }
-        );
-      }
+      // Calculate and update cost
+      const costPerToken = modelCostMap.get(record.model_id) || 0;
+      const recordCost = (record.total_tokens || 0) * costPerToken;
+      functionData.cost += recordCost;
       
-      // For 500 errors (server error), return a specific message
-      if (response.status === 500) {
-        return NextResponse.json(
-          { error: 'Server error occurred while fetching AI function usage data', detail: errorDetail },
-          { status: 500 }
-        );
-      }
-      
-      return NextResponse.json(
-        { error: 'Failed to fetch AI function usage data', detail: errorDetail },
-        { status: response.status }
-      );
-    }
-
-    const data = await response.json();
-    return NextResponse.json(data);
+      // Update the map
+      functionUsage.set(featureName, functionData);
+    });
+    
+    // Calculate totals and percentages
+    const totalRequests = Array.from(functionUsage.values()).reduce((sum, func) => sum + func.request_count, 0);
+    const totalTokens = Array.from(functionUsage.values()).reduce((sum, func) => sum + func.total_tokens, 0);
+    const totalCost = Array.from(functionUsage.values()).reduce((sum, func) => sum + func.cost, 0);
+    
+    // Convert to array and add percentages
+    const functions = Array.from(functionUsage.values()).map(func => ({
+      ...func,
+      percentage: Math.round((func.request_count / totalRequests) * 100) || 0
+    }));
+    
+    // Sort by request count (descending)
+    functions.sort((a, b) => b.request_count - a.request_count);
+    
+    // Return the processed data
+    return NextResponse.json({
+      functions,
+      totalRequests,
+      totalTokens,
+      totalCost
+    });
+    
   } catch (error) {
-    console.error('Error fetching AI function usage data:', error);
-    
-    // Fallback to mock data on error if enabled globally
-    const globalMockEnabled = process.env.NEXT_PUBLIC_USE_MOCK_DATA === 'true';
-    if (globalMockEnabled) {
-      console.log('Falling back to mock data for AI function usage due to error');
-      
-      const searchParams = request.nextUrl.searchParams;
-      const functionType = searchParams.get('function_type');
-      
-      if (functionType) {
-        return NextResponse.json(generateMockFunctionData(functionType));
-      }
-      
-      return NextResponse.json(mockFunctionUsageAll);
-    }
-    
-    // Return a more detailed error message
-    const errorMessage = error instanceof Error 
-      ? `${error.name}: ${error.message}` 
-      : 'Unknown error';
-      
-    return NextResponse.json(
-      { 
-        error: 'Internal server error', 
-        detail: errorMessage,
-        // For development, include the full error
-        ...(process.env.NODE_ENV === 'development' ? { stack: error instanceof Error ? error.stack : undefined } : {})
-      },
-      { status: 500 }
-    );
+    console.error('Error in LLM function usage API:', error);
+    return NextResponse.json(EMPTY_FUNCTION_USAGE);
   }
 } 

@@ -21,11 +21,13 @@ from langchain.tools import BaseTool
 from langchain.schema import HumanMessage, AIMessage, SystemMessage
 from langgraph.graph import StateGraph, END
 
-from app.agents.base import AgentState, create_llm, create_system_message, create_human_message
+from app.agents.base import AgentState, create_llm, create_system_message, create_human_message, CentralizedLLM
 from app.core.config import settings
 from app.core.database import fetch_one, fetch_all, insert_row, update_row
 from app.models.lead import Lead
 from app.services import lead as lead_service
+from app.db.models import Interaction
+from app.db.session import AsyncSession
 
 # Configure logger
 logger = logging.getLogger(__name__)
@@ -59,6 +61,10 @@ class FetchLeadInteractionsTool(BaseTool):
     """Tool to fetch all interactions for a lead across all channels."""
     name: str = "fetch_lead_interactions"
     description: str = "Fetch all interactions (emails, calls, SMS, meetings, notes) for a specific lead."
+    
+    def __init__(self, db_session: AsyncSession):
+        super().__init__()
+        self.db_session = db_session
     
     async def _arun(self, lead_id: Union[str, int], days: Union[str, int] = 30) -> str:
         """Fetch interactions for the specified lead."""
@@ -260,6 +266,17 @@ class GenerateLeadScoreTool(BaseTool):
     name: str = "generate_lead_score"
     description: str = "Generate a lead score based on engagement metrics."
     
+    def __init__(self):
+        super().__init__()
+        self.llm_client = None
+    
+    async def _initialize_llm(self):
+        if not self.llm_client:
+            self.llm_client = await create_llm(
+                temperature=0.2, 
+                feature_name="lead_scoring"
+            )
+    
     async def _arun(self, metrics_str: str, lead_id: Union[str, int]) -> str:
         """Generate a lead score based on the engagement metrics."""
         logger.info(f"Generating lead score for lead ID: {lead_id}")
@@ -279,9 +296,7 @@ class GenerateLeadScoreTool(BaseTool):
         if not lead_data:
             return json.dumps({"error": f"Lead with ID {lead_id} not found"})
         
-        # Use LLM to analyze the metrics and generate a score
-        llm = await create_llm(temperature=0.2)
-        
+        # Create a prompt for the LLM
         prompt = f"""
         Analyze the engagement data for this lead and generate a lead score from 0-100, 
         where 0 is completely unengaged and 100 is extremely engaged and ready to convert.
@@ -315,21 +330,38 @@ class GenerateLeadScoreTool(BaseTool):
         Only return the JSON object, no other text.
         """
         
-        response = await llm.apredict(prompt)
-        
-        # Clean up and parse the response
         try:
-            # Strip any markdown formatting
-            clean_response = response.strip()
-            if clean_response.startswith("```json"):
-                clean_response = clean_response[7:]
-            if clean_response.endswith("```"):
-                clean_response = clean_response[:-3]
+            await self._initialize_llm()
             
-            clean_response = clean_response.strip()
+            # If using a CentralizedLLM instance 
+            if isinstance(self.llm_client, CentralizedLLM):
+                result_json = await self.llm_client.apredict_json(prompt)
+            else:
+                # Legacy path for direct OpenAI usage
+                result = await self.llm_client.apredict(prompt)
+                # Parse the result
+                try:
+                    # Try to parse as JSON directly
+                    result_json = json.loads(result)
+                except json.JSONDecodeError:
+                    # Try to extract JSON from the text
+                    import re
+                    match = re.search(r"```json\s*(.*?)\s*```", result, re.DOTALL)
+                    if match:
+                        json_str = match.group(1)
+                        result_json = json.loads(json_str)
+                    else:
+                        raise ValueError("Unable to parse LLM response as JSON")
             
-            # Parse the JSON
-            score_data = json.loads(clean_response)
+            # Validate and format the result
+            validated_result = {
+                "lead_id": lead_id_int,
+                "lead_score": result_json.get("lead_score", 0),
+                "conversion_probability": result_json.get("conversion_probability", 0),
+                "factors": result_json.get("factors", []),
+                "recommendations": result_json.get("recommendations", []),
+                "analysis": result_json.get("analysis"),
+            }
             
             # Save the lead score to the database
             score_insert_query = """
@@ -340,23 +372,24 @@ class GenerateLeadScoreTool(BaseTool):
             
             score_params = {
                 "lead_id": lead_id_int,
-                "score": score_data.get("lead_score"),
-                "factors": json.dumps(score_data.get("factors")),
-                "recommendations": json.dumps(score_data.get("recommendations")),
-                "conversion_probability": score_data.get("conversion_probability"),
-                "analysis": score_data.get("analysis")
+                "score": validated_result["lead_score"],
+                "factors": json.dumps(validated_result["factors"]),
+                "recommendations": json.dumps(validated_result["recommendations"]),
+                "conversion_probability": validated_result["conversion_probability"],
+                "analysis": validated_result["analysis"]
             }
             
             score_id = await insert_row(score_insert_query, score_params)
-            score_data["score_id"] = score_id
+            validated_result["score_id"] = score_id
             
-            return json.dumps(score_data)
-        except json.JSONDecodeError as e:
-            logger.error(f"Failed to parse lead score data: {e}")
-            return json.dumps({"error": "Failed to parse lead score", "raw_response": response})
+            return json.dumps(validated_result)
+        
+        except Exception as e:
+            logger.error(f"Error generating lead score: {str(e)}")
+            return json.dumps({"error": str(e)})
 
 # Define the state transitions for the LeadScoring agent
-async def fetch_interactions(state: LeadScoringState) -> LeadScoringState:
+async def fetch_interactions(state: LeadScoringState, session: AsyncSession) -> LeadScoringState:
     """Fetch all interactions for the lead."""
     logger.info(f"Fetching interactions for lead ID: {state.lead_id}")
     
@@ -365,7 +398,7 @@ async def fetch_interactions(state: LeadScoringState) -> LeadScoringState:
         return state
     
     try:
-        tool = FetchLeadInteractionsTool()
+        tool = FetchLeadInteractionsTool(session)
         result = await tool._arun(lead_id=state.lead_id, days=state.timeframe_days)
         state.interaction_data = json.loads(result)
         state.stage = "interactions_fetched"
