@@ -31,7 +31,13 @@ import {
   PencilIcon,
   XCircle,
   Mic,
-  Eye
+  Eye,
+  ChevronDown,
+  ClipboardEdit,
+  FileEdit,
+  MoreHorizontal,
+  Send,
+  X
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription, CardFooter } from '@/components/ui/card';
@@ -92,7 +98,7 @@ import { MeetingDialogProvider, useMeetingDialog, MeetingDialogType } from '@/co
 import { Meeting, MeetingStatus, MeetingType } from '@/lib/types/meeting';
 import { ContextualRescheduleDialog } from '@/components/meetings/ContextualRescheduleDialog';
 import { MeetingDialogContainer } from '@/components/ui/meeting-dialog';
-import { LeadNotesProvider, useLeadNotes, LeadNoteDialogType } from '@/lib/contexts/LeadNotesContext';
+import { LeadNotesProvider, useLeadNotes, LeadNoteDialogType, LeadNote } from '@/lib/contexts/LeadNotesContext';
 import { LeadNoteDialogManager } from '@/components/leads/LeadNoteDialogManager';
 import { Lead } from '@/lib/types/lead';
 import { ContextualLeadNoteDialog } from '@/components/leads/ContextualLeadNoteDialog';
@@ -264,7 +270,6 @@ function LeadDetailContent() {
   // State for dialogs - remove email and call dialogs as they'll be handled by contexts
   const [showStatusDialog, setShowStatusDialog] = useState(false);
   const [statusToChange, setStatusToChange] = useState<LeadStatus | null>(null);
-  const [showNoteDialog, setShowNoteDialog] = useState(false);
   const [showEditDialog, setShowEditDialog] = useState(false);
   const [showCampaignDialog, setShowCampaignDialog] = useState(false);
   const [showScheduleForm, setShowScheduleForm] = useState(false); // Add this state for scheduling
@@ -887,6 +892,11 @@ function LeadDetailContent() {
           handleNoteSuccess={(note) => {
             console.log(`📝 LeadDetailPage - Note saved successfully for ${dialogId}`);
             toast.success(`Note saved for ${leadForNote.first_name} ${leadForNote.last_name}`);
+            
+            // Invalidate queries to refresh lead data
+            queryClient.invalidateQueries({ queryKey: leadKeys.detail(leadId) });
+            queryClient.invalidateQueries({ queryKey: leadKeys.notes(leadId) });
+            
             closeMeetingDialog(dialogId);
           }}
         />
@@ -907,6 +917,73 @@ function LeadDetailContent() {
       
     } catch (error) {
       console.error("📝 LeadDetailPage - Error in handleContextAddNote:", error);
+      toast.error("Error opening note dialog");
+    }
+  };
+  
+  // Handle viewing a note
+  const handleViewNote = (note: any) => {
+    if (!lead) {
+      console.error("📝 LeadDetailPage - Cannot view note: lead is null or undefined");
+      return;
+    }
+    
+    console.log("📝 LeadDetailPage - handleViewNote called for note:", note);
+    
+    try {
+      // Create a Lead object from the current lead data
+      const leadForNote: Lead = {
+        id: leadIdString,
+        first_name: lead.first_name || '',
+        last_name: lead.last_name || '',
+        email: lead.email || '',
+        phone: lead.phone || '',
+        company: lead.company || '',
+        status: lead.status as any,
+        source: lead.source as any,
+        created_at: lead.created_at || new Date().toISOString(),
+        updated_at: lead.updated_at || new Date().toISOString(),
+      };
+      
+      // Prepare the note object for the dialog
+      const noteForDialog: LeadNote = {
+        id: note.id,
+        lead_id: parseInt(leadIdString, 10),
+        body: note.body || note.content,
+        created_by: note.created_by || '',
+        created_at: note.created_at,
+        updated_at: note.updated_at || note.created_at,
+        attachments: note.attachments || []
+      };
+      
+      // Open the note dialog using the MeetingDialogContext
+      const dialogId = `lead-note-view-${leadIdString}-${note.id}-${Date.now()}`;
+      
+      // Create the note dialog content
+      const dialogContent = (
+        <ContextualLeadNoteDialog
+          dialogId={dialogId}
+          lead={leadForNote}
+          note={noteForDialog}
+          dialogType={LeadNoteDialogType.VIEW}
+          handleClose={() => {
+            console.log(`📝 LeadDetailPage - Closing note dialog ${dialogId}`);
+            closeMeetingDialog(dialogId);
+          }}
+        />
+      );
+      
+      // Open the dialog using the meeting dialog context
+      openMeetingDialog(
+        dialogId,
+        MeetingDialogType.DETAILS,
+        dialogContent,
+        { lead: leadForNote }
+      );
+      
+      console.log(`📝 LeadDetailPage - Opened note view dialog with ID: ${dialogId}`);
+    } catch (error) {
+      console.error("📝 LeadDetailPage - Error in handleViewNote:", error);
       toast.error("Error opening note dialog");
     }
   };
@@ -1197,7 +1274,7 @@ function LeadDetailContent() {
                   }}
                   variant="default"
                 />
-                <Button onClick={() => setShowNoteDialog(true)} variant="outline">
+                <Button onClick={handleContextAddNote} variant="outline">
                   <MessageSquare className="h-4 w-4 mr-2" />
                   Add Note
                 </Button>
@@ -1807,7 +1884,7 @@ function LeadDetailContent() {
               <Card>
                 <CardHeader className="flex flex-row items-center justify-between">
                   <CardTitle>Notes</CardTitle>
-                  <Button size="sm" onClick={() => setShowNoteDialog(true)}>
+                  <Button size="sm" onClick={handleContextAddNote}>
                     <Plus className="h-4 w-4 mr-2" />
                     Add Note
                   </Button>
@@ -1816,7 +1893,11 @@ function LeadDetailContent() {
                   {lead.notes && lead.notes.length > 0 ? (
                     <div className="space-y-4">
                       {lead.notes.map((note: any) => (
-                        <div key={note.id} className="p-4 border rounded-md">
+                        <div 
+                          key={note.id} 
+                          className="p-4 border rounded-md hover:bg-muted cursor-pointer transition-colors"
+                          onClick={() => handleViewNote(note)}
+                        >
                           <p>{note.body || note.content}</p>
                           <p className="text-sm text-muted-foreground mt-2">
                             {new Date(note.created_at).toLocaleString()}

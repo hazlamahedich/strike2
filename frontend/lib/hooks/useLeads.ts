@@ -20,6 +20,7 @@ export const leadKeys = {
   campaigns: (id: number) => [...leadKeys.detail(id), 'campaigns'] as const,
   timeline: (id: number, interactionTypes?: string[]) => [...leadKeys.detail(id), 'timeline', ...(interactionTypes || [])] as const,
   insights: (id: number) => [...leadKeys.detail(id), 'insights'] as const,
+  notes: (id: number) => [...leadKeys.detail(id), 'notes'] as const,
 };
 
 // Get leads with filtering
