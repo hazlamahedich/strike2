@@ -18,7 +18,7 @@ class Settings(BaseSettings):
     ACCESS_TOKEN_EXPIRE_MINUTES: int = 60 * 24 * 8  # 8 days
     
     # CORS settings
-    CORS_ORIGINS: List[str] = ["http://localhost:3000", "http://localhost:8000", "http://localhost:3002"]
+    CORS_ORIGINS: List[str] = ["http://localhost:3000", "http://localhost:8000", "http://localhost:3002", "http://localhost:3006"]
     
     # Database settings
     DATABASE_URL: str = "postgresql://postgres:postgres@localhost:5432/crm"
@@ -27,6 +27,25 @@ class Settings(BaseSettings):
     OPENAI_API_KEY: Optional[str] = None
     OPENAI_ORGANIZATION: Optional[str] = None
     DEFAULT_MODEL: Optional[str] = "gpt-4"
+    
+    # LiteLLM settings
+    LITELLM_API_KEY: Optional[str] = None
+    LITELLM_CACHE_ENABLED: bool = True
+    LITELLM_CACHE_FOLDER: str = ".cache"
+    LITELLM_TELEMETRY: bool = False
+    LITELLM_LOGGING_ENABLED: bool = True
+    LITELLM_LOGGING_LEVEL: str = "INFO"
+    
+    # Anthropic settings
+    ANTHROPIC_API_KEY: Optional[str] = None
+    
+    # Google AI settings
+    GOOGLE_API_KEY: Optional[str] = None
+    
+    # Azure OpenAI settings
+    AZURE_API_KEY: Optional[str] = None
+    AZURE_API_BASE: Optional[str] = None
+    AZURE_API_VERSION: Optional[str] = None
     
     # Email settings
     SENDGRID_API_KEY: Optional[str] = None

@@ -7,6 +7,7 @@ from pydantic import EmailStr
 from app.core.config import settings
 from app.core.database import get_supabase_client
 from app.models.user import UserCreate, UserInDB, User, UserUpdate
+from app.services.rbac import RBACService
 
 
 class AuthService:
@@ -178,13 +179,33 @@ async def login_user(email: str, password: str) -> Dict[str, Any]:
                 status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
                 detail="User profile not found"
             )
+        
+        user = user_data.data[0]
+        
+        # Get user roles and permissions
+        user_with_roles = await RBACService.get_user_with_roles_and_permissions(
+            user_id=user["id"],
+            user_email=user["email"],
+            user_name=user.get("name", "")
+        )
+        
+        # Convert permissions to a list of permission names
+        permissions = [
+            {"name": p.name, "resource": p.resource, "action": p.action}
+            for p in user_with_roles.permissions
+        ]
+        
+        # Convert roles to a list of role names
+        roles = [{"id": r.id, "name": r.name} for r in user_with_roles.roles]
             
-        # Return both the session and user data
+        # Return both the session and user data with roles and permissions
         return {
             "access_token": auth_response.session.access_token,
             "token_type": "bearer",
             "expires_at": auth_response.session.expires_at,
-            "user": user_data.data[0]
+            "user": user,
+            "roles": roles,
+            "permissions": permissions
         }
         
     except Exception as e:

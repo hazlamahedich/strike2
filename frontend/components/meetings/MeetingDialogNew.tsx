@@ -32,7 +32,7 @@ export function MeetingDialogNew({
         <DialogHeader>
           <DialogTitle>Schedule a Meeting</DialogTitle>
           <DialogDescription>
-            Schedule a meeting with {lead?.full_name || 'the lead'}.
+            Schedule a meeting with {lead ? `${lead.first_name} ${lead.last_name}` : 'the lead'}.
           </DialogDescription>
         </DialogHeader>
         

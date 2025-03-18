@@ -10,6 +10,8 @@ from .notifications import router as notifications_router
 from .agents import router as agents_router
 from .low_probability_workflow import router as low_probability_workflow_router
 from .chatbot import router as chatbot_router
+from .company_analysis import router as company_analysis_router
+from .ai_meetings import router as ai_meetings_router
 
 __all__ = [
     "auth",
@@ -22,4 +24,6 @@ __all__ = [
     "notifications",
     "agents",
     "chatbot",
+    "company_analysis",
+    "ai_meetings",
 ] 

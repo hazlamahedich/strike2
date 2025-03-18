@@ -32,7 +32,6 @@ import {
   DropdownMenuLabel
 } from '../../../components/ui/dropdown-menu';
 import { useToast } from '../../../components/ui/use-toast';
-import { Toaster } from '../../../components/ui/toaster';
 import { getReceivedEmails, ReceivedEmail } from '../../../lib/services/emailService';
 
 // Import the Checkbox component directly from @radix-ui/react-checkbox
@@ -626,8 +625,6 @@ export default function InboxPage() {
           </div>
         </CardContent>
       </Card>
-      
-      <Toaster />
     </div>
   );
 } 

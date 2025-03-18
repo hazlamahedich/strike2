@@ -8,4 +8,5 @@ from .task import TaskService
 from .communication import CommunicationService
 from .meeting import MeetingService
 from .ai import AIService
-from .notification import NotificationService 
+from .notification import NotificationService
+from .web_scraping import WebScrapingService 

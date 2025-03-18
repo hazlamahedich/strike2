@@ -1,19 +1,41 @@
 import type { Metadata } from "next";
-import { Inter } from "next/font/google";
+import { Inter, Montserrat } from "next/font/google";
 import "./globals.css";
 import { ThemeProvider } from "@/components/shared/theme-provider";
-import { Toaster } from "sonner";
-import AuthProviderWrapper from "@/components/shared/auth-provider-wrapper";
 import { QueryClientProvider } from "@/components/shared/query-client-provider";
 import { BreadcrumbProvider } from "@/components/shared/breadcrumb-provider";
 import { ChatbotProvider } from "@/components/shared/chatbot-provider";
 import { DialogProvider } from "@/lib/contexts/DialogContext";
+import { MeetingDialogProvider } from "@/contexts/MeetingDialogContext";
+import { TaskDialogProvider, TaskDialogContainer } from "@/contexts/TaskDialogContext";
+import { Providers } from "./providers";
+import { Analytics } from "@/components/shared/analytics";
+import { MeetingDialogContainer } from "@/components/ui/meeting-dialog";
+import { MeetingDialogTaskbar } from "@/components/ui/meeting-dialog-taskbar";
 
-const inter = Inter({ subsets: ["latin"] });
+// Use Inter as the primary font and Montserrat for headings
+const inter = Inter({
+  subsets: ["latin"],
+  variable: "--font-inter",
+  display: "swap",
+});
+
+const montserrat = Montserrat({
+  subsets: ["latin"],
+  variable: "--font-montserrat",
+  display: "swap",
+});
 
 export const metadata: Metadata = {
-  title: "AI-Powered CRM",
+  title: "AI-Powered CRM Suite",
   description: "Intelligent, modular CRM system built with modern AI capabilities",
+  keywords: "CRM, sales, customer relationship management, AI, analytics",
+  authors: [{ name: "CRM Suite Team" }],
+  viewport: "width=device-width, initial-scale=1",
+  themeColor: [
+    { media: "(prefers-color-scheme: light)", color: "#ffffff" },
+    { media: "(prefers-color-scheme: dark)", color: "#111827" },
+  ],
 };
 
 export default function RootLayout({
@@ -22,7 +44,11 @@ export default function RootLayout({
   children: React.ReactNode;
 }>) {
   return (
-    <html lang="en" suppressHydrationWarning>
+    <html 
+      lang="en" 
+      suppressHydrationWarning 
+      className={`${inter.variable} ${montserrat.variable}`}
+    >
       <body className={inter.className} suppressHydrationWarning>
         <ThemeProvider
           attribute="class"
@@ -30,21 +56,28 @@ export default function RootLayout({
           enableSystem
           disableTransitionOnChange
         >
-          <AuthProviderWrapper>
+          <Providers>
             <QueryClientProvider>
               <ChatbotProvider>
                 <DialogProvider>
-                  <div className="flex flex-col min-h-screen">
-                    <BreadcrumbProvider />
-                    <div className="flex-1">
-                      {children}
-                    </div>
-                  </div>
-                  <Toaster position="top-right" />
+                  <TaskDialogProvider>
+                    <MeetingDialogProvider>
+                      <div className="flex flex-col min-h-screen bg-background">
+                        <BreadcrumbProvider />
+                        <main className="flex-1">
+                          {children}
+                        </main>
+                        <Analytics />
+                        <MeetingDialogContainer />
+                        <MeetingDialogTaskbar />
+                        <TaskDialogContainer />
+                      </div>
+                    </MeetingDialogProvider>
+                  </TaskDialogProvider>
                 </DialogProvider>
               </ChatbotProvider>
             </QueryClientProvider>
-          </AuthProviderWrapper>
+          </Providers>
         </ThemeProvider>
       </body>
     </html>

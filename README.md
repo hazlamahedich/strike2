@@ -4,16 +4,20 @@ STRIKE is an intelligent, modular CRM system built with modern AI capabilities, 
 
 ## Features
 
-- **User Authentication & Management**: Secure login, role-based access control, team collaboration, and user profiles.
+- **User Authentication & Management**: Secure login, role-based access control, team collaboration, and user profiles. Enhanced user lifecycle management with inactive/deactivated states and automated archiving.
 - **Lead Management**: Import/export with AI parsing, customizable fields, segmentation, and pipeline stages.
-- **Communication Suite**: Email, SMS, and call integration with tracking and sentiment analysis.
+- **Communication Suite**: Email, SMS, and call integration with tracking and sentiment analysis. Support for phone extensions for business contacts.
 - **Campaign Management**: Create, manage, and track marketing campaigns with different statuses (draft, active, paused, completed).
 - **Calendar & Meeting Management**: Calendar integration, scheduling, and meeting management.
 - **Task Management**: Task creation, assignment, and tracking with reminders.
 - **Interaction History**: Comprehensive activity timeline and searchable communication history.
 - **AI-Powered Insights**: Sentiment analysis, lead scoring, conversion prediction, and content suggestions.
+- **Company Analysis**: Automated web scraping and AI analysis of company websites to provide strategic insights and enhance lead scoring.
 - **Analytics & Reporting**: Real-time dashboards, custom reports, and sales forecasting.
 - **AI Chatbot Assistant**: Integrated chatbot for user assistance and natural language database queries.
+- **Advanced RBAC System**: Comprehensive role-based access control with granular permissions, role assignments, and audit logging.
+- **LLM Integration**: Configurable language model settings with support for multiple providers, models, and usage tracking.
+- **Development Mode**: Global mock data toggle for easy switching between mock and real data during development and testing.
 
 ## Technical Stack
 
@@ -23,13 +27,15 @@ STRIKE is an intelligent, modular CRM system built with modern AI capabilities, 
 - Supabase for database and authentication
 - OpenAI API for AI capabilities
 - SendGrid for email functionality
-- Twilio for SMS and call functionality
+- Twilio for SMS and call functionality (including DTMF extension dialing)
+- BeautifulSoup and aiohttp for web scraping
 
 ### Frontend
 - Next.js 15 with React
 - Tailwind CSS with shadcn/ui components
 - Supabase client for authentication and data access
 - Modern React patterns with hooks and context
+- Standardized mock data implementation for development and testing
 
 ### DevOps & Infrastructure
 - Docker for containerization
@@ -143,8 +149,11 @@ STRIKE is an intelligent, modular CRM system built with modern AI capabilities, 
 │   │   ├── core/           # Core functionality
 │   │   ├── data/           # Data handling utilities
 │   │   ├── models/         # Pydantic models
+│   │   │   └── company_analysis.py  # Company analysis models
 │   │   ├── routers/        # API routes
+│   │   │   └── company_analysis.py  # Company analysis endpoints
 │   │   └── services/       # Business logic
+│   │       └── web_scraping.py  # Web scraping service
 │   ├── main.py             # Application entry point
 │   ├── supabase_schema.sql # Database schema definition
 │   ├── supabase_seed.sql   # Initial seed data
@@ -157,8 +166,11 @@ STRIKE is an intelligent, modular CRM system built with modern AI capabilities, 
 │   │   ├── communications/ # Communication pages
 │   │   └── leads/          # Lead management pages
 │   ├── components/         # Reusable UI components
+│   │   └── leads/          # Lead-related components
+│   │       └── CompanyAnalysis.tsx  # Company analysis component
 │   ├── context/            # React context providers
 │   ├── hooks/              # Custom React hooks
+│   │   └── useMockData.ts  # Mock data management hook
 │   ├── lib/                # Utility functions and API clients
 │   ├── public/             # Static assets
 │   └── styles/             # Global styles
@@ -175,7 +187,9 @@ STRIKE is an intelligent, modular CRM system built with modern AI capabilities, 
 - **Smart Recommendations**: Suggest next best actions and optimal contact times.
 - **Conversation Assistance**: Real-time suggestions and summarization.
 - **Automated Follow-ups**: Smart scheduling and content generation.
+- **Company Analysis**: Automated web scraping and AI analysis of company websites to provide strategic insights for lead conversion.
 - **Chatbot Assistant**: Integrated with the user manual for contextual help and natural language database queries.
+- **Language Model Management**: Configure and manage multiple language models from different providers with detailed usage tracking and cost analysis.
 
 ## Campaign Management
 
@@ -194,7 +208,13 @@ Each status has specific behaviors and restrictions regarding lead and activity 
 
 The CRM system uses a Supabase PostgreSQL database with the following main tables:
 
-- **users**: User accounts with role-based access control
+- **users**: User accounts with role-based access control and lifecycle management (active, inactive, deactivated, archived)
+- **roles**: Defines available roles in the system (Admin, Manager, Agent, Viewer, etc.)
+- **permissions**: Defines available permissions for system actions
+- **user_roles**: Maps users to roles for access control
+- **role_permissions**: Maps roles to permissions
+- **user_role_history**: Tracks role assignment history, including removals during deactivation
+- **archived_users**: Stores user data after the archival period (60 days post-deactivation)
 - **teams**: Team organization for users
 - **leads**: Lead information and tracking
 - **pipeline_stages**: Customizable sales pipeline stages
@@ -207,6 +227,7 @@ The CRM system uses a Supabase PostgreSQL database with the following main table
 - **campaigns**: Marketing campaign management
 - **campaign_leads**: Junction table for leads in campaigns
 - **lead_scores**: AI-generated lead scoring
+- **company_analyses**: Company website analysis and insights
 - **recordings**: Call and meeting recordings
 - **profiles**: User profiles and preferences
 
@@ -247,4 +268,107 @@ This project is licensed under the MIT License - see the LICENSE file for detail
 
 ## Documentation
 
-For detailed usage instructions, refer to the [STRIKE User Manual](./STRIKE_USER_MANUAL.md). 
+For detailed usage instructions, refer to the [STRIKE User Manual](./STRIKE_USER_MANUAL.md).
+
+# Admin Login Fix
+
+This package contains scripts to fix the admin login issue in the Strike app.
+
+## Problem
+
+The admin user is unable to log in due to a password mismatch between the `auth.users` and `public.users` tables in the Supabase database.
+
+## Solution
+
+This package provides a permanent solution by:
+
+1. Resetting the admin password in the `auth.users` table
+2. Fixing the database trigger that causes the password mismatch
+
+## Quick Start
+
+```bash
+# Install dependencies
+npm install
+
+# Run the complete fix
+npm run fix
+```
+
+## Available Scripts
+
+- `npm run fix` - Run all fixes in sequence
+- `npm run fix-password` - Fix only the admin password
+- `npm run fix-trigger` - Fix only the database trigger
+
+## Manual Steps
+
+If you prefer to run the scripts manually:
+
+```bash
+# Fix the admin password
+node fix-admin-password.js
+
+# Fix the database trigger
+node fix-trigger.js
+```
+
+## Files Included
+
+- `fix-all.js` - Main script that runs all fixes in sequence
+- `fix-admin-password.js` - Script to reset the admin password
+- `fix-trigger.js` - Script to fix the database trigger
+- `fix-sync-trigger.sql` - SQL script to update the trigger
+- `ADMIN_LOGIN_FIX.md` - Detailed documentation about the fix
+
+## Requirements
+
+- Node.js 14 or higher
+- Access to the Supabase database
+- Admin email credentials
+
+## Detailed Documentation
+
+For more detailed information about the fix, please refer to the [ADMIN_LOGIN_FIX.md](./ADMIN_LOGIN_FIX.md) file.
+
+## System Architecture
+
+### Database Schema
+
+- **users**: User accounts with role-based access control and lifecycle management (active, inactive, deactivated, archived)
+- **roles**: Defines available roles in the system (Admin, Manager, Agent, Viewer, etc.)
+- **permissions**: Defines available permissions for system actions
+- **user_roles**: Maps users to roles for access control
+- **role_permissions**: Maps roles to permissions
+- **user_role_history**: Tracks role assignment history, including removals during deactivation
+- **archived_users**: Stores user data after the archival period (60 days post-deactivation)
+
+## User Management
+
+STRIKE implements a comprehensive user lifecycle management system:
+
+### User States
+- **Active**: Normal system access with assigned roles and permissions
+- **Inactive**: Temporarily disabled account that retains role assignments
+- **Deactivated**: Disabled account with all permissions removed, scheduled for archival after 60 days
+- **Archived**: User data moved to archive storage after the retention period
+
+### RBAC System
+- **Roles**: Predefined (Admin, Manager, Agent, Viewer) and custom roles
+- **Permissions**: Granular action-based permissions grouped by category
+- **Assignment**: Users can have multiple roles, each with different permissions
+- **Audit**: Complete history of role assignments and permission changes
+
+For detailed information on the RBAC system, see the [RBAC README](backend/RBAC_README.md).
+
+## Mock Data System
+
+STRIKE includes a sophisticated mock data system for development and testing:
+
+- **Global Toggle**: Switch between mock and real data with a single setting in the Preferences tab.
+- **Standardized Implementation**: Consistent approach across the entire application using the `useMockData` hook.
+- **Persistent Settings**: Mock data preferences are stored in user settings and localStorage for persistence.
+- **Real-time Updates**: Components automatically update when the mock data setting changes.
+- **Documentation**: Comprehensive guide for using and extending the mock data system.
+
+For more details, see the [Mock Data Implementation Guide](frontend/docs/MOCK_DATA_GUIDE.md). 

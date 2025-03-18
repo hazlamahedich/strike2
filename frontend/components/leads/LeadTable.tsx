@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useState } from 'react';
 import {
   Table,
   TableBody,
@@ -8,10 +8,10 @@ import {
   TableRow,
 } from '../ui/table';
 import { Button } from '../ui/button';
-import { Lead } from '../../types/lead';
+import { Lead, LeadStatus, LeadSource } from '@/lib/types/lead';
 import { formatDate } from '../../lib/utils';
 import { Badge } from '../ui/badge';
-import { MoreHorizontal, Mail, Phone, Calendar, Clock, Activity } from 'lucide-react';
+import { MoreHorizontal, Mail, Phone, Calendar, Clock, Activity, FileText, CheckSquare } from 'lucide-react';
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -19,13 +19,35 @@ import {
   DropdownMenuTrigger,
 } from '../ui/dropdown-menu';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '../ui/tooltip';
+import { useMeetingDialog, MeetingDialogType } from '@/contexts/MeetingDialogContext';
+import { ContextualRescheduleDialog } from '../meetings/ContextualRescheduleDialog';
+import { toast } from 'sonner';
+import { Meeting, MeetingStatus, MeetingType } from '@/lib/types/meeting';
+import { useLeadNotes, LeadNoteDialogType } from '@/lib/contexts/LeadNotesContext';
+import { useTaskDialog } from '@/contexts/TaskDialogContext';
+import { TaskDialogType } from '@/contexts/TaskDialogContext';
+import { ContextualTaskDialog } from '@/components/tasks/ContextualTaskDialog';
+import { useToast } from '@/components/ui/use-toast';
+
+interface TimelineActivity {
+  type: string;
+  content?: string;
+  created_at: string;
+}
+
+interface ExtendedLead extends Lead {
+  company_name?: string;
+  last_contact?: string;
+  lead_score?: number;
+  conversion_probability?: number;
+  timeline?: TimelineActivity[];
+}
 
 interface LeadTableProps {
-  leads: Lead[];
+  leads: ExtendedLead[];
   onViewLead: (id: string) => void;
   onEditLead: (id: string) => void;
   onSendEmail: (id: string) => void;
-  onScheduleMeeting: (id: string) => void;
   onCallLead: (id: string) => void;
 }
 
@@ -34,9 +56,15 @@ export default function LeadTable({
   onViewLead,
   onEditLead,
   onSendEmail,
-  onScheduleMeeting,
   onCallLead,
 }: LeadTableProps) {
+  console.log("🔍 LeadTable - Component rendered with", leads.length, "leads");
+  
+  const { openMeetingDialog, closeMeetingDialog } = useMeetingDialog();
+  const { openAddNoteDialog } = useLeadNotes();
+  const { openTaskDialog, closeTaskDialog } = useTaskDialog();
+  const { toast } = useToast();
+
   const getStatusColor = (status: string) => {
     switch (status.toLowerCase()) {
       case 'new':
@@ -85,174 +113,252 @@ export default function LeadTable({
     }
   };
 
+  const handleScheduleMeeting = (e: React.MouseEvent, lead: ExtendedLead) => {
+    e.stopPropagation();
+    console.log("🎯 LeadTable - handleScheduleMeeting called for lead:", lead);
+
+    const dialogId = `schedule-meeting-${lead.id}-${Date.now()}`;
+    console.log("📝 LeadTable - Generated dialogId:", dialogId);
+
+    const baseMeeting = {
+      id: `temp-${Date.now()}`,
+      title: `Meeting with ${lead.first_name} ${lead.last_name}`,
+      start_time: new Date().toISOString(),
+      end_time: new Date(Date.now() + 3600000).toISOString(),
+      status: MeetingStatus.SCHEDULED,
+      meeting_type: MeetingType.INITIAL_CALL,
+      lead_id: lead.id,
+      lead: lead,
+      created_at: new Date().toISOString(),
+      updated_at: new Date().toISOString(),
+    };
+    console.log("📅 LeadTable - Created baseMeeting:", baseMeeting);
+
+    const dialogContent = (
+      <ContextualRescheduleDialog
+        dialogId={dialogId}
+        meeting={baseMeeting}
+        handleClose={() => {
+          console.log("❌ LeadTable - Dialog close handler called");
+          closeMeetingDialog(dialogId);
+        }}
+        handleRescheduleSuccess={() => {
+          console.log("✅ LeadTable - Meeting scheduled successfully");
+          toast({
+            title: 'Success',
+            description: 'Meeting scheduled successfully',
+          });
+          closeMeetingDialog(dialogId);
+        }}
+      />
+    );
+    console.log("🎨 LeadTable - Created dialog content");
+
+    console.log("🚀 LeadTable - Opening meeting dialog with type:", MeetingDialogType.RESCHEDULE);
+    openMeetingDialog(dialogId, MeetingDialogType.RESCHEDULE, dialogContent, { lead });
+  };
+
+  const handleAddNote = (e: React.MouseEvent, lead: ExtendedLead) => {
+    e.stopPropagation();
+    console.log("📝 LeadTable - handleAddNote called for lead:", lead);
+    
+    // Open the note dialog via the context
+    openAddNoteDialog(lead);
+    
+    // Notify user that the note dialog has been opened
+    toast({
+      title: 'Add note',
+      description: `Adding note for ${lead.first_name} ${lead.last_name}`,
+    });
+  };
+
+  const handleAddTask = (e: React.MouseEvent, lead: ExtendedLead) => {
+    e.stopPropagation();
+    
+    // Create a unique ID for the dialog
+    const dialogId = `add-task-${lead.id}-${Date.now()}`;
+    
+    // Open the task dialog
+    openTaskDialog(
+      dialogId,
+      TaskDialogType.ADD,
+      <ContextualTaskDialog
+        dialogId={dialogId}
+        leadId={parseInt(lead.id)}
+        leadName={`${lead.first_name} ${lead.last_name}`}
+        handleClose={() => closeTaskDialog(dialogId)}
+        handleTaskSuccess={handleTaskCreated}
+      />
+    );
+  };
+
+  const handleTaskCreated = (taskData: any) => {
+    console.log("✅ LeadTable - Task created successfully:", taskData);
+    
+    // Show success notification
+    toast({
+      title: "Task Created",
+      description: `Task "${taskData.title}" was created successfully`,
+    });
+  };
+
   return (
-    <div className="rounded-md border">
-      <Table>
-        <TableHeader>
-          <TableRow>
-            <TableHead>Name</TableHead>
-            <TableHead>Company</TableHead>
-            <TableHead>Email</TableHead>
-            <TableHead>Phone</TableHead>
-            <TableHead>Status</TableHead>
-            <TableHead>Lead Score</TableHead>
-            <TableHead>Conv. Probability</TableHead>
-            <TableHead>Created</TableHead>
-            <TableHead>Last Contact</TableHead>
-            <TableHead>Recent Activities</TableHead>
-            <TableHead>Actions</TableHead>
-          </TableRow>
-        </TableHeader>
-        <TableBody>
-          {leads.length === 0 ? (
-            <TableRow>
-              <TableCell colSpan={11} className="text-center py-8 text-muted-foreground">
-                No leads found. Create your first lead to get started.
-              </TableCell>
-            </TableRow>
-          ) : (
-            leads.map((lead) => (
-              <TableRow key={lead.id} onClick={() => onViewLead(lead.id)} className="cursor-pointer hover:bg-muted/50">
-                <TableCell className="font-medium">
-                  {lead.first_name} {lead.last_name}
-                </TableCell>
-                <TableCell>{lead.company_name || '-'}</TableCell>
-                <TableCell>{lead.email || '-'}</TableCell>
-                <TableCell>{lead.phone || '-'}</TableCell>
-                <TableCell>
-                  <Badge className={getStatusColor(lead.status || 'new')}>
-                    {lead.status || 'New'}
-                  </Badge>
-                </TableCell>
-                <TableCell>
-                  <div className="flex items-center">
-                    <div className="w-12 bg-gray-200 rounded-full h-1.5 mr-2">
-                      <div 
-                        className="bg-blue-600 h-1.5 rounded-full" 
-                        style={{ width: `${Math.min(100, Math.max(0, (lead.lead_score || 0) * 10))}%` }}
-                      ></div>
-                    </div>
-                    <span className="text-sm font-medium">{lead.lead_score || 'N/A'}</span>
-                  </div>
-                </TableCell>
-                <TableCell>
-                  {lead.conversion_probability !== undefined ? (
-                    <div className="flex items-center">
-                      <div className="w-12 bg-gray-200 rounded-full h-1.5 mr-2">
-                        <div 
-                          className={`h-1.5 rounded-full ${
-                            (lead.conversion_probability || 0) >= 0.7 ? 'bg-green-500' : 
-                            (lead.conversion_probability || 0) >= 0.4 ? 'bg-amber-500' : 
-                            'bg-red-500'
-                          }`}
-                          style={{ width: `${Math.min(100, Math.max(0, (lead.conversion_probability || 0) * 100))}%` }}
-                        ></div>
-                      </div>
-                      <span className={`text-sm font-medium ${getConversionProbabilityColor(lead.conversion_probability || 0)}`}>
-                        {Math.round((lead.conversion_probability || 0) * 100)}%
-                        <span className="text-xs ml-1 text-muted-foreground">
-                          ({getConversionProbabilityLabel(lead.conversion_probability || 0)})
-                        </span>
-                      </span>
-                    </div>
-                  ) : (
-                    <span className="text-sm text-muted-foreground">N/A</span>
-                  )}
-                </TableCell>
-                <TableCell>{formatDate(lead.created_at)}</TableCell>
-                <TableCell>{lead.last_contact ? formatDate(lead.last_contact) : 'Never'}</TableCell>
-                <TableCell>
-                  {lead.timeline && lead.timeline.length > 0 ? (
-                    <div className="flex flex-col gap-1">
-                      {lead.timeline.slice(0, 3).map((activity, index) => (
-                        <TooltipProvider key={index}>
-                          <Tooltip>
-                            <TooltipTrigger asChild>
-                              <div className="flex items-center text-xs">
-                                {getTimelineIcon(activity.type)}
-                                <span className="ml-1 truncate max-w-[120px]">
-                                  {activity.content || activity.type}
-                                </span>
-                              </div>
-                            </TooltipTrigger>
-                            <TooltipContent>
-                              <p className="text-xs">{formatDate(activity.created_at)}</p>
-                              <p>{activity.content || `${activity.type} activity`}</p>
-                            </TooltipContent>
-                          </Tooltip>
-                        </TooltipProvider>
-                      ))}
-                      {lead.timeline.length === 0 && (
-                        <span className="text-xs text-muted-foreground">No recent activities</span>
-                      )}
-                    </div>
-                  ) : (
-                    <span className="text-xs text-muted-foreground">No activities</span>
-                  )}
-                </TableCell>
-                <TableCell>
-                  <div className="flex items-center gap-2">
-                    <Button
-                      variant="ghost"
-                      size="icon"
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        onSendEmail(lead.id);
-                      }}
-                      title="Send Email"
-                    >
-                      <Mail className="h-4 w-4" />
-                    </Button>
-                    <Button
-                      variant="ghost"
-                      size="icon"
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        onCallLead(lead.id);
-                      }}
-                      title="Call Lead"
-                    >
-                      <Phone className="h-4 w-4" />
-                    </Button>
-                    <Button
-                      variant="ghost"
-                      size="icon"
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        onScheduleMeeting(lead.id);
-                      }}
-                      title="Schedule Meeting"
-                    >
-                      <Calendar className="h-4 w-4" />
-                    </Button>
-                    <DropdownMenu>
-                      <DropdownMenuTrigger asChild onClick={(e) => e.stopPropagation()}>
-                        <Button variant="ghost" size="icon">
-                          <MoreHorizontal className="h-4 w-4" />
-                        </Button>
-                      </DropdownMenuTrigger>
-                      <DropdownMenuContent align="end">
-                        <DropdownMenuItem onClick={(e) => {
-                          e.stopPropagation();
-                          onViewLead(lead.id);
-                        }}>
-                          View Details
-                        </DropdownMenuItem>
-                        <DropdownMenuItem onClick={(e) => {
-                          e.stopPropagation();
-                          onEditLead(lead.id);
-                        }}>
-                          Edit Lead
-                        </DropdownMenuItem>
-                      </DropdownMenuContent>
-                    </DropdownMenu>
-                  </div>
-                </TableCell>
-              </TableRow>
-            ))
-          )}
-        </TableBody>
-      </Table>
-    </div>
+    <>
+      {leads.map((lead) => (
+        <TableRow key={lead.id} onClick={() => onViewLead(lead.id)} className="cursor-pointer hover:bg-muted/50">
+          <TableCell className="font-medium">
+            {lead.first_name} {lead.last_name}
+          </TableCell>
+          <TableCell>{lead.company_name || '-'}</TableCell>
+          <TableCell>{lead.email || '-'}</TableCell>
+          <TableCell>{lead.phone || '-'}</TableCell>
+          <TableCell>
+            <Badge className={getStatusColor(lead.status || 'new')}>
+              {lead.status || 'New'}
+            </Badge>
+          </TableCell>
+          <TableCell>
+            <div className="flex items-center">
+              <div className="w-12 bg-gray-200 rounded-full h-1.5 mr-2">
+                <div 
+                  className="bg-blue-600 h-1.5 rounded-full" 
+                  style={{ width: `${Math.min(100, Math.max(0, (lead.lead_score || 0) * 10))}%` }}
+                ></div>
+              </div>
+              <span className="text-sm font-medium">{lead.lead_score || 'N/A'}</span>
+            </div>
+          </TableCell>
+          <TableCell>
+            {lead.conversion_probability !== undefined ? (
+              <div className="flex items-center">
+                <div className="w-12 bg-gray-200 rounded-full h-1.5 mr-2">
+                  <div 
+                    className={`h-1.5 rounded-full ${
+                      (lead.conversion_probability || 0) >= 0.7 ? 'bg-green-500' : 
+                      (lead.conversion_probability || 0) >= 0.4 ? 'bg-amber-500' : 
+                      'bg-red-500'
+                    }`}
+                    style={{ width: `${Math.min(100, Math.max(0, (lead.conversion_probability || 0) * 100))}%` }}
+                  ></div>
+                </div>
+                <span className={`text-sm font-medium ${getConversionProbabilityColor(lead.conversion_probability || 0)}`}>
+                  {Math.round((lead.conversion_probability || 0) * 100)}%
+                  <span className="text-xs ml-1 text-muted-foreground">
+                    ({getConversionProbabilityLabel(lead.conversion_probability || 0)})
+                  </span>
+                </span>
+              </div>
+            ) : (
+              <span className="text-sm text-muted-foreground">N/A</span>
+            )}
+          </TableCell>
+          <TableCell>{formatDate(lead.created_at)}</TableCell>
+          <TableCell>{lead.last_contact ? formatDate(lead.last_contact) : 'Never'}</TableCell>
+          <TableCell>
+            {lead.timeline && lead.timeline.length > 0 ? (
+              <div className="flex flex-col gap-1">
+                {lead.timeline.slice(0, 3).map((activity, index) => (
+                  <TooltipProvider key={index}>
+                    <Tooltip>
+                      <TooltipTrigger asChild>
+                        <div className="flex items-center text-xs">
+                          {getTimelineIcon(activity.type)}
+                          <span className="ml-1 truncate max-w-[120px]">
+                            {activity.content || activity.type}
+                          </span>
+                        </div>
+                      </TooltipTrigger>
+                      <TooltipContent>
+                        <p className="text-xs">{formatDate(activity.created_at)}</p>
+                        <p>{activity.content || `${activity.type} activity`}</p>
+                      </TooltipContent>
+                    </Tooltip>
+                  </TooltipProvider>
+                ))}
+              </div>
+            ) : (
+              <span className="text-xs text-muted-foreground">No activities</span>
+            )}
+          </TableCell>
+          <TableCell>
+            <div className="flex items-center gap-2">
+              <Button
+                variant="ghost"
+                size="icon"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  onSendEmail(lead.id);
+                }}
+                title="Send Email"
+              >
+                <Mail className="h-4 w-4" />
+              </Button>
+              <Button
+                variant="ghost"
+                size="icon"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  onCallLead(lead.id);
+                }}
+                title="Call Lead"
+              >
+                <Phone className="h-4 w-4" />
+              </Button>
+              <Button
+                variant="ghost"
+                size="icon"
+                onClick={(e) => handleScheduleMeeting(e, lead)}
+                title="Schedule Meeting"
+              >
+                <Calendar className="h-4 w-4" />
+              </Button>
+              <Button
+                variant="ghost"
+                size="icon"
+                onClick={(e) => handleAddNote(e, lead)}
+                title="Add Note"
+              >
+                <FileText className="h-4 w-4" />
+              </Button>
+              <Button
+                variant="ghost"
+                size="icon"
+                onClick={(e) => handleAddTask(e, lead)}
+                title="Add Task"
+              >
+                <CheckSquare className="h-4 w-4" />
+              </Button>
+              <DropdownMenu>
+                <DropdownMenuTrigger asChild onClick={(e) => e.stopPropagation()}>
+                  <Button variant="ghost" size="icon">
+                    <MoreHorizontal className="h-4 w-4" />
+                  </Button>
+                </DropdownMenuTrigger>
+                <DropdownMenuContent align="end">
+                  <DropdownMenuItem onClick={(e) => {
+                    e.stopPropagation();
+                    onViewLead(lead.id);
+                  }}>
+                    View Details
+                  </DropdownMenuItem>
+                  <DropdownMenuItem onClick={(e) => {
+                    e.stopPropagation();
+                    onEditLead(lead.id);
+                  }}>
+                    Edit Lead
+                  </DropdownMenuItem>
+                  <DropdownMenuItem onClick={(e) => {
+                    e.stopPropagation();
+                    handleAddNote(e, lead);
+                  }}>
+                    Add Note
+                  </DropdownMenuItem>
+                </DropdownMenuContent>
+              </DropdownMenu>
+            </div>
+          </TableCell>
+        </TableRow>
+      ))}
+    </>
   );
 } 

@@ -1,7 +1,7 @@
 'use client';
 
-import { useState, useEffect } from 'react';
-import { useRouter, useParams } from 'next/navigation';
+import React, { useState, useEffect, useMemo } from 'react';
+import { useParams, useRouter } from 'next/navigation';
 import { 
   ArrowLeft, 
   Edit, 
@@ -34,7 +34,7 @@ import {
   Eye
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
-import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
+import { Card, CardContent, CardHeader, CardTitle, CardDescription, CardFooter } from '@/components/ui/card';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Badge } from '@/components/ui/badge';
 import { toast } from 'sonner';
@@ -51,7 +51,6 @@ import { TaskActionsMenu } from '@/components/leads/TaskActionsMenu';
 import { formatDistanceToNow } from 'date-fns';
 import dynamic from 'next/dynamic';
 import { createMeeting } from '@/lib/api/meetings';
-import { MeetingStatus, MeetingType } from '@/lib/types/meeting';
 
 // Import API hooks
 import { 
@@ -76,14 +75,32 @@ import {
   getLeadInsights, 
   addLeadNote, 
   deleteLead 
-} from '@/lib/api/leads';
+} from './api'; // Use our local API implementation
 
 // Dynamically import the InsightsEditor component
 const InsightsEditor = dynamic(() => import('./InsightsEditor'), { ssr: false });
 
+// Import the useMockData hook
+import { useMockData } from '@/hooks/useMockData';
+
+// Add import for CompanyAnalysis
+import CompanyAnalysis from '@/components/leads/CompanyAnalysis';
+
+// Add import for EmailDialogProvider and useEmailDialog
+import { EmailDialogProvider, useEmailDialog } from '@/contexts/EmailDialogContext';
+import { LeadPhoneDialogProvider, useLeadPhoneDialog } from '@/contexts/LeadPhoneDialogContext';
+import { MeetingDialogProvider, useMeetingDialog, MeetingDialogType } from '@/contexts/MeetingDialogContext';
+import { Meeting, MeetingStatus, MeetingType } from '@/lib/types/meeting';
+import { ContextualRescheduleDialog } from '@/components/meetings/ContextualRescheduleDialog';
+import { MeetingDialogContainer } from '@/components/ui/meeting-dialog';
+import { LeadNotesProvider, useLeadNotes, LeadNoteDialogType } from '@/lib/contexts/LeadNotesContext';
+import { LeadNoteDialogManager } from '@/components/leads/LeadNoteDialogManager';
+import { Lead } from '@/lib/types/lead';
+import { ContextualLeadNoteDialog } from '@/components/leads/ContextualLeadNoteDialog';
+
 // Configuration flag to toggle between mock and real data
 // Set this to false to use the API's decision on whether to use mock data
-const USE_MOCK_DATA = false;
+const USE_MOCK_DATA = true;
 
 // Mock lead details data
 // This is now just a fallback in case the mockService fails
@@ -105,7 +122,7 @@ const mockLeadDetails: Record<string, any> = {
       address: '123 Main St, San Francisco, CA 94105'
     },
     lead_score: 8.5,
-    conversion_probability: 0.65,
+    conversion_probability: 0.75,
     created_at: '2023-05-15T10:30:00Z',
     updated_at: '2023-05-15T10:30:00Z',
     tasks: [
@@ -183,10 +200,52 @@ const mockInsightsData = {
 };
 
 export default function LeadDetailPage() {
+  const { isEnabled: USE_MOCK_DATA } = useMockData();
+  
+  // Wrap the entire component with our providers
+  return (
+    <LeadNotesProvider>
+      <EmailDialogProvider>
+        <LeadPhoneDialogProvider>
+          <MeetingDialogProvider>
+            <LeadDetailContent />
+            <MeetingDialogContainer />
+            <LeadNoteDialogManager />
+          </MeetingDialogProvider>
+        </LeadPhoneDialogProvider>
+      </EmailDialogProvider>
+    </LeadNotesProvider>
+  );
+}
+
+// Create a new component for the actual lead detail content
+function LeadDetailContent() {
   const router = useRouter();
   const params = useParams();
-  const leadId = safeParseInt(params.id as string);
+  // Safely access params.id and provide default if it doesn't exist
+  const leadId = params && params.id ? safeParseInt(params.id as string) : 0;
+  
+  // Convert leadId to string when needed for API calls
+  const leadIdString = String(leadId);
+  
   const queryClient = useQueryClient();
+  
+  // Get the context hooks
+  const { openEmailDialog } = useEmailDialog();
+  const { openPhoneDialog } = useLeadPhoneDialog();
+  const { openMeetingDialog, closeMeetingDialog } = useMeetingDialog();
+  const { openAddNoteDialog, openDialogs } = useLeadNotes();
+  
+  // Log the hooks for debugging
+  console.log("Available hooks from contexts:", { 
+    emailDialog: !!openEmailDialog, 
+    phoneDialog: !!openPhoneDialog, 
+    meetingDialog: !!openMeetingDialog, 
+    leadNotes: { 
+      openAddNoteDialog: !!openAddNoteDialog,
+      openDialogs: openDialogs?.length
+    } 
+  });
   
   // State for lead data
   const [lead, setLead] = useState<any>(null);
@@ -200,15 +259,14 @@ export default function LeadDetailPage() {
   const [isEditingTask, setIsEditingTask] = useState(false);
   const [showInsightsEditor, setShowInsightsEditor] = useState(false);
   
-  // State for dialogs
+  // State for dialogs - remove email and call dialogs as they'll be handled by contexts
   const [showStatusDialog, setShowStatusDialog] = useState(false);
   const [statusToChange, setStatusToChange] = useState<LeadStatus | null>(null);
   const [showNoteDialog, setShowNoteDialog] = useState(false);
   const [showTaskDialog, setShowTaskDialog] = useState(false);
-  const [showEmailDialog, setShowEmailDialog] = useState(false);
-  const [showCallDialog, setShowCallDialog] = useState(false);
-  const [showMeetingDialog, setShowMeetingDialog] = useState(false);
   const [showEditDialog, setShowEditDialog] = useState(false);
+  const [showCampaignDialog, setShowCampaignDialog] = useState(false);
+  const [showScheduleForm, setShowScheduleForm] = useState(false); // Add this state for scheduling
   
   // Initialize mock service if using mock data
   useEffect(() => {
@@ -251,7 +309,7 @@ export default function LeadDetailPage() {
   const addLeadNoteMutation = useAddLeadNote();
   
   // Use mock or API data based on configuration
-  const leadData = USE_MOCK_DATA ? mockLeadDetails[params.id as string] : apiLead;
+  const leadData = USE_MOCK_DATA ? mockLeadDetails[params?.id as string] : apiLead;
   const timeline = USE_MOCK_DATA ? mockLeadTimeline : apiTimeline;
   const insights = USE_MOCK_DATA ? mockInsightsData : apiInsights;
   
@@ -259,7 +317,17 @@ export default function LeadDetailPage() {
   const isError = USE_MOCK_DATA ? false : isErrorLead;
   
   // Mock data for development
-  const mockLead = mockLeadDetails[params.id as string];
+  const mockLead = mockLeadDetails[params?.id as string];
+  
+  // Log mock data access for debugging
+  useEffect(() => {
+    if (USE_MOCK_DATA) {
+      console.log("Using mock data mode");
+      console.log("Available mock leads:", Object.keys(mockLeadDetails));
+      console.log("Accessing mock lead with ID:", params?.id);
+      console.log("Found mock lead data:", mockLeadDetails[params?.id as string]);
+    }
+  }, [params?.id]);
   
   // Set lead data
   useEffect(() => {
@@ -267,20 +335,26 @@ export default function LeadDetailPage() {
       console.log("Setting lead data:", leadData);
       console.log("Lead status:", leadData.status);
       
-      // Ensure lead status is a valid LeadStatus enum value
-      if (leadData.status && !Object.values(LeadStatus).includes(leadData.status)) {
-        console.warn("Invalid lead status:", leadData.status);
-        // Set a default status if the current one is invalid
-        const updatedLeadData = {
-          ...leadData,
-          status: LeadStatus.NEW
-        };
-        setLead(updatedLeadData);
-      } else {
-        setLead(leadData);
-      }
+      // Ensure we have a valid lead with a valid status
+      const updatedLeadData = {
+        ...leadData,
+        // Default to NEW status if status is missing or invalid
+        status: leadData.status && Object.values(LeadStatus).includes(leadData.status) 
+          ? leadData.status 
+          : LeadStatus.NEW
+      };
       
+      setLead(updatedLeadData);
       setLoading(false);
+    } else if (USE_MOCK_DATA) {
+      // If we're in mock mode but leadData is null, try to use the default mock data
+      console.log("No lead data found, trying default mock lead");
+      const defaultMockLead = mockLeadDetails["1"];
+      if (defaultMockLead) {
+        console.log("Using default mock lead:", defaultMockLead);
+        setLead(defaultMockLead);
+        setLoading(false);
+      }
     }
   }, [leadData]);
   
@@ -470,11 +544,14 @@ export default function LeadDetailPage() {
   
   // Format status for display
   const formatStatus = (status: LeadStatus): string => {
+    if (!status) return 'Unknown';
     return status.charAt(0).toUpperCase() + status.slice(1).replace('_', ' ');
   };
   
   // Get status color
   const getStatusColor = (status: LeadStatus): string => {
+    if (!status) return 'bg-gray-100 text-gray-800 dark:bg-gray-800 dark:text-gray-100';
+    
     switch (status) {
       case LeadStatus.NEW:
         return 'bg-blue-100 text-blue-800 dark:bg-blue-900 dark:text-blue-100';
@@ -784,7 +861,7 @@ export default function LeadDetailPage() {
         mutationFn: async () => {
           const taskData = {
             ...newTask,
-            lead_id: leadId,
+            lead_id: leadIdString,
             created_at: new Date().toISOString(),
             updated_at: new Date().toISOString(),
             created_by: (await supabase.auth.getUser()).data.user?.id
@@ -800,7 +877,7 @@ export default function LeadDetailPage() {
           
           // Add to timeline
           await supabase.from('lead_timeline').insert({
-            lead_id: leadId,
+            lead_id: leadIdString,
             type: 'task_create',
             content: `Created task: "${newTask.title}"`,
             created_at: new Date().toISOString(),
@@ -911,7 +988,7 @@ export default function LeadDetailPage() {
           const { data, error } = await supabase
             .from('lead_campaigns')
             .insert({
-              lead_id: leadId,
+              lead_id: leadIdString,
               campaign_id: campaignId,
               status: 'added',
               added_at: new Date().toISOString(),
@@ -925,7 +1002,7 @@ export default function LeadDetailPage() {
           
           // Add to timeline
           await supabase.from('lead_timeline').insert({
-            lead_id: leadId,
+            lead_id: leadIdString,
             type: 'campaign',
             content: `Added to campaign: "${campaign.name}"`,
             created_at: new Date().toISOString(),
@@ -952,122 +1029,99 @@ export default function LeadDetailPage() {
     }
   };
   
-  // Handle adding a note
-  const handleAddNote = (content: string, isPrivate: boolean = false) => {
-    if (USE_MOCK_DATA) {
-      // Mock implementation
-      const lead = mockLeadDetails[leadId];
-      
-      // Create a new note
-      const newNote = {
-        id: lead.notes.length + 1,
-        body: content,
-        is_private: isPrivate,
-        created_at: new Date().toISOString(),
-        updated_at: new Date().toISOString(),
-        created_by: 1
+  // Handle adding a note using the context
+  const handleContextAddNote = () => {
+    if (!lead) {
+      console.error("📝 LeadDetailPage - Cannot add note: lead is null or undefined");
+      return;
+    }
+    
+    console.log("📝 LeadDetailPage - handleContextAddNote called for lead:", lead);
+    
+    try {
+      // Create a Lead object from the current lead data
+      const leadForNote: Lead = {
+        id: leadIdString,
+        first_name: lead.first_name || '',
+        last_name: lead.last_name || '',
+        email: lead.email || '',
+        phone: lead.phone || '',
+        company: lead.company || '',
+        status: lead.status as any,
+        source: lead.source as any,
+        created_at: lead.created_at || new Date().toISOString(),
+        updated_at: lead.updated_at || new Date().toISOString(),
       };
       
-      // Add to lead's notes
-      lead.notes.push(newNote);
+      // Open the note dialog using the MeetingDialogContext directly
+      const dialogId = `lead-note-${leadIdString}-${Date.now()}`;
       
-      // Add to timeline
-      const timelineEntry = {
-        id: mockLeadTimeline.length + 1,
-        type: 'note',
-        content: `Added note: "${content.substring(0, 50)}${content.length > 50 ? '...' : ''}"`,
-        created_at: new Date().toISOString(),
-        user: { name: 'Demo User' }
-      };
+      // Create the note dialog content that will be rendered in the dialog
+      const dialogContent = (
+        <ContextualLeadNoteDialog
+          dialogId={dialogId}
+          lead={leadForNote}
+          dialogType={LeadNoteDialogType.ADD}
+          handleClose={() => {
+            console.log(`📝 LeadDetailPage - Closing note dialog ${dialogId}`);
+            closeMeetingDialog(dialogId);
+          }}
+          handleNoteSuccess={(note) => {
+            console.log(`📝 LeadDetailPage - Note saved successfully for ${dialogId}`);
+            toast.success(`Note saved for ${leadForNote.first_name} ${leadForNote.last_name}`);
+            closeMeetingDialog(dialogId);
+          }}
+        />
+      );
       
-      // Add to the beginning of the timeline
-      mockLeadTimeline.unshift(timelineEntry);
+      // Open the dialog using the meeting dialog context
+      openMeetingDialog(
+        dialogId,
+        MeetingDialogType.DETAILS,
+        dialogContent,
+        { lead: leadForNote }
+      );
       
-      // Force re-render
-      setShowNoteDialog(false);
-      toast.success('Note added successfully');
-    } else {
-      // Real implementation with Supabase
-      addLeadNoteMutation.mutate({
-        leadId: leadId,
-        content,
-        isPrivate
-      }, {
-        onSuccess: () => {
-          // Invalidate queries to refresh data
-          queryClient.invalidateQueries({ queryKey: leadKeys.detail(leadId) });
-          queryClient.invalidateQueries({ queryKey: leadKeys.timeline(leadId) });
-          
-          // Show toast
-          toast.success('Note added successfully');
-          
-          // Close dialog
-          setShowNoteDialog(false);
-        },
-        onError: (error: Error) => {
-          console.error('Error adding note:', error);
-          toast.error('Failed to add note');
-        }
-      });
+      console.log(`📝 LeadDetailPage - Opened note dialog with ID: ${dialogId}`);
+      
+      // Notify user
+      toast.info(`Adding note for ${lead.first_name} ${lead.last_name}`);
+      
+    } catch (error) {
+      console.error("📝 LeadDetailPage - Error in handleContextAddNote:", error);
+      toast.error("Error opening note dialog");
     }
   };
   
-  // Handle sending an email
-  const handleSendEmail = (emailData: { to: string; subject: string; body: string }) => {
-    if (USE_MOCK_DATA) {
-      // Mock implementation
-      toast.success('Email sent successfully');
-    } else {
-      // Real implementation with Supabase
-      const sendEmailMutation = useMutation({
-        mutationFn: async () => {
-          // Record the email in the database
-          const { data, error } = await supabase
-            .from('lead_emails')
-            .insert({
-              lead_id: leadId,
-              subject: emailData.subject,
-              body: emailData.body,
-              recipient: emailData.to,
-              sent_at: new Date().toISOString(),
-              sent_by: (await supabase.auth.getUser()).data.user?.id,
-              status: 'sent'
-            })
-            .select()
-            .single();
-            
-          if (error) throw error;
-          
-          // Add to timeline
-          await supabase.from('lead_timeline').insert({
-            lead_id: leadId,
-            type: 'email',
-            content: `Sent email: "${emailData.subject}"`,
-            data: { email_id: data.id, subject: emailData.subject, body_preview: emailData.body.substring(0, 100) },
-            created_at: new Date().toISOString(),
-            user_id: (await supabase.auth.getUser()).data.user?.id
-          });
-          
-          // In a real implementation, this would also send the actual email
-          // through an email service like SendGrid or AWS SES
-          
-          return data;
-        },
-        onSuccess: () => {
-          // Invalidate queries to refresh data
-          queryClient.invalidateQueries({ queryKey: leadKeys.detail(leadId) });
-          queryClient.invalidateQueries({ queryKey: leadKeys.timeline(leadId) });
-          
-          // Show toast
-          toast.success('Email sent successfully');
-        },
-        onError: (error) => {
-          console.error('Failed to send email:', error);
-          toast.error('Failed to send email');
-        }
-      });
+  // Modified handleSendEmail function to use our context
+  const handleSendEmail = () => {
+    if (lead) {
+      // Create a lead object for the email dialog context
+      const emailLead = {
+        id: lead.id.toString(),
+        name: lead.full_name || `${lead.first_name || ''} ${lead.last_name || ''}`,
+        email: lead.email || '',
+        phone: lead.phone || ''
+      };
       
-      sendEmailMutation.mutate();
+      // Open the email dialog using our context
+      openEmailDialog(emailLead);
+    }
+  };
+  
+  // Modified handleCall function to use our context
+  const handleCall = () => {
+    if (lead) {
+      // Create a lead object for the phone dialog context
+      const phoneLead = {
+        id: lead.id.toString(),
+        name: lead.full_name || `${lead.first_name || ''} ${lead.last_name || ''}`,
+        email: lead.email || '',
+        phone: lead.phone || ''
+      };
+      
+      // Open the phone dialog using our context
+      openPhoneDialog(phoneLead);
     }
   };
   
@@ -1084,7 +1138,7 @@ export default function LeadDetailPage() {
         // Real implementation with Supabase
         // Prepare the meeting data
         const meetingCreateData = {
-          lead_id: leadId,
+          lead_id: leadIdString,
           title: meetingData.title,
           description: meetingData.description || '',
           start_time: meetingData.start_time,
@@ -1112,66 +1166,6 @@ export default function LeadDetailPage() {
     } catch (error: any) {
       console.error('Failed to schedule meeting:', error);
       toast.error('Failed to schedule meeting: ' + (error.message || 'Unknown error'));
-    }
-  };
-  
-  // Handle making a call
-  const handleCall = (callData: { phoneNumber: string; duration: number; notes: string }) => {
-    if (USE_MOCK_DATA) {
-      // Mock implementation
-      toast.success('Call logged successfully');
-    } else {
-      // Real implementation with Supabase
-      const logCallMutation = useMutation({
-        mutationFn: async () => {
-          // Record the call in the database
-          const { data, error } = await supabase
-            .from('lead_calls')
-            .insert({
-              lead_id: leadId,
-              phone_number: callData.phoneNumber,
-              duration: callData.duration,
-              notes: callData.notes,
-              called_at: new Date().toISOString(),
-              called_by: (await supabase.auth.getUser()).data.user?.id,
-              status: 'completed'
-            })
-            .select()
-            .single();
-            
-          if (error) throw error;
-          
-          // Add to timeline
-          await supabase.from('lead_timeline').insert({
-            lead_id: leadId,
-            type: 'call',
-            content: `Made a call (${callData.duration} seconds)${callData.notes ? ': ' + callData.notes.substring(0, 50) + (callData.notes.length > 50 ? '...' : '') : ''}`,
-            data: { 
-              call_id: data.id, 
-              duration: callData.duration,
-              notes: callData.notes
-            },
-            created_at: new Date().toISOString(),
-            user_id: (await supabase.auth.getUser()).data.user?.id
-          });
-          
-          return data;
-        },
-        onSuccess: () => {
-          // Invalidate queries to refresh data
-          queryClient.invalidateQueries({ queryKey: leadKeys.detail(leadId) });
-          queryClient.invalidateQueries({ queryKey: leadKeys.timeline(leadId) });
-          
-          // Show toast
-          toast.success('Call logged successfully');
-        },
-        onError: (error) => {
-          console.error('Failed to log call:', error);
-          toast.error('Failed to log call');
-        }
-      });
-      
-      logCallMutation.mutate();
     }
   };
   
@@ -1212,15 +1206,81 @@ export default function LeadDetailPage() {
   const refreshInsights = async () => {
     if (lead) {
       try {
-        const insightsData = await getLeadInsights(lead.id);
+        console.log('⭐⭐⭐ refreshInsights - Calling getLeadInsights with lead.id:', lead.id, 'of type:', typeof lead.id);
+        const insightsData = await getLeadInsights(String(lead.id)); // Ensure we're passing a string
+        console.log('⭐⭐⭐ refreshInsights - Got insights data:', insightsData);
         setLead({
           ...lead,
           insights: insightsData
         });
       } catch (error) {
-        console.error('Error refreshing insights:', error);
+        console.error('⭐⭐⭐ refreshInsights - Error refreshing insights:', error);
       }
     }
+  };
+  
+  // Handle schedule meeting success (for contextual dialog)
+  const handleScheduleSuccess = (scheduledMeeting: Meeting) => {
+    try {
+      // Call the existing handleScheduleMeeting function
+      handleScheduleMeeting(scheduledMeeting);
+    } catch (error: any) {
+      console.error('Failed to schedule meeting:', error);
+      toast.error('Failed to schedule meeting: ' + (error.message || 'Unknown error'));
+    }
+  };
+  
+  // Handle the Schedule Meeting button click
+  const handleScheduleMeetingClick = () => {
+    console.log("🎯 LeadDetail - handleScheduleMeetingClick called for lead:", lead?.first_name);
+    
+    if (!lead) {
+      console.error("Cannot schedule meeting - lead data is missing");
+      toast.error("Failed to schedule meeting", { description: "Lead data is missing" });
+      return;
+    }
+    
+    // Generate a unique dialog ID
+    const dialogId = `schedule-meeting-${lead.id}-${Date.now()}`;
+    console.log("📝 LeadDetail - Generated dialogId:", dialogId);
+    
+    // Create a temp meeting object with the lead details
+    const baseMeeting = {
+      id: `temp-${Date.now()}`,
+      title: `Meeting with ${lead.first_name} ${lead.last_name}`,
+      start_time: new Date().toISOString(),
+      end_time: new Date(Date.now() + 3600000).toISOString(), // 1 hour later
+      status: MeetingStatus.SCHEDULED,
+      meeting_type: MeetingType.INITIAL_CALL,
+      lead_id: lead.id,
+      lead: lead,
+      created_at: new Date().toISOString(),
+      updated_at: new Date().toISOString(),
+    };
+    console.log("📅 LeadDetail - Created baseMeeting:", baseMeeting);
+
+    // Create the dialog content
+    const dialogContent = (
+      <ContextualRescheduleDialog
+        dialogId={dialogId}
+        meeting={baseMeeting}
+        handleClose={() => {
+          console.log("❌ LeadDetail - Dialog close handler called");
+          closeMeetingDialog(dialogId);
+        }}
+        handleRescheduleSuccess={(scheduledMeeting) => {
+          console.log("✅ LeadDetail - Meeting scheduled successfully");
+          handleScheduleSuccess(scheduledMeeting);
+          closeMeetingDialog(dialogId);
+          toast.success('Meeting scheduled successfully');
+        }}
+      />
+    );
+    console.log("🎨 LeadDetail - Created dialog content");
+    
+    // Open the dialog
+    console.log("🚀 LeadDetail - Opening meeting dialog with type:", MeetingDialogType.RESCHEDULE);
+    openMeetingDialog(dialogId, MeetingDialogType.RESCHEDULE, dialogContent, { lead });
   };
   
   // Render the lead detail page with modern layout
@@ -1269,30 +1329,64 @@ export default function LeadDetailPage() {
           {/* ... */}
           
           {/* Lead header */}
-          <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
-            <div className="flex items-center">
-              <Button variant="ghost" onClick={() => router.push('/dashboard/leads')} className="mr-4">
-                <ArrowLeft className="h-4 w-4 mr-2" />
-                Back
+          <div className="flex items-center justify-between mb-4">
+            <div className="flex items-center space-x-2">
+              <Button variant="ghost" size="icon" onClick={() => router.push('/dashboard/leads')}>
+                <ArrowLeft className="h-5 w-5" />
               </Button>
-              <h1 className="text-2xl font-bold">{lead.full_name}</h1>
-              <Badge className={`ml-3 ${getStatusColor(lead.status)}`}>
-                {formatStatus(lead.status)}
-              </Badge>
+              <h1 className="text-2xl font-bold">Lead Details</h1>
+              {lead && (
+                <Badge 
+                  className={`ml-2 ${getStatusColor(lead.status)}`}>
+                  {formatStatus(lead.status)}
+                </Badge>
+              )}
             </div>
             
-            <div className="flex items-center space-x-2">
-              <Button variant="outline" onClick={() => setShowEditDialog(true)}>
-                <Edit className="h-4 w-4 mr-2" />
-                Edit
-              </Button>
+            {/* Mock data toggle button */}
+            <div className="flex items-center gap-2">
+              <div className="text-sm text-muted-foreground mr-2">
+                {USE_MOCK_DATA ? "Using mock data" : "Using real data"}
+              </div>
               <Button 
-                variant="destructive" 
-                onClick={handleDeleteLead}
+                variant="outline" 
+                size="sm"
+                onClick={() => {
+                  // This will just display a message since we can't directly change the global flag here
+                  toast.info("Mock data setting", {
+                    description: "To change the mock data setting, please use the global settings panel or refresh the page.",
+                    action: {
+                      label: "OK",
+                      onClick: () => console.log("Acknowledged"),
+                    },
+                  });
+                }}
               >
-                <Trash className="h-4 w-4 mr-2" />
-                Delete
+                {USE_MOCK_DATA ? "Mock Data: ON" : "Mock Data: OFF"}
               </Button>
+              
+              <div className="flex gap-2">
+                <Button onClick={() => setShowTaskDialog(true)} variant="default">
+                  <Plus className="h-4 w-4 mr-2" />
+                  Add Task
+                </Button>
+                <Button onClick={() => setShowNoteDialog(true)} variant="outline">
+                  <MessageSquare className="h-4 w-4 mr-2" />
+                  Add Note
+                </Button>
+                <Button onClick={() => setShowScheduleForm(true)} variant="outline">
+                  <Calendar className="h-4 w-4 mr-2" />
+                  Schedule
+                </Button>
+                <Button onClick={() => setShowEditDialog(true)} variant="outline">
+                  <Edit className="h-4 w-4 mr-2" />
+                  Edit Lead
+                </Button>
+                <Button onClick={() => setShowDeleteConfirm(true)} variant="outline" className="text-red-500 hover:text-red-700">
+                  <Trash className="h-4 w-4 mr-2" />
+                  Delete
+                </Button>
+              </div>
             </div>
           </div>
           
@@ -1418,19 +1512,19 @@ export default function LeadDetailPage() {
           
           {/* Quick action buttons */}
           <div className="flex flex-wrap gap-2">
-            <Button onClick={() => setShowEmailDialog(true)}>
+            <Button onClick={handleSendEmail}>
               <Mail className="mr-2 h-4 w-4" />
               Send Email
             </Button>
-            <Button onClick={() => setShowCallDialog(true)}>
+            <Button onClick={handleCall}>
               <Phone className="mr-2 h-4 w-4" />
               Call
             </Button>
-            <Button onClick={() => setShowMeetingDialog(true)}>
+            <Button onClick={handleScheduleMeetingClick}>
               <Calendar className="mr-2 h-4 w-4" />
               Schedule Meeting
             </Button>
-            <Button onClick={() => setShowNoteDialog(true)}>
+            <Button onClick={handleContextAddNote}>
               <MessageSquare className="mr-2 h-4 w-4" />
               Add Note
             </Button>
@@ -1498,14 +1592,150 @@ export default function LeadDetailPage() {
           </Card>
           
           {/* Tabs for different sections */}
-          <Tabs defaultValue="timeline" className="w-full">
-            <TabsList className="grid grid-cols-5 mb-4">
-              <TabsTrigger value="timeline">Timeline</TabsTrigger>
+          <Tabs defaultValue="overview" className="w-full">
+            <TabsList className="grid grid-cols-7 mb-4">
+              <TabsTrigger value="overview">Overview</TabsTrigger>
               <TabsTrigger value="tasks">Tasks</TabsTrigger>
               <TabsTrigger value="notes">Notes</TabsTrigger>
-              <TabsTrigger value="campaigns">Campaigns</TabsTrigger>
+              <TabsTrigger value="timeline">Timeline</TabsTrigger>
               <TabsTrigger value="insights">Insights</TabsTrigger>
+              <TabsTrigger value="campaigns">Campaigns</TabsTrigger>
+              <TabsTrigger value="company-analysis">Company Analysis</TabsTrigger>
             </TabsList>
+            
+            {/* Overview Tab */}
+            <TabsContent value="overview" className="space-y-4">
+              <Card>
+                <CardHeader>
+                  <CardTitle>Lead Overview</CardTitle>
+                </CardHeader>
+                <CardContent>
+                  <div className="grid md:grid-cols-2 gap-6">
+                    {/* Lead Details */}
+                    <div>
+                      <h3 className="text-lg font-medium mb-4">Contact Information</h3>
+                      <dl className="space-y-2">
+                        <div className="flex justify-between">
+                          <dt className="text-muted-foreground">Name:</dt>
+                          <dd className="font-medium">{lead.full_name || 'N/A'}</dd>
+                        </div>
+                        <div className="flex justify-between">
+                          <dt className="text-muted-foreground">Email:</dt>
+                          <dd className="font-medium">{lead.email || 'N/A'}</dd>
+                        </div>
+                        <div className="flex justify-between">
+                          <dt className="text-muted-foreground">Phone:</dt>
+                          <dd className="font-medium">{lead.phone || 'N/A'}</dd>
+                        </div>
+                        <div className="flex justify-between">
+                          <dt className="text-muted-foreground">Company:</dt>
+                          <dd className="font-medium">{lead.company || 'N/A'}</dd>
+                        </div>
+                        <div className="flex justify-between">
+                          <dt className="text-muted-foreground">Title:</dt>
+                          <dd className="font-medium">{lead.title || 'N/A'}</dd>
+                        </div>
+                        <div className="flex justify-between">
+                          <dt className="text-muted-foreground">Source:</dt>
+                          <dd className="font-medium">{lead.source || 'N/A'}</dd>
+                        </div>
+                      </dl>
+                    </div>
+
+                    {/* Activity Summary */}
+                    <div>
+                      <h3 className="text-lg font-medium mb-4">Activity Summary</h3>
+                      <dl className="space-y-2">
+                        <div className="flex justify-between">
+                          <dt className="text-muted-foreground">Last Contacted:</dt>
+                          <dd className="font-medium">
+                            {lead.last_contacted_at ? formatDate(lead.last_contacted_at) : 'Never'}
+                          </dd>
+                        </div>
+                        <div className="flex justify-between">
+                          <dt className="text-muted-foreground">Total Emails:</dt>
+                          <dd className="font-medium">{lead.emails?.length || 0}</dd>
+                        </div>
+                        <div className="flex justify-between">
+                          <dt className="text-muted-foreground">Total Calls:</dt>
+                          <dd className="font-medium">{lead.calls?.length || 0}</dd>
+                        </div>
+                        <div className="flex justify-between">
+                          <dt className="text-muted-foreground">Total Notes:</dt>
+                          <dd className="font-medium">{lead.notes?.length || 0}</dd>
+                        </div>
+                        <div className="flex justify-between">
+                          <dt className="text-muted-foreground">Total Tasks:</dt>
+                          <dd className="font-medium">{lead.tasks?.length || 0}</dd>
+                        </div>
+                        <div className="flex justify-between">
+                          <dt className="text-muted-foreground">Total Meetings:</dt>
+                          <dd className="font-medium">{lead.meetings?.length || 0}</dd>
+                        </div>
+                      </dl>
+                    </div>
+
+                    {/* Upcoming Tasks */}
+                    <div className="md:col-span-2">
+                      <h3 className="text-lg font-medium mb-4">Upcoming Tasks</h3>
+                      {lead.tasks && lead.tasks.length > 0 ? (
+                        <div className="space-y-2">
+                          {lead.tasks
+                            .filter((task: any) => !task.completed)
+                            .slice(0, 3)
+                            .map((task: any) => (
+                              <div key={task.id} className="flex items-center justify-between p-3 border rounded-md">
+                                <div className="flex items-center gap-3">
+                                  <CheckCircle className="h-5 w-5 text-gray-400" />
+                                  <div>
+                                    <p>{task.title}</p>
+                                    <p className="text-xs text-muted-foreground">
+                                      Due: {formatDate(task.due_date)}
+                                    </p>
+                                  </div>
+                                </div>
+                                <Button 
+                                  variant="ghost" 
+                                  size="sm"
+                                  onClick={() => handleToggleTaskComplete(task.id, true)}
+                                >
+                                  Complete
+                                </Button>
+                              </div>
+                            ))}
+                            {lead.tasks.filter((task: any) => !task.completed).length === 0 && (
+                              <p className="text-muted-foreground">No upcoming tasks</p>
+                            )}
+                        </div>
+                      ) : (
+                        <p className="text-muted-foreground">No tasks</p>
+                      )}
+                    </div>
+
+                    {/* Recent Notes */}
+                    <div className="md:col-span-2">
+                      <div className="flex justify-between items-center mb-4">
+                        <h3 className="text-lg font-medium">Recent Notes</h3>
+                      </div>
+                      {lead.notes && lead.notes.length > 0 ? (
+                        <div className="space-y-2">
+                          {lead.notes.slice(0, 3).map((note: any) => (
+                            <div key={note.id} className="p-3 border rounded-md">
+                              <p>{note.body || note.content}</p>
+                              <p className="text-xs text-muted-foreground mt-2">
+                                {formatDistanceToNow(new Date(note.created_at), { addSuffix: true })}
+                              </p>
+                            </div>
+                          ))}
+                        </div>
+                      ) : (
+                        <p className="text-muted-foreground">No notes</p>
+                      )}
+                    </div>
+                  </div>
+                </CardContent>
+              </Card>
+            </TabsContent>
             
             {/* Timeline Tab */}
             <TabsContent value="timeline" className="space-y-4">
@@ -1906,48 +2136,14 @@ export default function LeadDetailPage() {
                 </CardContent>
               </Card>
             </TabsContent>
+            
+            {/* Company Analysis Tab */}
+            <TabsContent value="company-analysis" className="space-y-4">
+              <CompanyAnalysis leadId={parseInt(params.id as string)} />
+            </TabsContent>
           </Tabs>
           
           {/* Dialog Components */}
-          {showEmailDialog && lead && (
-            <EmailDialog
-              open={showEmailDialog}
-              onOpenChange={setShowEmailDialog}
-              leadEmail={lead.email || ''}
-              leadName={lead.full_name || ''}
-              onSuccess={(emailData) => {
-                if (emailData) {
-                  handleSendEmail(emailData);
-                }
-              }}
-            />
-          )}
-          
-          {showCallDialog && lead && (
-            <PhoneDialog
-              open={showCallDialog}
-              onOpenChange={setShowCallDialog}
-              leadPhone={lead.phone || ''}
-              leadName={lead.full_name || ''}
-              onSuccess={handleCall}
-            />
-          )}
-          
-          {showNoteDialog && lead && (
-            <NoteDialog
-              open={showNoteDialog}
-              onOpenChange={setShowNoteDialog}
-              leadId={leadId}
-              leadName={lead.full_name || ''}
-              isMock={USE_MOCK_DATA}
-              onSuccess={(noteData) => {
-                if (noteData && noteData.content) {
-                  handleAddNote(noteData.content, noteData.is_private);
-                }
-              }}
-            />
-          )}
-          
           {showTaskDialog && lead && (
             <TaskDialog
               open={showTaskDialog}
@@ -1972,22 +2168,9 @@ export default function LeadDetailPage() {
             />
           )}
           
-          {showMeetingDialog && lead && (
-            <MeetingDialogNew
-              open={showMeetingDialog}
-              onOpenChange={setShowMeetingDialog}
-              lead={lead}
-              onSuccess={(meetingData) => {
-                if (meetingData) {
-                  handleScheduleMeeting(meetingData);
-                }
-              }}
-            />
-          )}
-          
           {showEditDialog && lead && (
             <LeadEditDialog
-              leadId={leadId.toString()}
+              leadId={leadIdString}
               open={showEditDialog}
               onOpenChange={setShowEditDialog}
               onSuccess={() => router.refresh()}

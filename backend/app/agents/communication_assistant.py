@@ -63,8 +63,8 @@ class CommunicationAssistantState(AgentState):
 # Define tools for the CommunicationAssistant agent
 class FetchLeadInfoTool(BaseTool):
     """Tool to fetch lead information for personalization."""
-    name = "fetch_lead_info"
-    description = "Fetch information about a lead for personalization."
+    name: str = "fetch_lead_info"
+    description: str = "Fetch information about a lead for personalization."
     
     async def _arun(self, lead_id: int) -> str:
         """Fetch lead information from the database."""
@@ -94,8 +94,8 @@ class FetchLeadInfoTool(BaseTool):
 
 class FetchCommunicationHistoryTool(BaseTool):
     """Tool to fetch communication history for a lead."""
-    name = "fetch_communication_history"
-    description = "Fetch communication history for a lead."
+    name: str = "fetch_communication_history"
+    description: str = "Fetch communication history for a lead."
     
     async def _arun(self, lead_id: int) -> str:
         """Fetch communication history from the database."""
@@ -151,11 +151,11 @@ class FetchCommunicationHistoryTool(BaseTool):
 
 class GenerateContentTool(BaseTool):
     """Tool to generate communication content."""
-    name = "generate_content"
-    description = "Generate personalized communication content."
+    name: str = "generate_content"
+    description: str = "Generate personalized communication content."
     
     async def _arun(self, input_json: str) -> str:
-        """Generate personalized content based on input parameters."""
+        """Generate personalized communication content."""
         logger.info("Generating personalized communication content")
         
         try:

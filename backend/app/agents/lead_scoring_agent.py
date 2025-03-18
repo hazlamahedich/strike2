@@ -20,7 +20,6 @@ from langchain.prompts import ChatPromptTemplate
 from langchain.tools import BaseTool
 from langchain.schema import HumanMessage, AIMessage, SystemMessage
 from langgraph.graph import StateGraph, END
-from langgraph.checkpoint import MemorySaver
 
 from app.agents.base import AgentState, create_llm, create_system_message, create_human_message
 from app.core.config import settings
@@ -58,8 +57,8 @@ class LeadScoringState(AgentState):
 # Define tools for the LeadScoring agent
 class FetchLeadInteractionsTool(BaseTool):
     """Tool to fetch all interactions for a lead across all channels."""
-    name = "fetch_lead_interactions"
-    description = "Fetch all interactions (emails, calls, SMS, meetings, notes) for a specific lead."
+    name: str = "fetch_lead_interactions"
+    description: str = "Fetch all interactions (emails, calls, SMS, meetings, notes) for a specific lead."
     
     async def _arun(self, lead_id: Union[str, int], days: Union[str, int] = 30) -> str:
         """Fetch interactions for the specified lead."""
@@ -143,8 +142,8 @@ class FetchLeadInteractionsTool(BaseTool):
 
 class CalculateEngagementMetricsTool(BaseTool):
     """Tool to calculate engagement metrics from interaction data."""
-    name = "calculate_engagement_metrics"
-    description = "Calculate engagement metrics from interaction data."
+    name: str = "calculate_engagement_metrics"
+    description: str = "Calculate engagement metrics from interaction data."
     
     async def _arun(self, interaction_data_str: str) -> str:
         """Calculate engagement metrics from the interaction data."""
@@ -258,8 +257,8 @@ class CalculateEngagementMetricsTool(BaseTool):
 
 class GenerateLeadScoreTool(BaseTool):
     """Tool to generate a lead score based on engagement metrics."""
-    name = "generate_lead_score"
-    description = "Generate a lead score based on engagement metrics."
+    name: str = "generate_lead_score"
+    description: str = "Generate a lead score based on engagement metrics."
     
     async def _arun(self, metrics_str: str, lead_id: Union[str, int]) -> str:
         """Generate a lead score based on the engagement metrics."""
@@ -480,14 +479,8 @@ class LeadScoringAgent:
             status="idle"
         )
         
-        # Create a memory saver for the graph execution
-        memory_saver = MemorySaver()
-        
         # Execute the workflow
-        result = await self.workflow.arun(
-            state,
-            config={"checkpointer": memory_saver}
-        )
+        result = await self.workflow.ainvoke(state)
         
         # Prepare the result
         if result.status == "error":

@@ -126,6 +126,11 @@ class Meeting(BaseModel):
     custom_fields: Dict[str, Any] = Field(default_factory=dict)
     created_at: Optional[datetime] = None
     updated_at: Optional[datetime] = None
+    # Summary fields
+    summary: Optional[str] = None
+    action_items: List[str] = Field(default_factory=list)
+    # Comprehensive summary fields
+    comprehensive_summary: Optional[Dict[str, Any]] = None
 
     @validator('end_time')
     def end_time_after_start_time(cls, v, values):
@@ -133,6 +138,44 @@ class Meeting(BaseModel):
         if 'start_time' in values and v <= values['start_time']:
             raise ValueError('end_time must be after start_time')
         return v
+
+
+class MeetingSummaryType(str, Enum):
+    """Types of meeting summaries"""
+    BASIC = "basic"
+    COMPREHENSIVE = "comprehensive"
+
+
+class MeetingSummary(BaseModel):
+    """Meeting summary model"""
+    id: Optional[str] = None
+    meeting_id: str
+    summary_type: MeetingSummaryType
+    summary: str
+    insights: List[str] = Field(default_factory=list)
+    action_items: List[str] = Field(default_factory=list)
+    next_steps: List[str] = Field(default_factory=list)
+    created_at: Optional[datetime] = None
+    updated_at: Optional[datetime] = None
+    created_by: Optional[str] = None
+
+
+class MeetingSummaryCreate(BaseModel):
+    """Model for creating a meeting summary"""
+    meeting_id: str
+    summary_type: MeetingSummaryType
+    summary: str
+    insights: List[str] = Field(default_factory=list)
+    action_items: List[str] = Field(default_factory=list)
+    next_steps: List[str] = Field(default_factory=list)
+
+
+class MeetingSummaryUpdate(BaseModel):
+    """Model for updating a meeting summary"""
+    summary: Optional[str] = None
+    insights: Optional[List[str]] = None
+    action_items: Optional[List[str]] = None
+    next_steps: Optional[List[str]] = None
 
 
 class MeetingCreate(BaseModel):
@@ -146,6 +189,7 @@ class MeetingCreate(BaseModel):
     meeting_type: MeetingType = MeetingType.INITIAL_CALL
     location: Optional[str] = None  # Can be a URL for virtual meetings
     lead_email: str  # Email of the lead for calendar invitation
+    lead_phone: Optional[str] = None  # Phone number of the lead
     
 
 class MeetingUpdate(BaseModel):
@@ -156,8 +200,17 @@ class MeetingUpdate(BaseModel):
     end_time: Optional[datetime] = None
     timezone: Optional[str] = None
     meeting_type: Optional[MeetingType] = None
-    location: Optional[str] = None
+    location: Optional[Union[str, MeetingLocation]] = None
     status: Optional[MeetingStatus] = None
+    lead_id: Optional[str] = None
+    notes: Optional[str] = None
+    agenda_items: Optional[List[str]] = None
+    reminder_time: Optional[int] = None
+    # Summary fields
+    summary: Optional[str] = None
+    action_items: Optional[List[str]] = None
+    # Comprehensive summary fields
+    comprehensive_summary: Optional[Dict[str, Any]] = None
 
 
 class MeetingResponse(BaseModel):
@@ -172,14 +225,16 @@ class MeetingResponse(BaseModel):
     timezone: str = "UTC"
     meeting_type: MeetingType
     location: Optional[str] = None
-    status: str
-    calendar_id: Optional[str] = None  # ID in the external calendar system
-    meeting_url: Optional[str] = None  # URL to join the meeting
-    created_at: datetime
-    updated_at: datetime
-    
-    class Config:
-        from_attributes = True
+    status: MeetingStatus
+    notes: Optional[str] = None
+    agenda_items: Optional[List[str]] = None
+    created_at: Optional[datetime] = None
+    updated_at: Optional[datetime] = None
+    # Summary fields
+    summary: Optional[str] = None
+    action_items: Optional[List[str]] = None
+    # Comprehensive summary fields
+    comprehensive_summary: Optional[Dict[str, Any]] = None
 
 
 class TimeSlot(BaseModel):

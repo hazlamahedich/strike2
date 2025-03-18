@@ -259,18 +259,40 @@ class CommunicationService:
             )
             
         try:
-            # The TwiML (Twilio Markup Language) defines what happens on the call
-            twiml = f"""
-            <Response>
-                <Say>This is an automated call from your CRM system. Please wait for a representative.</Say>
-                <Dial callerId="{call.caller}">{call.recipient}</Dial>
-            </Response>
-            """
+            # Check if there's an extension in the recipient
+            recipient = call.recipient
+            extension = None
+            
+            # Check if the recipient contains an extension marker
+            if " ext." in recipient:
+                parts = recipient.split(" ext.")
+                recipient = parts[0].strip()
+                extension = parts[1].strip() if len(parts) > 1 else None
+            
+            # Create TwiML based on whether there's an extension
+            if extension:
+                # If there's an extension, add a pause and then DTMF tones
+                twiml = f"""
+                <Response>
+                    <Say>This is an automated call from your CRM system. Please wait for a representative.</Say>
+                    <Dial callerId="{call.caller}">{recipient}</Dial>
+                    <Pause length="2"/>
+                    <Play digits="{extension}"/>
+                </Response>
+                """
+            else:
+                # Standard TwiML without extension
+                twiml = f"""
+                <Response>
+                    <Say>This is an automated call from your CRM system. Please wait for a representative.</Say>
+                    <Dial callerId="{call.caller}">{recipient}</Dial>
+                </Response>
+                """
             
             # Initiate the call
             twilio_call = self.twilio_client.calls.create(
                 twiml=twiml,
-                to=call.recipient,
+                to=recipient,
                 from_=call.caller,
                 record=True,  # Enable recording
                 status_callback=f"{settings.API_URL}/api/v1/communications/call-status-callback"
@@ -1362,3 +1384,106 @@ class CommunicationService:
         except Exception as e:
             logger.error(f"Failed to update call log transcription: {str(e)}")
             raise 
+
+    async def create_call_with_extension(
+        self, 
+        lead_id: int, 
+        user_id: int, 
+        phone: str, 
+        extension: Optional[str] = None,
+        scheduled_at: Optional[datetime] = None,
+        notes: Optional[str] = None,
+        purpose: Optional[str] = None
+    ) -> Dict[str, Any]:
+        """
+        Create a new call with extension support
+        
+        Args:
+            lead_id: ID of the lead to call
+            user_id: ID of the user making the call
+            phone: Phone number to call
+            extension: Optional extension to dial after connecting
+            scheduled_at: Optional time to schedule the call
+            notes: Optional notes about the call
+            purpose: Optional purpose of the call
+            
+        Returns:
+            Dict with call details
+        """
+        from app.db.supabase import get_row, get_user_phone
+        
+        # Get the user's phone number for caller ID
+        caller = await get_user_phone(user_id)
+        if not caller:
+            caller = settings.DEFAULT_CALLER_ID
+        
+        # Format the recipient with extension if provided
+        recipient = phone
+        if extension:
+            recipient = f"{phone} ext. {extension}"
+        
+        # Create the call object
+        call = Call(
+            id=0,  # Will be set by the database
+            lead_id=lead_id,
+            user_id=user_id,
+            direction="outbound",
+            scheduled_at=scheduled_at,
+            notes=notes,
+            purpose=purpose,
+            caller=caller,
+            recipient=recipient,
+            status="scheduled",
+            created_at=datetime.now(),
+            updated_at=datetime.now()
+        )
+        
+        # If scheduled for later, save to database and return
+        if scheduled_at and scheduled_at > datetime.now():
+            from app.db.supabase import insert_row
+            
+            call_data = {
+                "lead_id": lead_id,
+                "user_id": user_id,
+                "direction": "outbound",
+                "scheduled_at": scheduled_at.isoformat(),
+                "notes": notes,
+                "purpose": purpose,
+                "caller": caller,
+                "recipient": recipient,
+                "status": "scheduled"
+            }
+            
+            call_id = await insert_row("calls", call_data)
+            
+            return {
+                "id": call_id,
+                "status": "scheduled",
+                "scheduled_at": scheduled_at.isoformat(),
+                "message": "Call scheduled successfully"
+            }
+        
+        # Otherwise, make the call immediately
+        result = await self.make_call(call)
+        
+        # Save the call to the database
+        from app.db.supabase import insert_row
+        
+        call_data = {
+            "lead_id": lead_id,
+            "user_id": user_id,
+            "direction": "outbound",
+            "notes": notes,
+            "purpose": purpose,
+            "caller": caller,
+            "recipient": recipient,
+            "status": result.get("status", "initiated"),
+            "call_sid": result.get("call_sid")
+        }
+        
+        call_id = await insert_row("calls", call_data)
+        
+        # Add the database ID to the result
+        result["id"] = call_id
+        
+        return result 

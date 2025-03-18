@@ -9,7 +9,7 @@ import { toast } from '@/components/ui/use-toast';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { USE_MOCK_DATA } from '@/lib/config';
 import { MOCK_MEETINGS } from '@/lib/mock/meetings';
-import { ApiResponse } from '@/lib/api/client';
+import { ApiResponse } from '@/lib/api/apiClient';
 
 export function MeetingList() {
   const [meetings, setMeetings] = useState<Meeting[]>([]);
@@ -20,13 +20,13 @@ export function MeetingList() {
 
   // Derived state - ensure meetings is always an array before filtering
   const upcomingMeetings = Array.isArray(meetings) 
-    ? meetings.filter(m => new Date(m.start_time) > new Date() && m.status !== MeetingStatus.CANCELED)
+    ? meetings.filter(m => new Date(m.start_time) > new Date() && m.status !== MeetingStatus.CANCELLED)
     : [];
   const pastMeetings = Array.isArray(meetings)
-    ? meetings.filter(m => new Date(m.start_time) <= new Date() && m.status !== MeetingStatus.CANCELED)
+    ? meetings.filter(m => new Date(m.start_time) <= new Date() && m.status !== MeetingStatus.CANCELLED)
     : [];
   const canceledMeetings = Array.isArray(meetings)
-    ? meetings.filter(m => m.status === MeetingStatus.CANCELED)
+    ? meetings.filter(m => m.status === MeetingStatus.CANCELLED)
     : [];
 
   const fetchMeetings = async () => {
@@ -119,7 +119,7 @@ export function MeetingList() {
           // Update the meeting status locally for mock data
           const updatedMeetings = meetings.map(m => 
             m.id === meeting.id 
-              ? { ...m, status: MeetingStatus.CANCELED, updated_at: new Date().toISOString() } 
+              ? { ...m, status: MeetingStatus.CANCELLED, updated_at: new Date().toISOString() } 
               : m
           );
           setMeetings(updatedMeetings);
@@ -137,7 +137,7 @@ export function MeetingList() {
             // Update the local state after successful API call
             const updatedMeetings = meetings.map(m => 
               m.id === meeting.id 
-                ? { ...m, status: MeetingStatus.CANCELED, updated_at: new Date().toISOString() } 
+                ? { ...m, status: MeetingStatus.CANCELLED, updated_at: new Date().toISOString() } 
                 : m
             );
             setMeetings(updatedMeetings);

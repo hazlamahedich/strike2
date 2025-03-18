@@ -11,6 +11,7 @@ from pydantic import ValidationError
 from app.models.lead import LeadCreate, LeadUpdate, Lead, LeadDetail, LeadFilter
 from app.core.database import fetch_one, fetch_all, insert_row, update_row, delete_row
 from app.services.campaign import add_lead_to_campaign, get_lead_campaigns
+from app.services.web_scraping import trigger_web_scraping_for_lead, trigger_web_scraping_for_leads
 
 async def get_lead_by_id(lead_id: int) -> Optional[Lead]:
     """
@@ -102,39 +103,26 @@ async def create_lead(lead_in: LeadCreate, user_id: Optional[int] = None) -> Lea
         "updated_at": datetime.now().isoformat()
     })
     
-    # Insert the lead
-    new_lead_data = await insert_row("leads", lead_data)
-    
-    # Record the activity
-    activity_data = {
-        "lead_id": new_lead_data["id"],
-        "user_id": user_id or lead_data.get("owner_id"),
-        "activity_type": "lead_created",
-        "activity_id": None,
-        "metadata": {
-            "source": lead_data.get("source"),
-            "status": lead_data.get("status")
-        },
-        "created_at": datetime.now().isoformat()
-    }
-    await insert_row("activities", activity_data)
+    # Insert lead
+    lead_id = await insert_row("leads", lead_data)
     
     # Add to campaigns if specified
-    if hasattr(lead_in, "campaign_ids") and lead_in.campaign_ids:
+    if lead_in.campaign_ids:
         for campaign_id in lead_in.campaign_ids:
-            try:
-                await add_lead_to_campaign(
-                    campaign_id=campaign_id,
-                    lead_id=new_lead_data["id"],
-                    user_id=user_id or lead_data.get("owner_id") or 1,  # Default to system user if no owner
-                    notes=f"Added during lead creation"
-                )
-            except HTTPException as e:
-                # Log error but continue - don't fail lead creation if campaign assignment fails
-                print(f"Error adding lead {new_lead_data['id']} to campaign {campaign_id}: {str(e)}")
+            await add_lead_to_campaign(
+                lead_id=lead_id,
+                campaign_id=campaign_id,
+                user_id=user_id
+            )
     
-    # Return the created lead
-    return Lead(**new_lead_data)
+    # Get the created lead
+    lead = await get_lead_by_id(lead_id)
+    
+    # Trigger web scraping for company analysis
+    # This runs asynchronously and doesn't block the response
+    await trigger_web_scraping_for_lead(lead_id)
+    
+    return lead
 
 async def update_lead(lead_id: int, lead_in: Union[LeadUpdate, Dict[str, Any]], user_id: Optional[int] = None) -> Lead:
     """
@@ -498,10 +486,11 @@ async def import_leads(
     field_mapping: Dict[str, str],
     handle_duplicates: str = "skip",
     user_id: Optional[int] = None,
-    team_id: Optional[int] = None
+    team_id: Optional[int] = None,
+    campaign_ids: Optional[List[int]] = None
 ) -> Dict[str, Any]:
     """
-    Import leads from CSV/Excel file.
+    Import leads from a CSV or Excel file.
     """
     try:
         # Read the file
@@ -538,6 +527,9 @@ async def import_leads(
         leads_skipped = 0
         errors = []
         
+        # Track created lead IDs for web scraping
+        created_lead_ids = []
+        
         for lead_data in leads_to_import:
             try:
                 # Check for required fields
@@ -565,8 +557,11 @@ async def import_leads(
                 
                 # Create lead
                 lead_create = LeadCreate(**lead_data)
-                await create_lead(lead_create)
+                lead = await create_lead(lead_create)
                 leads_created += 1
+                
+                # If lead was created, add to created_lead_ids
+                created_lead_ids.append(lead.id)
                 
             except ValidationError as e:
                 errors.append(f"Validation error for lead: {lead_data}, error: {str(e)}")
@@ -575,11 +570,15 @@ async def import_leads(
                 errors.append(f"Error processing lead: {lead_data}, error: {str(e)}")
                 leads_skipped += 1
         
+        # After importing leads, trigger web scraping for all created leads
+        if created_lead_ids:
+            await trigger_web_scraping_for_leads(created_lead_ids)
+        
         return {
-            "success": True,
-            "leads_created": leads_created,
-            "leads_updated": leads_updated,
-            "leads_skipped": leads_skipped,
+            "total": len(leads_to_import),
+            "created": leads_created,
+            "updated": leads_updated,
+            "skipped": leads_skipped,
             "errors": errors
         }
         
@@ -724,9 +723,10 @@ class LeadService:
         field_mapping: Dict[str, str],
         handle_duplicates: str = "skip",
         user_id: Optional[int] = None,
-        team_id: Optional[int] = None
+        team_id: Optional[int] = None,
+        campaign_ids: Optional[List[int]] = None
     ) -> Dict[str, Any]:
-        return await import_leads(file, field_mapping, handle_duplicates, user_id, team_id)
+        return await import_leads(file, field_mapping, handle_duplicates, user_id, team_id, campaign_ids)
     
     @staticmethod
     async def export_leads(
@@ -738,4 +738,44 @@ class LeadService:
         user_role: Optional[str] = None,
         team_id: Optional[int] = None
     ) -> Dict[str, Any]:
-        return await export_leads(lead_ids, filters, export_format, include_fields, user_id, user_role, team_id) 
+        return await export_leads(lead_ids, filters, export_format, include_fields, user_id, user_role, team_id)
+
+    @staticmethod
+    def format_phone_with_extension(phone: Optional[str], extension: Optional[str]) -> str:
+        """
+        Format a phone number with an extension for display
+        
+        Args:
+            phone: The main phone number
+            extension: The extension number
+            
+        Returns:
+            Formatted phone string with extension if available
+        """
+        if not phone:
+            return ""
+            
+        if not extension:
+            return phone
+            
+        return f"{phone} ext. {extension}"
+        
+    @staticmethod
+    def get_phone_for_dialing(phone: Optional[str], extension: Optional[str]) -> str:
+        """
+        Prepare phone number and extension for dialing
+        
+        Args:
+            phone: The main phone number
+            extension: The extension number
+            
+        Returns:
+            Formatted phone string for dialing
+        """
+        if not phone:
+            return ""
+            
+        if not extension:
+            return phone
+            
+        return f"{phone} ext. {extension}" 

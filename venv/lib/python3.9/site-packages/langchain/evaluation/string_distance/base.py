@@ -3,14 +3,16 @@
 from enum import Enum
 from typing import Any, Callable, Dict, List, Optional
 
-from langchain.callbacks.manager import (
+from langchain_core.callbacks.manager import (
     AsyncCallbackManagerForChainRun,
     CallbackManagerForChainRun,
     Callbacks,
 )
+from langchain_core.utils import pre_init
+from pydantic import Field
+
 from langchain.chains.base import Chain
 from langchain.evaluation.schema import PairwiseStringEvaluator, StringEvaluator
-from langchain.pydantic_v1 import Field, root_validator
 from langchain.schema import RUN_KEY
 
 
@@ -62,7 +64,7 @@ class _RapidFuzzChainMixin(Chain):
     """Whether to normalize the score to a value between 0 and 1.
     Applies only to the Levenshtein and Damerau-Levenshtein distances."""
 
-    @root_validator
+    @pre_init
     def validate_dependencies(cls, values: Dict[str, Any]) -> Dict[str, Any]:
         """
         Validate that the rapidfuzz library is installed.
@@ -276,7 +278,7 @@ class StringDistanceEvalChain(StringEvaluator, _RapidFuzzChainMixin):
             reference (Optional[str], optional): The reference string.
             input (Optional[str], optional): The input string.
             callbacks (Callbacks, optional): The callbacks to use.
-            **kwargs: Additional keyword arguments.
+            kwargs: Additional keyword arguments.
 
         Returns:
             dict: The evaluation results containing the score.
@@ -312,7 +314,7 @@ class StringDistanceEvalChain(StringEvaluator, _RapidFuzzChainMixin):
             reference (Optional[str], optional): The reference string.
             input (Optional[str], optional): The input string.
             callbacks (Callbacks, optional): The callbacks to use.
-            **kwargs: Additional keyword arguments.
+            kwargs: Additional keyword arguments.
 
         Returns:
             dict: The evaluation results containing the score.
@@ -410,7 +412,7 @@ class PairwiseStringDistanceEvalChain(PairwiseStringEvaluator, _RapidFuzzChainMi
             callbacks (Callbacks, optional): The callbacks to use.
             tags (List[str], optional): Tags to apply to traces.
             metadata (Dict[str, Any], optional): Metadata to apply to traces.
-            **kwargs: Additional keyword arguments.
+            kwargs: Additional keyword arguments.
 
         Returns:
             dict: The evaluation results containing the score.
@@ -444,7 +446,7 @@ class PairwiseStringDistanceEvalChain(PairwiseStringEvaluator, _RapidFuzzChainMi
             callbacks (Callbacks, optional): The callbacks to use.
             tags (List[str], optional): Tags to apply to traces.
             metadata (Dict[str, Any], optional): Metadata to apply to traces.
-            **kwargs: Additional keyword arguments.
+            kwargs: Additional keyword arguments.
 
         Returns:
             dict: The evaluation results containing the score.

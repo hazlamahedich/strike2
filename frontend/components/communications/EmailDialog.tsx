@@ -9,7 +9,7 @@ import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from '
 import { useForm } from 'react-hook-form';
 import { z } from 'zod';
 import { zodResolver } from '@hookform/resolvers/zod';
-import { Loader2, Send, FileText, Sparkles } from 'lucide-react';
+import { Loader2, Send, FileText, Sparkles, Paperclip, X } from 'lucide-react';
 import { useToast } from '../ui/use-toast';
 import { 
   sendEmail, 
@@ -48,6 +48,7 @@ export function EmailDialog({ open, onOpenChange, leadEmail, leadName, onSuccess
   const [receivedEmails, setReceivedEmails] = useState<ReceivedEmail[]>([]);
   const [sentEmails, setSentEmails] = useState<ReceivedEmail[]>([]);
   const [isLoading, setIsLoading] = useState(false);
+  const [attachments, setAttachments] = useState<File[]>([]);
   
   // Initialize the form
   const form = useForm<EmailFormValues>({
@@ -95,11 +96,39 @@ export function EmailDialog({ open, onOpenChange, leadEmail, leadName, onSuccess
     console.log('Sending email:', data);
     
     try {
+      // Process attachments if any
+      const processedAttachments = await Promise.all(
+        attachments.map(async (file) => {
+          return new Promise<{
+            filename: string;
+            content: string;
+            content_type: string;
+            size: number;
+          }>((resolve, reject) => {
+            const reader = new FileReader();
+            reader.onload = () => {
+              const base64content = reader.result as string;
+              // Remove the data URL prefix (e.g., "data:application/pdf;base64,")
+              const base64Data = base64content.split(',')[1];
+              resolve({
+                filename: file.name,
+                content: base64Data,
+                content_type: file.type,
+                size: file.size,
+              });
+            };
+            reader.onerror = reject;
+            reader.readAsDataURL(file);
+          });
+        })
+      );
+      
       // Call the email service to send the email
       const response = await sendEmail({
         to: data.to,
         subject: data.subject,
         content: data.content,
+        attachments: processedAttachments,
       });
       
       toast({
@@ -107,12 +136,13 @@ export function EmailDialog({ open, onOpenChange, leadEmail, leadName, onSuccess
         description: `Your email to ${data.to} has been sent.`,
       });
       
-      // Reset the form
+      // Reset the form and attachments
       form.reset({
         to: leadEmail,
         subject: '',
         content: '',
       });
+      setAttachments([]);
       
       // Refresh emails to show the newly sent email
       fetchEmails();
@@ -211,170 +241,296 @@ export function EmailDialog({ open, onOpenChange, leadEmail, leadName, onSuccess
     form.setValue('content', replyContent);
   };
   
+  // Handle file selection
+  const handleFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
+    if (e.target.files && e.target.files.length > 0) {
+      // Convert FileList to array and add to attachments
+      const newFiles = Array.from(e.target.files);
+      
+      // Check file sizes (SendGrid limit is 30MB total, but we'll limit individual files to 10MB)
+      const oversizedFiles = newFiles.filter(file => file.size > 10 * 1024 * 1024);
+      if (oversizedFiles.length > 0) {
+        toast({
+          title: 'File size exceeded',
+          description: `${oversizedFiles.length > 1 ? 'Some files are' : 'One file is'} larger than 10MB and cannot be attached.`,
+          variant: 'destructive',
+        });
+        
+        // Filter out oversized files
+        const validFiles = newFiles.filter(file => file.size <= 10 * 1024 * 1024);
+        if (validFiles.length > 0) {
+          setAttachments([...attachments, ...validFiles]);
+          
+          // Show success toast for valid files
+          toast({
+            title: 'Files attached',
+            description: `${validFiles.length} ${validFiles.length === 1 ? 'file' : 'files'} attached successfully.`,
+          });
+        }
+      } else {
+        // All files are valid
+        setAttachments([...attachments, ...newFiles]);
+        
+        // Show success toast
+        toast({
+          title: 'Files attached',
+          description: `${newFiles.length} ${newFiles.length === 1 ? 'file' : 'files'} attached successfully: ${newFiles.map(f => f.name).join(', ')}`,
+        });
+      }
+      
+      // Clear the input value so the same file can be selected again
+      e.target.value = '';
+    }
+  };
+  
+  // Handle file removal
+  const handleRemoveFile = (index: number) => {
+    const newAttachments = [...attachments];
+    const removedFile = newAttachments[index];
+    newAttachments.splice(index, 1);
+    setAttachments(newAttachments);
+    
+    // Show toast for removed file
+    toast({
+      title: 'File removed',
+      description: `Removed ${removedFile.name}`,
+    });
+  };
+  
+  // Format file size
+  const formatFileSize = (bytes: number): string => {
+    if (bytes < 1024) return bytes + ' bytes';
+    else if (bytes < 1024 * 1024) return (bytes / 1024).toFixed(1) + ' KB';
+    else return (bytes / (1024 * 1024)).toFixed(1) + ' MB';
+  };
+  
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="sm:max-w-[800px] max-h-[90vh] overflow-hidden flex flex-col">
-        <DialogHeader>
-          <DialogTitle>Email Communication with {leadName}</DialogTitle>
+      <DialogContent className="sm:max-w-[700px] max-h-[90vh] overflow-y-auto p-0 bg-background border-2 shadow-2xl z-[9999]">
+        <DialogHeader className="px-6 pt-6 pb-0">
+          <DialogTitle>Email {leadName}</DialogTitle>
         </DialogHeader>
         
-        <Tabs value={activeTab} onValueChange={setActiveTab} className="flex-1 flex flex-col overflow-hidden">
-          <TabsList className="mb-4">
-            <TabsTrigger value="compose">Compose</TabsTrigger>
-            <TabsTrigger value="inbox">Inbox</TabsTrigger>
-            <TabsTrigger value="sent">Sent</TabsTrigger>
-          </TabsList>
-          
-          <TabsContent value="compose" className="flex-1 overflow-auto">
-            <Form {...form}>
-              <form onSubmit={form.handleSubmit(handleSubmit)} className="space-y-4">
-                <FormField
-                  control={form.control}
-                  name="to"
-                  render={({ field }) => (
-                    <FormItem>
-                      <FormLabel>To</FormLabel>
-                      <FormControl>
-                        <Input placeholder="recipient@example.com" {...field} />
-                      </FormControl>
-                      <FormMessage />
-                    </FormItem>
-                  )}
-                />
-                
-                <FormField
-                  control={form.control}
-                  name="subject"
-                  render={({ field }) => (
-                    <FormItem>
-                      <FormLabel>Subject</FormLabel>
-                      <FormControl>
-                        <Input placeholder="Email subject" {...field} />
-                      </FormControl>
-                      <FormMessage />
-                    </FormItem>
-                  )}
-                />
-                
-                <FormField
-                  control={form.control}
-                  name="content"
-                  render={({ field }) => (
-                    <FormItem>
-                      <FormLabel>Message</FormLabel>
-                      <FormControl>
-                        <RichTextEditor
-                          content={field.value}
-                          onChange={field.onChange}
-                          placeholder="Write your email message here..."
-                          className="min-h-[200px]"
-                        />
-                      </FormControl>
-                      <FormMessage />
-                    </FormItem>
-                  )}
-                />
-                
-                <div className="flex justify-between pt-4">
-                  <div className="space-x-2">
-                    <Button
-                      type="button"
-                      variant="outline"
-                      onClick={handleUseTemplate}
-                    >
-                      <FileText className="mr-2 h-4 w-4" />
-                      Use Template
-                    </Button>
-                    <Button
-                      type="button"
-                      variant="outline"
-                      onClick={handleGenerateWithAI}
-                    >
-                      <Sparkles className="mr-2 h-4 w-4" />
-                      Generate with AI
-                    </Button>
-                  </div>
-                  <Button type="submit" disabled={isSubmitting}>
-                    {isSubmitting ? (
-                      <>
-                        <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                        Sending...
-                      </>
-                    ) : (
-                      <>
-                        <Send className="mr-2 h-4 w-4" />
-                        Send
-                      </>
+        <div className="px-6 py-4">
+          <Tabs defaultValue="compose" value={activeTab} onValueChange={setActiveTab} className="w-full">
+            <TabsList className="mb-4">
+              <TabsTrigger value="compose">Compose</TabsTrigger>
+              <TabsTrigger value="inbox">Inbox</TabsTrigger>
+              <TabsTrigger value="sent">Sent</TabsTrigger>
+            </TabsList>
+            
+            <TabsContent value="compose" className="flex-1 overflow-auto">
+              <Form {...form}>
+                <form onSubmit={form.handleSubmit(handleSubmit)} className="space-y-4">
+                  <FormField
+                    control={form.control}
+                    name="to"
+                    render={({ field }) => (
+                      <FormItem>
+                        <FormLabel>To</FormLabel>
+                        <FormControl>
+                          <Input placeholder="recipient@example.com" {...field} />
+                        </FormControl>
+                        <FormMessage />
+                      </FormItem>
                     )}
-                  </Button>
-                </div>
-              </form>
-            </Form>
-          </TabsContent>
-          
-          <TabsContent value="inbox" className="flex-1 overflow-auto">
-            {isLoading ? (
-              <div className="flex items-center justify-center h-40">
-                <Loader2 className="h-8 w-8 animate-spin text-primary" />
-              </div>
-            ) : receivedEmails.length === 0 ? (
-              <div className="text-center py-10">
-                <p className="text-muted-foreground">No emails received from this lead yet.</p>
-              </div>
-            ) : (
-              <div className="space-y-4">
-                {receivedEmails.map((email) => (
-                  <div key={email.id} className="border rounded-lg p-4 hover:bg-accent transition-colors">
-                    <div className="flex justify-between items-start mb-2">
-                      <div>
-                        <h3 className="font-medium">{email.subject}</h3>
-                        <p className="text-sm text-muted-foreground">From: {email.from}</p>
-                      </div>
+                  />
+                  
+                  <FormField
+                    control={form.control}
+                    name="subject"
+                    render={({ field }) => (
+                      <FormItem>
+                        <FormLabel>Subject</FormLabel>
+                        <FormControl>
+                          <Input placeholder="Email subject" {...field} />
+                        </FormControl>
+                        <FormMessage />
+                      </FormItem>
+                    )}
+                  />
+                  
+                  <FormField
+                    control={form.control}
+                    name="content"
+                    render={({ field }) => (
+                      <FormItem>
+                        <FormLabel>Message</FormLabel>
+                        <FormControl>
+                          <RichTextEditor
+                            content={field.value}
+                            onChange={field.onChange}
+                            placeholder="Write your email message here..."
+                            className="min-h-[200px]"
+                          />
+                        </FormControl>
+                        <FormMessage />
+                      </FormItem>
+                    )}
+                  />
+                  
+                  {/* File Attachments */}
+                  <div className="space-y-2">
+                    <div className="flex items-center justify-between">
+                      <FormLabel>Attachments</FormLabel>
                       <div className="text-sm text-muted-foreground">
-                        {formatDate(email.received_at)}
+                        {attachments.length > 0 
+                          ? attachments.length === 1 
+                            ? `1 file attached: ${attachments[0].name}` 
+                            : `${attachments.length} files attached: ${attachments.map(file => file.name).join(', ')}`
+                          : 'No files attached'
+                        }
                       </div>
                     </div>
-                    <div className="prose prose-sm max-w-none mb-3" dangerouslySetInnerHTML={{ __html: email.content }} />
-                    <div className="flex justify-end">
-                      <Button variant="outline" size="sm" onClick={() => handleReply(email)}>
-                        Reply
+                    
+                    <div className="flex items-center space-x-2">
+                      <Input
+                        type="file"
+                        id="file-upload"
+                        className="hidden"
+                        onChange={handleFileSelect}
+                        multiple
+                      />
+                      <label
+                        htmlFor="file-upload"
+                        className="cursor-pointer inline-flex items-center justify-center rounded-md text-sm font-medium ring-offset-background transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:pointer-events-none disabled:opacity-50 border border-input bg-background hover:bg-accent hover:text-accent-foreground h-10 px-4 py-2"
+                      >
+                        <Paperclip className="mr-2 h-4 w-4" />
+                        Attach Files
+                      </label>
+                    </div>
+                    
+                    <div className="text-xs text-muted-foreground mt-1">
+                      <p>SendGrid supports most common file types (PDF, DOC, DOCX, XLS, XLSX, PPT, PPTX, JPG, PNG, GIF, etc.)</p>
+                      <p>Maximum file size: 10MB per file, 30MB total. Executable files (.exe, .bat, etc.) are not allowed.</p>
+                    </div>
+                    
+                    {attachments.length > 0 && (
+                      <div className="border rounded-md p-2 space-y-2 max-h-[150px] overflow-y-auto">
+                        {attachments.map((file, index) => (
+                          <div key={index} className="flex items-center justify-between bg-accent/50 rounded-md p-2">
+                            <div className="flex items-center space-x-2 overflow-hidden">
+                              <Paperclip className="h-4 w-4 flex-shrink-0" />
+                              <span className="text-sm truncate">{file.name}</span>
+                              <span className="text-xs text-muted-foreground">{formatFileSize(file.size)}</span>
+                            </div>
+                            <Button
+                              type="button"
+                              variant="ghost"
+                              size="sm"
+                              onClick={() => handleRemoveFile(index)}
+                              className="h-6 w-6 p-0"
+                            >
+                              <X className="h-4 w-4" />
+                              <span className="sr-only">Remove</span>
+                            </Button>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                  
+                  <div className="flex justify-between pt-4">
+                    <div className="space-x-2">
+                      <Button
+                        type="button"
+                        variant="outline"
+                        onClick={handleUseTemplate}
+                      >
+                        <FileText className="mr-2 h-4 w-4" />
+                        Use Template
+                      </Button>
+                      <Button
+                        type="button"
+                        variant="outline"
+                        onClick={handleGenerateWithAI}
+                      >
+                        <Sparkles className="mr-2 h-4 w-4" />
+                        Generate with AI
                       </Button>
                     </div>
+                    <Button type="submit" disabled={isSubmitting}>
+                      {isSubmitting ? (
+                        <>
+                          <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                          Sending...
+                        </>
+                      ) : (
+                        <>
+                          <Send className="mr-2 h-4 w-4" />
+                          Send
+                        </>
+                      )}
+                    </Button>
                   </div>
-                ))}
-              </div>
-            )}
-          </TabsContent>
-          
-          <TabsContent value="sent" className="flex-1 overflow-auto">
-            {isLoading ? (
-              <div className="flex items-center justify-center h-40">
-                <Loader2 className="h-8 w-8 animate-spin text-primary" />
-              </div>
-            ) : sentEmails.length === 0 ? (
-              <div className="text-center py-10">
-                <p className="text-muted-foreground">No emails sent to this lead yet.</p>
-              </div>
-            ) : (
-              <div className="space-y-4">
-                {sentEmails.map((email) => (
-                  <div key={email.id} className="border rounded-lg p-4 hover:bg-accent transition-colors">
-                    <div className="flex justify-between items-start mb-2">
-                      <div>
-                        <h3 className="font-medium">{email.subject}</h3>
-                        <p className="text-sm text-muted-foreground">To: {email.to}</p>
+                </form>
+              </Form>
+            </TabsContent>
+            
+            <TabsContent value="inbox" className="flex-1 overflow-auto">
+              {isLoading ? (
+                <div className="flex items-center justify-center h-40">
+                  <Loader2 className="h-8 w-8 animate-spin text-primary" />
+                </div>
+              ) : receivedEmails.length === 0 ? (
+                <div className="text-center py-10">
+                  <p className="text-muted-foreground">No emails received from this lead yet.</p>
+                </div>
+              ) : (
+                <div className="space-y-4">
+                  {receivedEmails.map((email) => (
+                    <div key={email.id} className="border rounded-lg p-4 hover:bg-accent transition-colors">
+                      <div className="flex justify-between items-start mb-2">
+                        <div>
+                          <h3 className="font-medium">{email.subject}</h3>
+                          <p className="text-sm text-muted-foreground">From: {email.from}</p>
+                        </div>
+                        <div className="text-sm text-muted-foreground">
+                          {formatDate(email.received_at)}
+                        </div>
                       </div>
-                      <div className="text-sm text-muted-foreground">
-                        {formatDate(email.received_at)}
+                      <div className="prose prose-sm max-w-none mb-3" dangerouslySetInnerHTML={{ __html: email.content }} />
+                      <div className="flex justify-end">
+                        <Button variant="outline" size="sm" onClick={() => handleReply(email)}>
+                          Reply
+                        </Button>
                       </div>
                     </div>
-                    <div className="prose prose-sm max-w-none" dangerouslySetInnerHTML={{ __html: email.content }} />
-                  </div>
-                ))}
-              </div>
-            )}
-          </TabsContent>
-        </Tabs>
+                  ))}
+                </div>
+              )}
+            </TabsContent>
+            
+            <TabsContent value="sent" className="flex-1 overflow-auto">
+              {isLoading ? (
+                <div className="flex items-center justify-center h-40">
+                  <Loader2 className="h-8 w-8 animate-spin text-primary" />
+                </div>
+              ) : sentEmails.length === 0 ? (
+                <div className="text-center py-10">
+                  <p className="text-muted-foreground">No emails sent to this lead yet.</p>
+                </div>
+              ) : (
+                <div className="space-y-4">
+                  {sentEmails.map((email) => (
+                    <div key={email.id} className="border rounded-lg p-4 hover:bg-accent transition-colors">
+                      <div className="flex justify-between items-start mb-2">
+                        <div>
+                          <h3 className="font-medium">{email.subject}</h3>
+                          <p className="text-sm text-muted-foreground">To: {email.to}</p>
+                        </div>
+                        <div className="text-sm text-muted-foreground">
+                          {formatDate(email.received_at)}
+                        </div>
+                      </div>
+                      <div className="prose prose-sm max-w-none" dangerouslySetInnerHTML={{ __html: email.content }} />
+                    </div>
+                  ))}
+                </div>
+              )}
+            </TabsContent>
+          </Tabs>
+        </div>
         
         <TemplateSelectionDialog 
           open={templateDialogOpen}

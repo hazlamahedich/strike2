@@ -8,7 +8,7 @@ import logging
 from typing import Any, Dict, List, Callable, Optional, TypeVar, Generic, Union
 from pydantic import BaseModel, Field
 from langchain.schema import HumanMessage, AIMessage, SystemMessage, BaseMessage
-from langchain.chat_models import ChatOpenAI
+from langchain_community.chat_models import ChatOpenAI
 from langchain.tools import BaseTool
 from langchain.callbacks.manager import CallbackManagerForToolRun
 from langchain.prompts import ChatPromptTemplate, MessagesPlaceholder

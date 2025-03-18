@@ -60,8 +60,11 @@ export const useLead = (leadId: number, includeDetails: boolean = false) => {
   return useQuery({
     queryKey: leadKeys.detail(leadId),
     queryFn: async () => {
+      console.log('⭐⭐⭐ useLead - Making API call for leadId:', leadId, 'as type:', typeof leadId);
+      
       // Skip API call if leadId is -1 (used for mock data)
       if (leadId === -1) {
+        console.log('⭐⭐⭐ useLead - Mock data mode, skipping API call');
         return null;
       }
       
@@ -72,7 +75,8 @@ export const useLead = (leadId: number, includeDetails: boolean = false) => {
       }
       
       try {
-        return await leadApi.getLead(leadId, includeDetails);
+        // Convert leadId to string to match the API function signature
+        return await leadApi.getLead(String(leadId));
       } catch (error: any) {
         console.error(`Error in useLead hook for leadId ${leadId}:`, error);
         throw error; // Re-throw to be caught by React Query
@@ -154,7 +158,16 @@ export const useExportLeads = () => {
 export const useLeadTimeline = (leadId: number, limit: number = 20, interactionTypes?: string[]) => {
   return useQuery({
     queryKey: leadKeys.timeline(leadId, interactionTypes),
-    queryFn: () => leadApi.getLeadTimeline(leadId, limit, interactionTypes),
+    queryFn: () => {
+      console.log('⭐⭐⭐ useLeadTimeline - Making API call for leadId:', leadId, 'as type:', typeof leadId);
+      if (leadId === -1) {
+        console.log('⭐⭐⭐ useLeadTimeline - Mock data mode, skipping API call');
+        return null;
+      }
+      
+      // Convert leadId to string to match the API function signature
+      return leadApi.getLeadTimeline(String(leadId));
+    },
     enabled: leadId !== -1, // Only run the query if leadId is not -1
   });
 };
@@ -301,7 +314,17 @@ export const useBulkAddLeadsToCampaign = () => {
 export const useLeadInsights = (leadId: number) => {
   return useQuery({
     queryKey: leadKeys.insights(leadId),
-    queryFn: () => leadApi.getLeadInsights(leadId),
+    queryFn: () => {
+      console.log('⭐⭐⭐ useLeadInsights - Making API call for leadId:', leadId, 'as type:', typeof leadId);
+      if (leadId === -1) {
+        console.log('⭐⭐⭐ useLeadInsights - Mock data mode, skipping API call');
+        return null;
+      }
+      
+      // Convert leadId to string to match the API function signature
+      const result = leadApi.getLeadInsights(String(leadId));
+      return result;
+    },
     enabled: leadId !== -1, // Only run the query if leadId is not -1
   });
 };
