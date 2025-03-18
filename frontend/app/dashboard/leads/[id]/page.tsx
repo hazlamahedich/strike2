@@ -51,7 +51,6 @@ import { TaskActionsMenu } from '@/components/leads/TaskActionsMenu';
 import { formatDistanceToNow } from 'date-fns';
 import dynamic from 'next/dynamic';
 import { createMeeting } from '@/lib/api/meetings';
-import { MeetingStatus, MeetingType } from '@/lib/types/meeting';
 
 // Import API hooks
 import { 
@@ -83,6 +82,17 @@ const InsightsEditor = dynamic(() => import('./InsightsEditor'), { ssr: false })
 
 // Import the useMockData hook
 import { useMockData } from '@/hooks/useMockData';
+
+// Add import for CompanyAnalysis
+import CompanyAnalysis from '@/components/leads/CompanyAnalysis';
+
+// Add import for EmailDialogProvider and useEmailDialog
+import { EmailDialogProvider, useEmailDialog } from '@/contexts/EmailDialogContext';
+import { LeadPhoneDialogProvider, useLeadPhoneDialog } from '@/contexts/LeadPhoneDialogContext';
+import { MeetingDialogProvider, useMeetingDialog, MeetingDialogType } from '@/contexts/MeetingDialogContext';
+import { Meeting, MeetingStatus, MeetingType } from '@/lib/types/meeting';
+import { ContextualRescheduleDialog } from '@/components/meetings/ContextualRescheduleDialog';
+import { MeetingDialogContainer } from '@/components/ui/meeting-dialog';
 
 // Configuration flag to toggle between mock and real data
 // Set this to false to use the API's decision on whether to use mock data
@@ -185,13 +195,6 @@ const mockInsightsData = {
   conversion_probability: 0.75
 };
 
-// Add import for CompanyAnalysis
-import CompanyAnalysis from '@/components/leads/CompanyAnalysis';
-
-// Add import for EmailDialogProvider and useEmailDialog
-import { EmailDialogProvider, useEmailDialog } from '@/contexts/EmailDialogContext';
-import { LeadPhoneDialogProvider, useLeadPhoneDialog } from '@/contexts/LeadPhoneDialogContext';
-
 export default function LeadDetailPage() {
   const { isEnabled: USE_MOCK_DATA } = useMockData();
   
@@ -199,7 +202,10 @@ export default function LeadDetailPage() {
   return (
     <EmailDialogProvider>
       <LeadPhoneDialogProvider>
-        <LeadDetailContent />
+        <MeetingDialogProvider>
+          <LeadDetailContent />
+          <MeetingDialogContainer />
+        </MeetingDialogProvider>
       </LeadPhoneDialogProvider>
     </EmailDialogProvider>
   );
@@ -220,6 +226,7 @@ function LeadDetailContent() {
   // Get the context hooks
   const { openEmailDialog } = useEmailDialog();
   const { openPhoneDialog } = useLeadPhoneDialog();
+  const { openMeetingDialog, closeMeetingDialog } = useMeetingDialog();
   
   // State for lead data
   const [lead, setLead] = useState<any>(null);
@@ -238,7 +245,6 @@ function LeadDetailContent() {
   const [statusToChange, setStatusToChange] = useState<LeadStatus | null>(null);
   const [showNoteDialog, setShowNoteDialog] = useState(false);
   const [showTaskDialog, setShowTaskDialog] = useState(false);
-  const [showMeetingDialog, setShowMeetingDialog] = useState(false);
   const [showEditDialog, setShowEditDialog] = useState(false);
   const [showCampaignDialog, setShowCampaignDialog] = useState(false);
   const [showScheduleForm, setShowScheduleForm] = useState(false); // Add this state for scheduling
@@ -1190,6 +1196,70 @@ function LeadDetailContent() {
     }
   };
   
+  // Handle schedule meeting success (for contextual dialog)
+  const handleScheduleSuccess = (scheduledMeeting: Meeting) => {
+    try {
+      // Call the existing handleScheduleMeeting function
+      handleScheduleMeeting(scheduledMeeting);
+    } catch (error: any) {
+      console.error('Failed to schedule meeting:', error);
+      toast.error('Failed to schedule meeting: ' + (error.message || 'Unknown error'));
+    }
+  };
+  
+  // Handle the Schedule Meeting button click
+  const handleScheduleMeetingClick = () => {
+    console.log("🎯 LeadDetail - handleScheduleMeetingClick called for lead:", lead?.first_name);
+    
+    if (!lead) {
+      console.error("Cannot schedule meeting - lead data is missing");
+      toast.error("Failed to schedule meeting", { description: "Lead data is missing" });
+      return;
+    }
+    
+    // Generate a unique dialog ID
+    const dialogId = `schedule-meeting-${lead.id}-${Date.now()}`;
+    console.log("📝 LeadDetail - Generated dialogId:", dialogId);
+    
+    // Create a temp meeting object with the lead details
+    const baseMeeting = {
+      id: `temp-${Date.now()}`,
+      title: `Meeting with ${lead.first_name} ${lead.last_name}`,
+      start_time: new Date().toISOString(),
+      end_time: new Date(Date.now() + 3600000).toISOString(), // 1 hour later
+      status: MeetingStatus.SCHEDULED,
+      meeting_type: MeetingType.INITIAL_CALL,
+      lead_id: lead.id,
+      lead: lead,
+      created_at: new Date().toISOString(),
+      updated_at: new Date().toISOString(),
+    };
+    console.log("📅 LeadDetail - Created baseMeeting:", baseMeeting);
+
+    // Create the dialog content
+    const dialogContent = (
+      <ContextualRescheduleDialog
+        dialogId={dialogId}
+        meeting={baseMeeting}
+        handleClose={() => {
+          console.log("❌ LeadDetail - Dialog close handler called");
+          closeMeetingDialog(dialogId);
+        }}
+        handleRescheduleSuccess={(scheduledMeeting) => {
+          console.log("✅ LeadDetail - Meeting scheduled successfully");
+          handleScheduleSuccess(scheduledMeeting);
+          closeMeetingDialog(dialogId);
+          toast.success('Meeting scheduled successfully');
+        }}
+      />
+    );
+    console.log("🎨 LeadDetail - Created dialog content");
+    
+    // Open the dialog
+    console.log("🚀 LeadDetail - Opening meeting dialog with type:", MeetingDialogType.RESCHEDULE);
+    openMeetingDialog(dialogId, MeetingDialogType.RESCHEDULE, dialogContent, { lead });
+  };
+  
   // Render the lead detail page with modern layout
   return (
     <div className="flex h-full flex-col">
@@ -1427,7 +1497,7 @@ function LeadDetailContent() {
               <Phone className="mr-2 h-4 w-4" />
               Call
             </Button>
-            <Button onClick={() => setShowMeetingDialog(true)}>
+            <Button onClick={handleScheduleMeetingClick}>
               <Calendar className="mr-2 h-4 w-4" />
               Schedule Meeting
             </Button>
@@ -2094,19 +2164,6 @@ function LeadDetailContent() {
               }}
               task={isEditingTask ? currentTask : undefined}
               isEditing={isEditingTask}
-            />
-          )}
-          
-          {showMeetingDialog && lead && (
-            <MeetingDialogNew
-              open={showMeetingDialog}
-              onOpenChange={setShowMeetingDialog}
-              lead={lead}
-              onSuccess={(meetingData) => {
-                if (meetingData) {
-                  handleScheduleMeeting(meetingData);
-                }
-              }}
             />
           )}
           
