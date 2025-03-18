@@ -6,7 +6,8 @@ import { QueryClientProvider } from "@/components/shared/query-client-provider";
 import { BreadcrumbProvider } from "@/components/shared/breadcrumb-provider";
 import { ChatbotProvider } from "@/components/shared/chatbot-provider";
 import { DialogProvider } from "@/lib/contexts/DialogContext";
-import { MeetingDialogProvider } from "@/lib/contexts/MeetingDialogContext";
+import { MeetingDialogProvider } from "@/contexts/MeetingDialogContext";
+import { TaskDialogProvider, TaskDialogContainer } from "@/contexts/TaskDialogContext";
 import { Providers } from "./providers";
 import { Analytics } from "@/components/shared/analytics";
 import { MeetingDialogContainer } from "@/components/ui/meeting-dialog";
@@ -59,17 +60,20 @@ export default function RootLayout({
             <QueryClientProvider>
               <ChatbotProvider>
                 <DialogProvider>
-                  <MeetingDialogProvider>
-                    <div className="flex flex-col min-h-screen bg-background">
-                      <BreadcrumbProvider />
-                      <main className="flex-1">
-                        {children}
-                      </main>
-                      <Analytics />
-                      <MeetingDialogContainer />
-                      <MeetingDialogTaskbar />
-                    </div>
-                  </MeetingDialogProvider>
+                  <TaskDialogProvider>
+                    <MeetingDialogProvider>
+                      <div className="flex flex-col min-h-screen bg-background">
+                        <BreadcrumbProvider />
+                        <main className="flex-1">
+                          {children}
+                        </main>
+                        <Analytics />
+                        <MeetingDialogContainer />
+                        <MeetingDialogTaskbar />
+                        <TaskDialogContainer />
+                      </div>
+                    </MeetingDialogProvider>
+                  </TaskDialogProvider>
                 </DialogProvider>
               </ChatbotProvider>
             </QueryClientProvider>

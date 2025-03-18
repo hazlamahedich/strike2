@@ -251,4 +251,23 @@ export const getLeadTimeline = async (leadId: string) => {
 // Get lead campaigns
 export const getLeadCampaigns = async (leadId: string) => {
   return get<any>(`${API_ENDPOINT}/${leadId}/campaigns`);
+};
+
+/**
+ * Create a note for a lead
+ * @param leadId The ID of the lead
+ * @param noteData The note data including content and optional attachments
+ * @returns Promise with the created note or error
+ */
+export const createLeadNote = async (leadId: number, noteData: { content: string; attachments?: any[] }) => {
+  return post<any>(`${API_ENDPOINT}/${leadId}/notes`, noteData);
+};
+
+/**
+ * Get notes for a lead
+ * @param leadId The ID of the lead
+ * @returns Promise with the lead notes or error
+ */
+export const getLeadNotes = async (leadId: number) => {
+  return get<any>(`${API_ENDPOINT}/${leadId}/notes`);
 }; 

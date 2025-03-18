@@ -5,8 +5,7 @@ import { X, Minus, Maximize2, Minimize2 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { useMeetingDialog, MeetingDialogType, MeetingDialogData } from '@/contexts/MeetingDialogContext';
 
-// Note: MeetingDialogType is imported from @/contexts/MeetingDialogContext 
-// It includes: DETAILS, SCHEDULE, EDIT, RESCHEDULE, CANCEL, SUMMARY, COMPREHENSIVE_SUMMARY, PHONE, EMAIL, AGENDA
+// Note: MeetingDialogType is imported from @/contexts/MeetingDialogContext
 
 // Props for the MeetingDialog component
 interface MeetingDialogRootProps {
@@ -1020,42 +1019,69 @@ export const MeetingDialogContainer = () => {
   
   // Get all dialogs to render
   const dialogsToRender = getAllDialogs();
-  console.log('🔍🔍 CONTAINER: MeetingDialogContainer rendering', {
+  console.log('🔥🔥🔥 CONTAINER: MeetingDialogContainer rendering', {
     dialogsCount: dialogsToRender.length,
-    dialogIds: dialogsToRender.map(d => d.id)
+    dialogIds: dialogsToRender.map(d => d.id),
+    contextSource: '(from meeting-dialog.tsx)',
+    dialogsData: dialogsToRender
   });
   
   // Add effect to log when container is mounted/updated
   useEffect(() => {
-    console.log('🔍🔍 CONTAINER: MeetingDialogContainer mounted/updated', {
+    console.log('🔥🔥🔥 CONTAINER: MeetingDialogContainer mounted/updated', {
       dialogsCount: dialogsToRender.length,
-      dialogIds: dialogsToRender.map(d => d.id)
+      dialogIds: dialogsToRender.map(d => d.id),
+      contextSource: '(from meeting-dialog.tsx)'
     });
     
     return () => {
-      console.log('🔍🔍 CONTAINER: MeetingDialogContainer unmounted');
+      console.log('🔥🔥🔥 CONTAINER: MeetingDialogContainer unmounted');
     };
   }, [dialogsToRender]);
   
   // If no dialogs, render nothing
   if (dialogsToRender.length === 0) {
-    console.log('🔍🔍 CONTAINER: No dialogs to render');
+    console.log('🔥🔥🔥 CONTAINER: No dialogs to render (from meeting-dialog.tsx)');
     return null;
   }
   
   return (
     <>
       {dialogsToRender.map((dialog: MeetingDialogData) => {
-        console.log('🔍🔍 CONTAINER: Rendering dialog:', dialog.id);
+        console.log('🔥🔥🔥 CONTAINER: Rendering dialog:', dialog.id, 'with type:', dialog.type, 'data:', dialog);
+        
+        // Log if content exists or not before rendering
+        if (dialog.content) {
+          console.log('🔥🔥🔥 CONTAINER: Dialog content exists for', dialog.id);
+        } else {
+          console.log('🔥🔥🔥 CONTAINER: Dialog content is MISSING for', dialog.id);
+        }
+        
         return (
           <React.Fragment key={dialog.id}>
-            {dialog.content ? (
-              dialog.content
-            ) : (
-              <div className="fixed top-10 left-10 p-4 bg-destructive text-white z-50 rounded">
-                Error: Dialog content is empty for dialog {dialog.id}
-              </div>
-            )}
+            {/* Use error boundary pattern to catch rendering errors */}
+            <div data-dialog-wrapper={dialog.id}>
+              {(() => {
+                try {
+                  if (dialog.content) {
+                    return dialog.content;
+                  } else {
+                    return (
+                      <div className="fixed top-10 left-10 p-4 bg-destructive text-white z-50 rounded">
+                        Error: Dialog content is empty for dialog {dialog.id}
+                      </div>
+                    );
+                  }
+                } catch (error) {
+                  console.error('🔥🔥🔥 CONTAINER: Error rendering dialog content:', error);
+                  return (
+                    <div className="fixed top-10 left-10 p-4 bg-destructive text-white z-50 rounded">
+                      Error rendering dialog {dialog.id}: {String(error)}
+                    </div>
+                  );
+                }
+              })()}
+            </div>
           </React.Fragment>
         );
       })}

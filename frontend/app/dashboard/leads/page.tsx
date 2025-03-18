@@ -112,12 +112,24 @@ import { USE_MOCK_DATA } from '@/lib/config';
 import { DashboardLead, apiToDashboardLead, dashboardToApiLead } from '@/lib/utils/lead-mapper';
 import { openMeetingDialog } from '@/lib/utils/dialogUtils';
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
-import { TaskDialog } from '@/components/leads/TaskDialog';
 import { MeetingDialogNew } from '@/components/meetings/MeetingDialogNew';
 import { Lead, LeadSource as ApiLeadSource, LeadStatus as ApiLeadStatus } from '@/lib/types/lead';
 import { EmailDialog } from '@/components/communications/EmailDialog';
 import { LeadPhoneDialogProvider, useLeadPhoneDialog } from '@/contexts/LeadPhoneDialogContext';
 import { EmailDialogProvider, useEmailDialog } from '@/contexts/EmailDialogContext';
+import { ContextualRescheduleDialog } from '@/components/meetings/ContextualRescheduleDialog';
+import { useMeetingDialog, MeetingDialogType } from '@/contexts/MeetingDialogContext';
+import { Meeting, MeetingStatus, MeetingType } from '@/lib/types/meeting';
+import { toast as sonnerToast } from 'sonner';
+import LeadTable from '@/components/leads/LeadTable';  // Fix import statement
+import { EnhancedMeetingForm } from '@/components/meetings/EnhancedMeetingForm';
+import { createMeeting } from '@/lib/api/meetings';
+import { LeadNotesProvider } from '@/lib/contexts/LeadNotesContext';
+import { LeadNoteDialogManager } from '@/components/leads/LeadNoteDialogManager';
+import { useLeadNotes } from '@/lib/contexts/LeadNotesContext';
+import { TaskButton } from '@/components/tasks/TaskButton';
+import { useTaskDialog, TaskDialogType, TaskDialogProvider } from '@/contexts/TaskDialogContext';
+import { ContextualTaskDialog } from '@/components/tasks/ContextualTaskDialog';
 
 // Define Campaign type
 type Campaign = {
@@ -157,11 +169,16 @@ enum LeadSource {
 
 export default function LeadsPage() {
   return (
-    <EmailDialogProvider>
-      <LeadPhoneDialogProvider>
-        <LeadsContent />
-      </LeadPhoneDialogProvider>
-    </EmailDialogProvider>
+    <TaskDialogProvider>
+      <LeadNotesProvider>
+        <EmailDialogProvider>
+          <LeadPhoneDialogProvider>
+            <LeadsContent />
+            <LeadNoteDialogManager />
+          </LeadPhoneDialogProvider>
+        </EmailDialogProvider>
+      </LeadNotesProvider>
+    </TaskDialogProvider>
   );
 }
 
@@ -172,6 +189,9 @@ function LeadsContent() {
   const { toast } = useToast();
   const { openPhoneDialog } = useLeadPhoneDialog();
   const { openEmailDialog } = useEmailDialog();
+  const { openMeetingDialog, closeMeetingDialog } = useMeetingDialog();
+  const { openAddNoteDialog } = useLeadNotes();
+  const { openTaskDialog, closeTaskDialog } = useTaskDialog();
   
   // State for leads and loading
   const [leads, setLeads] = useState<DashboardLead[]>([]);
@@ -286,7 +306,6 @@ function LeadsContent() {
 
   // Add state variables for dialogs
   const [showEditLeadDialog, setShowEditLeadDialog] = useState(false);
-  const [showTaskDialog, setShowTaskDialog] = useState(false);
   const [showMeetingDialog, setShowMeetingDialog] = useState(false);
   const [selectedLeadId, setSelectedLeadId] = useState<string | null>(null);
 
@@ -1005,29 +1024,52 @@ function LeadsContent() {
   };
 
   const handleAddTask = (leadId: string) => {
-    // Set the selected lead and open the task dialog
+    // Get the lead
     const lead = leads.find(l => l.id === leadId);
     if (lead) {
-      setSelectedLeadId(leadId);
-      setCurrentLead(lead);
-      setShowTaskDialog(true);
-    } else {
-      console.error(`Lead with ID ${leadId} not found`);
-      toast({
-        title: "Error",
-        description: "Lead not found. Please refresh the page and try again.",
-        variant: "destructive",
-      });
-    }
-  };
-
-  const handleScheduleMeeting = (leadId: string) => {
-    // Set the selected lead and open the meeting dialog
-    const lead = leads.find(l => l.id === leadId);
-    if (lead) {
-      setSelectedLeadId(leadId);
-      setCurrentLead(lead);
-      setShowMeetingDialog(true);
+      // Create a unique dialog ID
+      const dialogId = `add-task-${leadId}-${Date.now()}`;
+      
+      // Open the task dialog using the TaskDialogContext
+      openTaskDialog(
+        dialogId,
+        TaskDialogType.ADD,
+        <ContextualTaskDialog
+          dialogId={dialogId}
+          leadId={parseInt(leadId)}
+          leadName={lead.name}
+          handleClose={() => closeTaskDialog(dialogId)}
+          handleTaskSuccess={(taskData) => {
+            console.log("✅ Task created successfully:", taskData);
+            toast({
+              title: "Task Created",
+              description: `Task "${taskData.title}" was created successfully`,
+            });
+            
+            // Update the lead's timeline with the new task
+            const updatedLeads = [...leads];
+            const leadIndex = updatedLeads.findIndex(l => l.id === leadId);
+            if (leadIndex >= 0) {
+              if (!updatedLeads[leadIndex].timeline) {
+                updatedLeads[leadIndex].timeline = [];
+              }
+              
+              updatedLeads[leadIndex].timeline.unshift({
+                id: taskData.id || `task-${Date.now()}`,
+                type: 'task',
+                content: taskData.title,
+                created_at: new Date().toISOString(),
+                user: {
+                  id: 'current-user',
+                  name: 'Current User'
+                }
+              });
+              
+              setLeads(updatedLeads);
+            }
+          }}
+        />
+      );
     } else {
       console.error(`Lead with ID ${leadId} not found`);
       toast({
@@ -1509,17 +1551,125 @@ function LeadsContent() {
     });
   };
 
+  // Create a meeting object from the dashboard lead
+  const createBaseMeetingFromLead = (lead: DashboardLead): Meeting => {
+    // Convert DashboardLead to Lead type
+    const apiLead: Lead = {
+      id: lead.id,
+      first_name: lead.name.split(' ')[0],
+      last_name: lead.name.split(' ').slice(1).join(' '),
+      email: lead.email,
+      phone: lead.phone,
+      status: lead.status as ApiLeadStatus,
+      source: lead.source as ApiLeadSource,
+      created_at: lead.created_at,
+      updated_at: lead.created_at, // Use created_at since DashboardLead doesn't have updated_at
+      notes: lead.notes || '',
+      company: lead.company_name || '',
+      job_title: lead.position || '',
+    };
+
+    // Create base meeting object
+    return {
+      id: `temp-${Date.now()}`,
+      title: `Meeting with ${lead.name}`,
+      start_time: new Date().toISOString(),
+      end_time: new Date(Date.now() + 3600000).toISOString(),
+      status: MeetingStatus.SCHEDULED,
+      meeting_type: MeetingType.INITIAL_CALL,
+      lead_id: lead.id,
+      lead: apiLead,
+      created_at: new Date().toISOString(),
+      updated_at: new Date().toISOString(),
+    };
+  };
+  
+  const handleScheduleMeeting = (e: React.MouseEvent, lead: DashboardLead) => {
+    e.stopPropagation();
+    console.log("🎯 LeadsPage - handleScheduleMeeting called for lead:", lead);
+
+    // Generate a unique dialog ID
+    const dialogId = `schedule-meeting-${lead.id}-${Date.now()}`;
+    console.log("📝 LeadsPage - Generated dialogId:", dialogId);
+
+    // Create a base meeting object
+    const baseMeeting = createBaseMeetingFromLead(lead);
+    console.log("📅 LeadsPage - Created baseMeeting:", baseMeeting);
+
+    // Create the meeting dialog content
+    const dialogContent = (
+      <ContextualRescheduleDialog
+        dialogId={dialogId}
+        meeting={baseMeeting}
+        handleClose={() => {
+          console.log("❌ LeadsPage - Dialog close handler called");
+          closeMeetingDialog(dialogId);
+        }}
+        handleRescheduleSuccess={(updatedMeeting) => {
+          console.log("✅ LeadsPage - Meeting scheduled successfully:", updatedMeeting);
+          sonnerToast.success('Meeting Scheduled', {
+            description: 'The meeting has been scheduled successfully.'
+          });
+          closeMeetingDialog(dialogId);
+        }}
+      />
+    );
+    console.log("🎨 LeadsPage - Created dialog content");
+
+    // Open the meeting dialog
+    console.log("🚀 LeadsPage - Opening meeting dialog with type:", MeetingDialogType.RESCHEDULE);
+    openMeetingDialog(dialogId, MeetingDialogType.RESCHEDULE, dialogContent, {
+      lead: baseMeeting.lead
+    });
+  };
+
+  // Function to handle adding a note
+  const handleAddNote = (e: React.MouseEvent, lead: DashboardLead) => {
+    e.stopPropagation();
+    console.log("📝 LeadsPage - handleAddNote called for lead:", lead);
+    
+    // Convert the dashboard lead to the Lead type expected by the notes context
+    const leadForNote: Lead = {
+      id: lead.id.toString(),
+      first_name: lead.name.split(' ')[0],
+      last_name: lead.name.split(' ').slice(1).join(' '),
+      email: lead.email || '',
+      phone: lead.phone || '',
+      company: lead.company_name || '',
+      status: lead.status as any,
+      source: lead.source as any,
+      created_at: lead.created_at || new Date().toISOString(),
+      updated_at: lead.created_at || new Date().toISOString(),
+    };
+    
+    // Open the note dialog
+    openAddNoteDialog(leadForNote);
+    
+    // Notify user
+    sonnerToast.info('Add note', {
+      description: `Adding note for ${lead.name}`,
+      duration: 2000,
+    });
+  };
+
   return (
     <div className="flex-1 space-y-4 p-4 md:p-8 pt-6">
       <div className="flex items-center justify-between">
         <h2 className="text-3xl font-bold tracking-tight">Leads</h2>
         <Dialog open={showAddLeadDialog} onOpenChange={setShowAddLeadDialog}>
           <DialogTrigger asChild>
-            <Button className="flex items-center gap-2">
+            <Button 
+              onClick={() => setShowAddLeadDialog(true)}
+              className="flex items-center gap-2"
+            >
               <UserPlus className="h-4 w-4" />
               <span>Add Lead</span>
             </Button>
           </DialogTrigger>
+          <TaskButton 
+            variant="secondary" 
+            className="flex items-center gap-2 ml-2"
+          />
           <DialogContent className="sm:max-w-[600px]">
             <DialogHeader>
               <DialogTitle>Add New Lead</DialogTitle>
@@ -2084,28 +2234,24 @@ function LeadsContent() {
                   </TableRow>
                 ) : (
                   filteredLeads.map((lead) => (
-                    <TableRow key={lead.id}>
-                      <TableCell className="sticky left-0 z-10 bg-background">
-                        <div className="font-medium truncate max-w-[150px]">
-                          {lead.name}
-                        </div>
+                    <TableRow key={lead.id} onClick={() => handleViewDetails(lead.id)} className="cursor-pointer hover:bg-muted/50">
+                      <TableCell className="font-medium">
+                        {lead.name}
                       </TableCell>
                       <TableCell>
-                        <div className="flex items-center">
-                          <Badge variant="outline" className={`
-                            ${lead.status === 'new' ? 'bg-blue-50 text-blue-700 border-blue-200' : ''}
-                            ${lead.status === 'contacted' ? 'bg-purple-50 text-purple-700 border-purple-200' : ''}
-                            ${lead.status === 'qualified' ? 'bg-green-50 text-green-700 border-green-200' : ''}
-                            ${lead.status === 'proposal' ? 'bg-yellow-50 text-yellow-700 border-yellow-200' : ''}
-                            ${lead.status === 'negotiation' ? 'bg-orange-50 text-orange-700 border-orange-200' : ''}
-                            ${lead.status === 'closed_won' ? 'bg-emerald-50 text-emerald-700 border-emerald-200' : ''}
-                            ${lead.status === 'closed_lost' ? 'bg-red-50 text-red-700 border-red-200' : ''}
-                          `}>
-                            {lead.status === 'closed_won' ? 'Won' : 
-                             lead.status === 'closed_lost' ? 'Lost' : 
-                             lead.status.charAt(0).toUpperCase() + lead.status.slice(1)}
-                          </Badge>
-                        </div>
+                        <Badge variant="outline" className={`
+                          ${lead.status === 'new' ? 'bg-blue-50 text-blue-700 border-blue-200' : ''}
+                          ${lead.status === 'contacted' ? 'bg-purple-50 text-purple-700 border-purple-200' : ''}
+                          ${lead.status === 'qualified' ? 'bg-green-50 text-green-700 border-green-200' : ''}
+                          ${lead.status === 'proposal' ? 'bg-yellow-50 text-yellow-700 border-yellow-200' : ''}
+                          ${lead.status === 'negotiation' ? 'bg-orange-50 text-orange-700 border-orange-200' : ''}
+                          ${lead.status === 'closed_won' ? 'bg-emerald-50 text-emerald-700 border-emerald-200' : ''}
+                          ${lead.status === 'closed_lost' ? 'bg-red-50 text-red-700 border-red-200' : ''}
+                        `}>
+                          {lead.status === 'closed_won' ? 'Won' : 
+                           lead.status === 'closed_lost' ? 'Lost' : 
+                           lead.status.charAt(0).toUpperCase() + lead.status.slice(1)}
+                        </Badge>
                       </TableCell>
                       <TableCell className="hidden sm:table-cell">{lead.email}</TableCell>
                       <TableCell className="hidden sm:table-cell">{lead.phone}</TableCell>
@@ -2126,8 +2272,6 @@ function LeadsContent() {
                             <Progress 
                               value={lead.conversion_probability * 100} 
                               className="h-2 w-16 mr-2"
-                              // Use a custom class name for the indicator
-                              // The Progress component doesn't accept indicatorClassName directly
                             />
                             <span className="text-sm">{Math.round(lead.conversion_probability * 100)}%</span>
                           </div>
@@ -2161,7 +2305,10 @@ function LeadsContent() {
                           <Button 
                             variant="ghost" 
                             size="icon" 
-                            onClick={() => handleEmailClick(lead.email, lead.name)}
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              handleEmailClick(lead.email, lead.name);
+                            }}
                             title="Send Email"
                           >
                             <Mail className="h-4 w-4" />
@@ -2169,34 +2316,79 @@ function LeadsContent() {
                           <Button 
                             variant="ghost" 
                             size="icon" 
-                            onClick={() => handlePhoneClick(lead.phone)}
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              handlePhoneClick(lead.phone);
+                            }}
                             title="Call"
                           >
                             <Phone className="h-4 w-4" />
                           </Button>
+                          <Button
+                            variant="ghost"
+                            size="icon"
+                            onClick={(e) => handleScheduleMeeting(e, lead)}
+                            title="Schedule Meeting"
+                          >
+                            <Calendar className="h-4 w-4" />
+                          </Button>
+                          <Button
+                            variant="ghost"
+                            size="icon"
+                            onClick={(e) => handleAddNote(e, lead)}
+                            title="Add Note"
+                          >
+                            <FileText className="h-4 w-4" />
+                          </Button>
+                          <Button
+                            variant="ghost"
+                            size="icon"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              handleAddTask(lead.id);
+                            }}
+                            title="Add Task"
+                          >
+                            <CheckSquare className="h-4 w-4" />
+                          </Button>
                           <DropdownMenu>
                             <DropdownMenuTrigger asChild>
-                              <Button variant="ghost" size="icon">
+                              <Button variant="ghost" size="icon" onClick={(e) => e.stopPropagation()}>
                                 <MoreHorizontal className="h-4 w-4" />
                               </Button>
                             </DropdownMenuTrigger>
                             <DropdownMenuContent align="end">
                               <DropdownMenuLabel>Actions</DropdownMenuLabel>
-                              <DropdownMenuItem onClick={() => handleViewDetails(lead.id)}>
+                              <DropdownMenuItem onClick={(e) => {
+                                e.stopPropagation();
+                                handleViewDetails(lead.id);
+                              }}>
                                 View Details
                               </DropdownMenuItem>
-                              <DropdownMenuItem onClick={() => handleEditLead(lead.id)}>
+                              <DropdownMenuItem onClick={(e) => {
+                                e.stopPropagation();
+                                handleEditLead(lead.id);
+                              }}>
                                 Edit Lead
                               </DropdownMenuItem>
-                              <DropdownMenuItem onClick={() => handleAddTask(lead.id)}>
+                              <DropdownMenuItem onClick={(e) => {
+                                e.stopPropagation();
+                                handleAddTask(lead.id);
+                              }}>
                                 Add Task
                               </DropdownMenuItem>
-                              <DropdownMenuItem onClick={() => handleScheduleMeeting(lead.id)}>
-                                Schedule Meeting
+                              <DropdownMenuItem onClick={(e) => {
+                                e.stopPropagation();
+                                handleAddNote(e, lead);
+                              }}>
+                                Add Note
                               </DropdownMenuItem>
                               <DropdownMenuSeparator />
                               <DropdownMenuItem 
-                                onClick={() => handleDeleteLead(lead.id)}
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  handleDeleteLead(lead.id);
+                                }}
                                 className="text-red-600"
                               >
                                 Delete Lead
@@ -2538,31 +2730,6 @@ function LeadsContent() {
         </Dialog>
       )}
       
-      {/* Task Dialog */}
-      {selectedLeadId && currentLead && (
-        <TaskDialog
-          open={showTaskDialog}
-          onOpenChange={setShowTaskDialog}
-          leadId={parseInt(selectedLeadId)}
-          leadName={currentLead.name || ''}
-          isMock={USE_MOCK_DATA}
-          onSuccess={(taskData) => {
-            if (isEditingTask && currentTask && taskData) {
-              // Handle task update
-              // handleTaskUpdate({
-              //   ...currentTask,
-              //   ...taskData
-              // });
-            } else if (taskData) {
-              // Handle task creation
-              handleTaskCreate(taskData);
-            }
-          }}
-          task={isEditingTask ? currentTask : undefined}
-          isEditing={isEditingTask}
-        />
-      )}
-      
       {/* Meeting Dialog */}
       {selectedLeadId && currentLead && (
         <MeetingDialogNew
@@ -2585,9 +2752,8 @@ function LeadsContent() {
           onSuccess={(meetingData) => {
             if (meetingData) {
               // Handle meeting creation
-              toast({
-                title: "Meeting Scheduled",
-                description: "The meeting has been scheduled successfully.",
+              sonnerToast.success('Meeting Scheduled', {
+                description: "The meeting has been scheduled successfully."
               });
             }
           }}
@@ -2602,9 +2768,8 @@ function LeadsContent() {
           leadEmail={selectedLead.email}
           leadName={selectedLead.name}
           onSuccess={(emailData) => {
-            toast({
-              title: "Email Sent",
-              description: `Email has been sent to ${selectedLead.name}.`,
+            sonnerToast.success('Email Sent', {
+              description: `Email has been sent to ${selectedLead.name}.`
             });
           }}
         />

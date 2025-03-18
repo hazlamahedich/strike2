@@ -15,6 +15,9 @@ import {
 } from '@/components/ui/dropdown-menu';
 import { signOut } from 'next-auth/react';
 import { motion } from 'framer-motion';
+import { TaskButton } from '@/components/tasks/TaskButton';
+import { CheckSquare } from 'lucide-react';
+import { useToast } from '@/components/ui/use-toast';
 
 interface CRMHeaderProps {
   onMenuClick: () => void;
@@ -34,6 +37,7 @@ export function CRMHeader({
   user 
 }: CRMHeaderProps) {
   const [showKpis, setShowKpis] = useState(true);
+  const { toast } = useToast();
   
   // Get user initials for avatar fallback
   const getInitials = (name?: string | null) => {
@@ -127,6 +131,18 @@ export function CRMHeader({
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
               </svg>
             </Button>
+            
+            <TaskButton 
+              variant="ghost" 
+              size="icon" 
+              className="text-muted-foreground hover:text-foreground h-9 w-9"
+              onTaskAdded={(task) => {
+                toast({
+                  title: "Task Added",
+                  description: `Task "${task.title}" was created successfully`,
+                });
+              }}
+            />
             
             <Button 
               variant="ghost" 
