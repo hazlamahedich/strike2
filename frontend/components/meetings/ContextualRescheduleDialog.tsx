@@ -7,6 +7,8 @@ import { EnhancedMeetingForm } from './EnhancedMeetingForm';
 import { Meeting, MeetingStatus } from '@/lib/types/meeting';
 import { updateMeeting } from '@/lib/api/meetings';
 import { toast } from 'sonner';
+import { Button } from '@/components/ui/button';
+import { TaskButton } from '@/components/tasks/TaskButton';
 
 interface ContextualRescheduleDialogProps {
   dialogId: string;
@@ -30,6 +32,10 @@ export function ContextualRescheduleDialog({
     return null;
   }
   
+  // Prepare lead data for TaskButton
+  const leadId = meeting.lead.id ? parseInt(meeting.lead.id) : undefined;
+  const leadName = meeting.lead ? `${meeting.lead.first_name} ${meeting.lead.last_name}` : '';
+  
   return (
     <MeetingDialogContent
       dialogId={dialogId}
@@ -38,6 +44,16 @@ export function ContextualRescheduleDialog({
       onClose={handleClose}
     >
       <div className="max-w-4xl w-full max-h-[90vh] overflow-y-auto overflow-x-auto styled-scrollbar p-4">
+        <div className="flex justify-end mb-4">
+          <TaskButton 
+            variant="outline"
+            size="sm"
+            leadId={leadId}
+            leadName={leadName}
+            className="flex items-center"
+          />
+        </div>
+        
         <EnhancedMeetingForm
           leadOptions={meeting.lead ? [meeting.lead] : []}
           initialTimeSlot={{

@@ -93,6 +93,10 @@ import { MeetingDialogProvider, useMeetingDialog, MeetingDialogType } from '@/co
 import { Meeting, MeetingStatus, MeetingType } from '@/lib/types/meeting';
 import { ContextualRescheduleDialog } from '@/components/meetings/ContextualRescheduleDialog';
 import { MeetingDialogContainer } from '@/components/ui/meeting-dialog';
+import { LeadNotesProvider, useLeadNotes, LeadNoteDialogType } from '@/lib/contexts/LeadNotesContext';
+import { LeadNoteDialogManager } from '@/components/leads/LeadNoteDialogManager';
+import { Lead } from '@/lib/types/lead';
+import { ContextualLeadNoteDialog } from '@/components/leads/ContextualLeadNoteDialog';
 
 // Configuration flag to toggle between mock and real data
 // Set this to false to use the API's decision on whether to use mock data
@@ -200,14 +204,17 @@ export default function LeadDetailPage() {
   
   // Wrap the entire component with our providers
   return (
-    <EmailDialogProvider>
-      <LeadPhoneDialogProvider>
-        <MeetingDialogProvider>
-          <LeadDetailContent />
-          <MeetingDialogContainer />
-        </MeetingDialogProvider>
-      </LeadPhoneDialogProvider>
-    </EmailDialogProvider>
+    <LeadNotesProvider>
+      <EmailDialogProvider>
+        <LeadPhoneDialogProvider>
+          <MeetingDialogProvider>
+            <LeadDetailContent />
+            <MeetingDialogContainer />
+            <LeadNoteDialogManager />
+          </MeetingDialogProvider>
+        </LeadPhoneDialogProvider>
+      </EmailDialogProvider>
+    </LeadNotesProvider>
   );
 }
 
@@ -227,6 +234,18 @@ function LeadDetailContent() {
   const { openEmailDialog } = useEmailDialog();
   const { openPhoneDialog } = useLeadPhoneDialog();
   const { openMeetingDialog, closeMeetingDialog } = useMeetingDialog();
+  const { openAddNoteDialog, openDialogs } = useLeadNotes();
+  
+  // Log the hooks for debugging
+  console.log("Available hooks from contexts:", { 
+    emailDialog: !!openEmailDialog, 
+    phoneDialog: !!openPhoneDialog, 
+    meetingDialog: !!openMeetingDialog, 
+    leadNotes: { 
+      openAddNoteDialog: !!openAddNoteDialog,
+      openDialogs: openDialogs?.length
+    } 
+  });
   
   // State for lead data
   const [lead, setLead] = useState<any>(null);
@@ -1010,63 +1029,67 @@ function LeadDetailContent() {
     }
   };
   
-  // Handle adding a note
-  const handleAddNote = (content: string, isPrivate: boolean = false) => {
-    if (USE_MOCK_DATA) {
-      // Mock implementation
-      const lead = mockLeadDetails[leadId];
-      
-      // Create a new note
-      const newNote = {
-        id: lead.notes.length + 1,
-        body: content,
-        is_private: isPrivate,
-        created_at: new Date().toISOString(),
-        updated_at: new Date().toISOString(),
-        created_by: 1
+  // Handle adding a note using the context
+  const handleContextAddNote = () => {
+    if (!lead) {
+      console.error("📝 LeadDetailPage - Cannot add note: lead is null or undefined");
+      return;
+    }
+    
+    console.log("📝 LeadDetailPage - handleContextAddNote called for lead:", lead);
+    
+    try {
+      // Create a Lead object from the current lead data
+      const leadForNote: Lead = {
+        id: leadIdString,
+        first_name: lead.first_name || '',
+        last_name: lead.last_name || '',
+        email: lead.email || '',
+        phone: lead.phone || '',
+        company: lead.company || '',
+        status: lead.status as any,
+        source: lead.source as any,
+        created_at: lead.created_at || new Date().toISOString(),
+        updated_at: lead.updated_at || new Date().toISOString(),
       };
       
-      // Add to lead's notes
-      lead.notes.push(newNote);
+      // Open the note dialog using the MeetingDialogContext directly
+      const dialogId = `lead-note-${leadIdString}-${Date.now()}`;
       
-      // Add to timeline
-      const timelineEntry = {
-        id: mockLeadTimeline.length + 1,
-        type: 'note',
-        content: `Added note: "${content.substring(0, 50)}${content.length > 50 ? '...' : ''}"`,
-        created_at: new Date().toISOString(),
-        user: { name: 'Demo User' }
-      };
+      // Create the note dialog content that will be rendered in the dialog
+      const dialogContent = (
+        <ContextualLeadNoteDialog
+          dialogId={dialogId}
+          lead={leadForNote}
+          dialogType={LeadNoteDialogType.ADD}
+          handleClose={() => {
+            console.log(`📝 LeadDetailPage - Closing note dialog ${dialogId}`);
+            closeMeetingDialog(dialogId);
+          }}
+          handleNoteSuccess={(note) => {
+            console.log(`📝 LeadDetailPage - Note saved successfully for ${dialogId}`);
+            toast.success(`Note saved for ${leadForNote.first_name} ${leadForNote.last_name}`);
+            closeMeetingDialog(dialogId);
+          }}
+        />
+      );
       
-      // Add to the beginning of the timeline
-      mockLeadTimeline.unshift(timelineEntry);
+      // Open the dialog using the meeting dialog context
+      openMeetingDialog(
+        dialogId,
+        MeetingDialogType.DETAILS,
+        dialogContent,
+        { lead: leadForNote }
+      );
       
-      // Force re-render
-      setShowNoteDialog(false);
-      toast.success('Note added successfully');
-    } else {
-      // Real implementation with Supabase
-      addLeadNoteMutation.mutate({
-        leadId: leadIdString,
-        content,
-        isPrivate
-      }, {
-        onSuccess: () => {
-          // Invalidate queries to refresh data
-          queryClient.invalidateQueries({ queryKey: leadKeys.detail(leadId) });
-          queryClient.invalidateQueries({ queryKey: leadKeys.timeline(leadId) });
-          
-          // Show toast
-          toast.success('Note added successfully');
-          
-          // Close dialog
-          setShowNoteDialog(false);
-        },
-        onError: (error: Error) => {
-          console.error('Error adding note:', error);
-          toast.error('Failed to add note');
-        }
-      });
+      console.log(`📝 LeadDetailPage - Opened note dialog with ID: ${dialogId}`);
+      
+      // Notify user
+      toast.info(`Adding note for ${lead.first_name} ${lead.last_name}`);
+      
+    } catch (error) {
+      console.error("📝 LeadDetailPage - Error in handleContextAddNote:", error);
+      toast.error("Error opening note dialog");
     }
   };
   
@@ -1501,7 +1524,7 @@ function LeadDetailContent() {
               <Calendar className="mr-2 h-4 w-4" />
               Schedule Meeting
             </Button>
-            <Button onClick={() => setShowNoteDialog(true)}>
+            <Button onClick={handleContextAddNote}>
               <MessageSquare className="mr-2 h-4 w-4" />
               Add Note
             </Button>
@@ -1693,13 +1716,6 @@ function LeadDetailContent() {
                     <div className="md:col-span-2">
                       <div className="flex justify-between items-center mb-4">
                         <h3 className="text-lg font-medium">Recent Notes</h3>
-                        <Button 
-                          variant="outline" 
-                          size="sm"
-                          onClick={() => setShowNoteDialog(true)}
-                        >
-                          Add Note
-                        </Button>
                       </div>
                       {lead.notes && lead.notes.length > 0 ? (
                         <div className="space-y-2">
@@ -2128,21 +2144,6 @@ function LeadDetailContent() {
           </Tabs>
           
           {/* Dialog Components */}
-          {showNoteDialog && lead && (
-            <NoteDialog
-              open={showNoteDialog}
-              onOpenChange={setShowNoteDialog}
-              leadId={leadId}
-              leadName={lead.full_name || ''}
-              isMock={USE_MOCK_DATA}
-              onSuccess={(noteData) => {
-                if (noteData && noteData.content) {
-                  handleAddNote(noteData.content, noteData.is_private);
-                }
-              }}
-            />
-          )}
-          
           {showTaskDialog && lead && (
             <TaskDialog
               open={showTaskDialog}

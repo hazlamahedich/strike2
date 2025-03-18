@@ -36,32 +36,46 @@ export function ContextualLeadNoteDialog({
   const [attachments, setAttachments] = useState<File[]>([]);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const dialogRef = useRef<HTMLDivElement>(null);
+  const [isVisible, setIsVisible] = useState(false);
   
   const isViewMode = dialogType === LeadNoteDialogType.VIEW;
   const isAddMode = dialogType === LeadNoteDialogType.ADD;
   
-  // Position the dialog at center of screen when it mounts
   useEffect(() => {
-    // Function to center the dialog
+    console.log(`ContextualLeadNoteDialog - Component mounted for dialog ${dialogId}`);
+    
+    const timer = setTimeout(() => {
+      console.log(`ContextualLeadNoteDialog - Setting visible for dialog ${dialogId}`);
+      setIsVisible(true);
+    }, 50);
+    
+    return () => {
+      console.log(`ContextualLeadNoteDialog - Component unmounted for dialog ${dialogId}`);
+      clearTimeout(timer);
+    };
+  }, [dialogId]);
+  
+  useEffect(() => {
     const centerDialog = () => {
       if (!dialogRef.current) return;
       
       const dialogElement = dialogRef.current.closest('[data-meeting-dialog]');
-      if (!dialogElement) return;
+      if (!dialogElement) {
+        console.log('ContextualLeadNoteDialog - Dialog element not found for positioning');
+        return;
+      }
       
-      // Center horizontally and vertically
       const viewportWidth = window.innerWidth;
       const viewportHeight = window.innerHeight;
-      const dialogWidth = dialogElement.clientWidth || 600; // Fallback width if not available
-      const dialogHeight = dialogElement.clientHeight || 400; // Fallback height if not available
+      const dialogWidth = dialogElement.clientWidth || 600;
+      const dialogHeight = dialogElement.clientHeight || 400;
       
-      // Calculate positions to center the dialog
       const leftPosition = Math.max(0, (viewportWidth - dialogWidth) / 2);
       
-      // Place dialog at 30% from top of screen for best visibility
       const topPosition = viewportHeight * 0.3 - (dialogHeight * 0.3);
       
-      console.log('Positioning dialog:', { 
+      console.log('ContextualLeadNoteDialog - Positioning dialog:', { 
+        dialogId,
         dialogWidth, 
         dialogHeight, 
         viewportWidth, 
@@ -70,42 +84,43 @@ export function ContextualLeadNoteDialog({
         topPosition 
       });
       
-      // Set position using custom attributes that MeetingDialogContent understands
-      (dialogElement as HTMLElement).style.top = `${topPosition}px`;
-      (dialogElement as HTMLElement).style.left = `${leftPosition}px`;
-      
-      // Force this specific dialog to use fixed positioning
-      (dialogElement as HTMLElement).style.position = 'fixed';
-      (dialogElement as HTMLElement).style.transform = 'none'; // Prevent any transform positioning
-      (dialogElement as HTMLElement).style.margin = '0'; // Remove any margin
+      try {
+        (dialogElement as HTMLElement).style.top = `${topPosition}px`;
+        (dialogElement as HTMLElement).style.left = `${leftPosition}px`;
+        
+        (dialogElement as HTMLElement).style.position = 'fixed';
+        (dialogElement as HTMLElement).style.transform = 'none';
+        (dialogElement as HTMLElement).style.margin = '0';
+        
+        console.log('ContextualLeadNoteDialog - Successfully positioned dialog', dialogId);
+      } catch (error) {
+        console.error('ContextualLeadNoteDialog - Error positioning dialog:', error);
+      }
     };
     
-    // Initial positioning with a small delay
     const initialTimer = setTimeout(centerDialog, 50);
     
-    // Secondary positioning check after content has likely rendered
     const secondaryTimer = setTimeout(centerDialog, 300);
     
-    // Add position recalculation on window resize
+    const finalTimer = setTimeout(centerDialog, 1000);
+    
     const handleResize = () => centerDialog();
     window.addEventListener('resize', handleResize);
     
     return () => {
-      // Clean up all timers and event listeners
       clearTimeout(initialTimer);
       clearTimeout(secondaryTimer);
+      clearTimeout(finalTimer);
       window.removeEventListener('resize', handleResize);
     };
-  }, [dialogId]);
+  }, [dialogId, isVisible]);
 
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const files = e.target.files;
     if (!files || files.length === 0) return;
     
-    // Convert FileList to array
     const fileArray = Array.from(files);
     
-    // Check if total files don't exceed 5
     if (attachments.length + fileArray.length > 5) {
       toast.error('Maximum 5 files allowed', {
         description: 'Please remove some files before adding more',
@@ -113,7 +128,6 @@ export function ContextualLeadNoteDialog({
       return;
     }
     
-    // Check each file size (max 10MB per file)
     const validFiles = fileArray.filter(file => {
       if (file.size > 10 * 1024 * 1024) {
         toast.error('File too large', {
@@ -124,10 +138,8 @@ export function ContextualLeadNoteDialog({
       return true;
     });
     
-    // Add valid files to attachments
     setAttachments([...attachments, ...validFiles]);
     
-    // Reset the input
     if (fileInputRef.current) {
       fileInputRef.current.value = '';
     }
@@ -172,10 +184,8 @@ export function ContextualLeadNoteDialog({
     try {
       const leadId = parseInt(lead.id.toString(), 10);
       
-      // Process attachments if any
       const processedAttachments = await Promise.all(
         attachments.map(async (file) => {
-          // Convert file to base64 for sending to API
           return new Promise<{name: string, type: string, size: number, data: string}>((resolve) => {
             const reader = new FileReader();
             reader.onloadend = () => {
@@ -191,7 +201,6 @@ export function ContextualLeadNoteDialog({
         })
       );
       
-      // Call API with both note content and attachments
       const { data, error } = await saveNote(leadId, noteContent, processedAttachments);
       
       if (error) {
@@ -238,12 +247,15 @@ export function ContextualLeadNoteDialog({
   };
   
   return (
-    <div ref={dialogRef}>
+    <div ref={dialogRef} className={cn("lead-note-dialog", {"opacity-0": !isVisible, "opacity-100": isVisible})}>
       <MeetingDialogContent
         dialogId={dialogId}
         dialogType={dialogType as any}
         title={getDialogTitle()}
-        onClose={handleClose}
+        onClose={() => {
+          console.log(`ContextualLeadNoteDialog - Close button clicked for dialog ${dialogId}`);
+          handleClose();
+        }}
       >
         <div className="max-w-4xl w-full max-h-[90vh] overflow-y-auto overflow-x-auto styled-scrollbar p-4">
           <div className="space-y-4">
@@ -266,7 +278,6 @@ export function ContextualLeadNoteDialog({
               className="min-h-[200px]"
             />
             
-            {/* File Attachment Section */}
             {!isViewMode && (
               <div className="space-y-2">
                 <div className="flex items-center">
@@ -338,7 +349,6 @@ export function ContextualLeadNoteDialog({
               </div>
             )}
             
-            {/* Show attachments in view mode */}
             {isViewMode && note?.attachments && note.attachments.length > 0 && (
               <div className="space-y-2">
                 <div className="flex items-center">
@@ -388,7 +398,10 @@ export function ContextualLeadNoteDialog({
             <div className="flex justify-end space-x-2 pt-4">
               <Button 
                 variant="outline" 
-                onClick={handleClose}
+                onClick={() => {
+                  console.log(`ContextualLeadNoteDialog - Close button clicked for dialog ${dialogId}`);
+                  handleClose();
+                }}
                 disabled={isSaving}
               >
                 Cancel
