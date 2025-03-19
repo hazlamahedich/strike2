@@ -9,6 +9,10 @@ export interface ApiResponse<T> {
   error: Error | null;
 }
 
+type ApiError = {
+  error: any;
+};
+
 // Store the auth token
 let authToken: string | null = null;
 
@@ -42,7 +46,7 @@ const apiClient = {
   /**
    * Make a GET request
    */
-  async get<T>(endpoint: string, params?: Record<string, any>): Promise<ApiResponse<T>> {
+  async get<T>(endpoint: string, params?: Record<string, any>): Promise<ApiResponse<T> | ApiError> {
     try {
       // Special handling for API routes
       if (endpoint.startsWith('/notifications/') || 
@@ -111,10 +115,7 @@ const apiClient = {
           };
         } catch (fetchError) {
           console.error(`API GET error for ${endpoint}:`, fetchError);
-          return {
-            data: null as unknown as T,
-            error: fetchError instanceof Error ? fetchError : new Error('Unknown error occurred')
-          };
+          return { error: fetchError instanceof Error ? fetchError : new Error('Unknown error occurred') };
         }
       }
       
@@ -147,17 +148,14 @@ const apiClient = {
       };
     } catch (error) {
       console.error(`API GET error for ${endpoint}:`, error);
-      return {
-        data: null as unknown as T,
-        error: error instanceof Error ? error : new Error('Unknown error occurred')
-      };
+      return { error: error instanceof Error ? error : new Error('Unknown error occurred') };
     }
   },
   
   /**
    * Make a POST request
    */
-  async post<T>(endpoint: string, body: any): Promise<ApiResponse<T>> {
+  async post<T>(endpoint: string, body: any): Promise<ApiResponse<T> | ApiError> {
     try {
       // Special handling for API routes
       if (endpoint.startsWith('/api/') || 
@@ -199,17 +197,14 @@ const apiClient = {
       };
     } catch (error) {
       console.error(`API POST error for ${endpoint}:`, error);
-      return {
-        data: null as unknown as T,
-        error: error instanceof Error ? error : new Error('Unknown error occurred')
-      };
+      return { error: error instanceof Error ? error : new Error('Unknown error occurred') };
     }
   },
   
   /**
    * Make a PUT request
    */
-  async put<T>(endpoint: string, body: any): Promise<ApiResponse<T>> {
+  async put<T>(endpoint: string, body: any): Promise<ApiResponse<T> | ApiError> {
     try {
       // Ensure endpoint starts with a slash
       const normalizedEndpoint = endpoint.startsWith('/') ? endpoint : `/${endpoint}`;
@@ -236,10 +231,7 @@ const apiClient = {
           if (!response.ok) {
             const errorText = await response.text();
             console.error(`API error: ${response.status} ${response.statusText}`, errorText);
-            return {
-              data: null as unknown as T,
-              error: new Error(`API error: ${response.status} ${response.statusText}`)
-            };
+            return { error: new Error(`API error: ${response.status} ${response.statusText}`) };
           }
           
           const data = await response.json();
@@ -251,10 +243,7 @@ const apiClient = {
           };
         } catch (fetchError) {
           console.error('Fetch error in PUT request:', fetchError);
-          return {
-            data: null as unknown as T,
-            error: fetchError instanceof Error ? fetchError : new Error('Unknown fetch error occurred')
-          };
+          return { error: fetchError instanceof Error ? fetchError : new Error('Unknown fetch error occurred') };
         }
       }
       
@@ -271,17 +260,14 @@ const apiClient = {
       };
     } catch (error) {
       console.error(`API PUT error for ${endpoint}:`, error);
-      return {
-        data: null as unknown as T,
-        error: error instanceof Error ? error : new Error('Unknown error occurred')
-      };
+      return { error: error instanceof Error ? error : new Error('Unknown error occurred') };
     }
   },
   
   /**
    * Make a DELETE request
    */
-  async delete<T>(endpoint: string, id?: string | number): Promise<ApiResponse<T>> {
+  async delete<T>(endpoint: string, id?: string | number): Promise<ApiResponse<T> | ApiError> {
     try {
       const tableName = endpoint.replace('/api/', '');
       
@@ -299,10 +285,7 @@ const apiClient = {
       
       if (error) {
         console.error(`Error deleting from ${endpoint}:`, error);
-        return {
-          data: null as unknown as T,
-          error: new Error(error.message)
-        };
+        return { error: new Error(error.message) };
       }
       
       return {
@@ -311,12 +294,12 @@ const apiClient = {
       };
     } catch (error) {
       console.error(`Error in delete request to ${endpoint}:`, error);
-      return {
-        data: null as unknown as T,
-        error: error instanceof Error ? error : new Error('Unknown error occurred')
-      };
+      return { error: error instanceof Error ? error : new Error('Unknown error occurred') };
     }
   }
 };
 
-export default apiClient; 
+export default apiClient;
+
+// Export type for use in other files
+export type { ApiResponse, ApiError }; 

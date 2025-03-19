@@ -1474,56 +1474,70 @@ export const getLowConversionLeads = async (options?: {
   workflowId?: string
 }) => {
   try {
-    const limit = options?.limit || 100;
-    let query = supabase
-      .from('leads')
-      .select(`
-        id, 
-        name, 
-        email, 
-        company, 
-        status, 
-        created_at,
-        updated_at,
-        lead_insights (conversion_probability),
-        automations (
-          id,
-          name,
-          type,
-          current_stage
-        )
-      `)
-      .lt('lead_insights.conversion_probability', 0.4)
-      .order('updated_at', { ascending: false });
+    const queryParams = new URLSearchParams();
+    
+    if (options?.limit) {
+      queryParams.append('limit', options.limit.toString());
+    }
     
     if (options?.workflowId) {
-      query = query.eq('automations.id', options.workflowId);
-    }
-      
-    const { data, error } = await query.limit(limit);
-    
-    if (error) {
-      console.error('Error fetching low conversion leads:', error);
-      return { error };
+      queryParams.append('workflowId', options.workflowId);
     }
     
-    // Format the data for the frontend
-    const formattedLeads = data.map(lead => ({
-      id: lead.id,
-      name: lead.name,
-      email: lead.email,
-      company: lead.company || '',
-      status: lead.status,
-      conversion_probability: lead.lead_insights?.conversion_probability || 0.3,
-      workflow_name: lead.automations?.name || 'Default Nurture',
-      workflow_stage: lead.automations?.current_stage || 'early_nurture',
-      days_in_pipeline: Math.floor((new Date().getTime() - new Date(lead.created_at).getTime()) / (1000 * 3600 * 24)),
-      last_activity: lead.updated_at,
-    }));
+    const queryString = queryParams.toString();
+    const url = `/api/leads/low-conversion${queryString ? `?${queryString}` : ''}`;
     
-    return { data: formattedLeads };
+    const response = await apiClient.get(url);
+    
+    return response;
   } catch (error) {
-    console.error('Error in getLowConversionLeads:', error);
+    console.error('Error fetching low conversion leads:', error);
+    return { error };
+  }
+};
+
+/**
+ * Get analysis of the low conversion pipeline
+ */
+export const analyzeLowConversionPipeline = async (days: number = 30) => {
+  try {
+    const response = await apiClient.post('/api/low-probability-workflow/analyze', { days });
+    return response;
+  } catch (error) {
+    console.error('Error analyzing low conversion pipeline:', error);
+    return { error };
+  }
+};
+
+/**
+ * Generate personalized content for a lead in the low conversion pipeline
+ */
+export const generateLowConversionContent = async (
+  leadId: number, 
+  templateType: string,
+  cycle: number = 0
+) => {
+  try {
+    const response = await apiClient.post(`/api/low-probability-workflow/leads/${leadId}/generate-content`, {
+      template_type: templateType,
+      cycle
+    });
+    return response;
+  } catch (error) {
+    console.error('Error generating content for low conversion lead:', error);
+    return { error };
+  }
+};
+
+/**
+ * Run the low conversion workflow (admin/marketer only)
+ */
+export const runLowConversionWorkflow = async () => {
+  try {
+    const response = await apiClient.post('/api/low-probability-workflow/run');
+    return response;
+  } catch (error) {
+    console.error('Error running low conversion workflow:', error);
     return { error };
   }
 };
