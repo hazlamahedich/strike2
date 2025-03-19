@@ -1464,4 +1464,263 @@ export const calculateLeadInsights = async (
 export const getAuthToken = () => {
   // Use the apiClient's getAuthToken method
   return apiClient.getAuthToken();
+};
+
+/**
+ * Get leads in low conversion probability workflows
+ */
+export const getLowConversionLeads = async (options?: { 
+  limit?: number,
+  workflowId?: string
+}) => {
+  try {
+    const limit = options?.limit || 100;
+    let query = supabase
+      .from('leads')
+      .select(`
+        id, 
+        name, 
+        email, 
+        company, 
+        status, 
+        created_at,
+        updated_at,
+        lead_insights (conversion_probability),
+        automations (
+          id,
+          name,
+          type,
+          current_stage
+        )
+      `)
+      .lt('lead_insights.conversion_probability', 0.4)
+      .order('updated_at', { ascending: false });
+    
+    if (options?.workflowId) {
+      query = query.eq('automations.id', options.workflowId);
+    }
+      
+    const { data, error } = await query.limit(limit);
+    
+    if (error) {
+      console.error('Error fetching low conversion leads:', error);
+      return { error };
+    }
+    
+    // Format the data for the frontend
+    const formattedLeads = data.map(lead => ({
+      id: lead.id,
+      name: lead.name,
+      email: lead.email,
+      company: lead.company || '',
+      status: lead.status,
+      conversion_probability: lead.lead_insights?.conversion_probability || 0.3,
+      workflow_name: lead.automations?.name || 'Default Nurture',
+      workflow_stage: lead.automations?.current_stage || 'early_nurture',
+      days_in_pipeline: Math.floor((new Date().getTime() - new Date(lead.created_at).getTime()) / (1000 * 3600 * 24)),
+      last_activity: lead.updated_at,
+    }));
+    
+    return { data: formattedLeads };
+  } catch (error) {
+    console.error('Error in getLowConversionLeads:', error);
+    return { error };
+  }
+};
+
+/**
+ * Agent intervention for a low conversion lead
+ */
+export const agentIntervene = async (leadId: number, options: {
+  action: 'manual_takeover' | 'add_task' | 'send_message',
+  message?: string,
+  taskDetails?: any
+}) => {
+  try {
+    // First, get the current lead details
+    const { data: lead, error: leadError } = await supabase
+      .from('leads')
+      .select(`
+        id, 
+        name, 
+        automations (id, name)
+      `)
+      .eq('id', leadId)
+      .single();
+    
+    if (leadError) {
+      console.error('Error fetching lead for intervention:', leadError);
+      return { error: leadError };
+    }
+    
+    // Record the agent intervention action
+    const { error: interventionError } = await supabase
+      .from('lead_actions')
+      .insert({
+        lead_id: leadId,
+        action_type: 'agent_intervention',
+        action_details: {
+          intervention_type: options.action,
+          workflow_before: lead.automations?.name || 'None',
+          agent_id: getCurrentUserId(), // Assuming this function exists
+          timestamp: new Date().toISOString(),
+          message: options.message,
+          task_details: options.taskDetails
+        }
+      });
+    
+    if (interventionError) {
+      console.error('Error recording intervention:', interventionError);
+      // Continue anyway as this is not critical
+    }
+    
+    if (options.action === 'manual_takeover') {
+      // Remove from automation workflow
+      const { error: updateError } = await supabase
+        .from('leads')
+        .update({
+          status: 'engaged', // Move to an active status
+          assigned_to: getCurrentUserId(), // Assign to current user
+          automation_id: null, // Remove from automated workflow
+          updated_at: new Date().toISOString()
+        })
+        .eq('id', leadId);
+      
+      if (updateError) {
+        console.error('Error updating lead for manual takeover:', updateError);
+        return { error: updateError };
+      }
+      
+      // Create a task for follow-up
+      const { error: taskError } = await supabase
+        .from('tasks')
+        .insert({
+          lead_id: leadId,
+          assigned_to: getCurrentUserId(),
+          title: `Follow up with ${lead.name}`,
+          description: 'Manual intervention from low conversion workflow',
+          priority: 'high',
+          due_date: new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString(), // Tomorrow
+          status: 'not_started'
+        });
+      
+      if (taskError) {
+        console.error('Error creating follow-up task:', taskError);
+        // Continue anyway as the main action succeeded
+      }
+    } else if (options.action === 'send_message' && options.message) {
+      // Send a manual message while keeping in automation
+      const { error: messageError } = await supabase
+        .from('messages')
+        .insert({
+          lead_id: leadId,
+          sender_id: getCurrentUserId(),
+          message_type: 'email', // Or could be from options
+          content: options.message,
+          sent_at: new Date().toISOString(),
+          status: 'queued'
+        });
+      
+      if (messageError) {
+        console.error('Error creating message:', messageError);
+        return { error: messageError };
+      }
+    } else if (options.action === 'add_task' && options.taskDetails) {
+      // Add a task while keeping in automation
+      const { error: taskError } = await supabase
+        .from('tasks')
+        .insert({
+          lead_id: leadId,
+          assigned_to: getCurrentUserId(),
+          title: options.taskDetails.title,
+          description: options.taskDetails.description,
+          priority: options.taskDetails.priority || 'medium',
+          due_date: options.taskDetails.due_date,
+          status: 'not_started'
+        });
+      
+      if (taskError) {
+        console.error('Error creating task:', taskError);
+        return { error: taskError };
+      }
+    }
+    
+    return { success: true, data: { leadId } };
+  } catch (error) {
+    console.error('Error in agentIntervene:', error);
+    return { error };
+  }
+};
+
+/**
+ * Update a lead's workflow stage
+ */
+export const updateLeadWorkflowStage = async (leadId: number, stage: string) => {
+  try {
+    // Get the current lead automation
+    const { data: lead, error: leadError } = await supabase
+      .from('leads')
+      .select(`
+        id, 
+        name, 
+        automation_id,
+        automations (id, name)
+      `)
+      .eq('id', leadId)
+      .single();
+    
+    if (leadError) {
+      console.error('Error fetching lead for workflow update:', leadError);
+      return { error: leadError };
+    }
+    
+    if (!lead.automation_id) {
+      return { error: { message: 'Lead is not in an automation workflow' } };
+    }
+    
+    // Update the automation stage
+    const { error: updateError } = await supabase
+      .from('automations')
+      .update({
+        current_stage: stage,
+        updated_at: new Date().toISOString()
+      })
+      .eq('id', lead.automation_id);
+    
+    if (updateError) {
+      console.error('Error updating workflow stage:', updateError);
+      return { error: updateError };
+    }
+    
+    // Record the stage change
+    const { error: logError } = await supabase
+      .from('automation_logs')
+      .insert({
+        automation_id: lead.automation_id,
+        lead_id: leadId,
+        action: 'stage_change',
+        details: {
+          new_stage: stage,
+          changed_by: getCurrentUserId(),
+          manual_change: true
+        },
+        created_at: new Date().toISOString()
+      });
+    
+    if (logError) {
+      console.error('Error logging stage change:', logError);
+      // Continue anyway as the main action succeeded
+    }
+    
+    return { success: true, data: { stage } };
+  } catch (error) {
+    console.error('Error in updateLeadWorkflowStage:', error);
+    return { error };
+  }
+};
+
+// Helper function to get current user ID
+const getCurrentUserId = () => {
+  const session = supabase.auth.session();
+  return session?.user?.id || 'system';
 }; 

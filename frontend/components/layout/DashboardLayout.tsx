@@ -25,7 +25,8 @@ import {
   Home,
   Layers,
   Activity,
-  BrainCircuit
+  BrainCircuit,
+  TrendingDown
 } from 'lucide-react';
 import { useTheme } from 'next-themes';
 import { Avatar, AvatarFallback, AvatarImage } from '../ui/avatar';
@@ -71,6 +72,7 @@ type Notification = {
 const navItems: NavItem[] = [
   { title: 'Dashboard', href: '/dashboard', icon: <Home className="h-5 w-5" /> },
   { title: 'Leads', href: '/dashboard/leads', icon: <Users className="h-5 w-5" />, badge: 5 },
+  { title: 'Low Conversion Pipeline', href: '/dashboard/low-conversion', icon: <TrendingDown className="h-5 w-5" /> },
   { title: 'Campaigns', href: '/dashboard/campaigns', icon: <Megaphone className="h-5 w-5" /> },
   { title: 'Tasks', href: '/dashboard/tasks', icon: <CheckSquare className="h-5 w-5" />, badge: 3 },
   { title: 'Communications', href: '/communications', icon: <MessageSquare className="h-5 w-5" /> },

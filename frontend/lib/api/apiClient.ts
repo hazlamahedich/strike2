@@ -1,7 +1,7 @@
 import axios, { AxiosError, AxiosResponse } from 'axios';
 
 // Base API client configuration
-const apiClient = axios.create({
+export const apiClient = axios.create({
   baseURL: '', // Remove the '/api' prefix to avoid duplication
   headers: {
     'Content-Type': 'application/json',
@@ -276,4 +276,4 @@ const del = async <T>(url: string): Promise<ApiResponse<T>> => {
   }
 };
 
-export { apiClient, get, post, put, del }; 
+export { get, post, put, del }; 
