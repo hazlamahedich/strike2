@@ -9,6 +9,8 @@ ENV/
 env/
 env.bak/
 venv.bak/
+*/__pycache__/*
+**/__pycache__/**
 
 # Node.js
 node_modules/
