@@ -1950,7 +1950,7 @@ function LeadDetailContent() {
                   <CardTitle>Activity Timeline</CardTitle>
                 </CardHeader>
                 <CardContent>
-                  {timelineData && Array.isArray(timelineData) && timelineData.length > 0 ? (
+                  {timeline && Array.isArray(timeline) && timeline.length > 0 ? (
                     <div className="space-y-4">
                       {/* Group activities by parent_activity_id or group_id */}
                       {(() => {
@@ -1958,8 +1958,8 @@ function LeadDetailContent() {
                         const groupedTimeline: { [key: string]: any[] } = {};
                         
                         // First pass: organize items by their group
-                        if (Array.isArray(timelineData)) {
-                          timelineData.forEach((item: any) => {
+                        if (Array.isArray(timeline)) {
+                          timeline.forEach((item: any) => {
                             // Create a unique key for grouping
                             const groupKey = item.parent_activity_id 
                               ? `parent_${item.parent_activity_id}` 

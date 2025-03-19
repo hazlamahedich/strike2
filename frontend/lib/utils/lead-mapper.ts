@@ -21,6 +21,7 @@ export type DashboardLead = {
   linkedin_url?: string;
   facebook_url?: string;
   twitter_url?: string;
+  isInLowConversionPipeline?: boolean;
   timeline?: Array<{
     id: number | string;
     type: string;
@@ -57,7 +58,8 @@ export function apiToDashboardLead(apiLead: ApiLead): DashboardLead {
     linkedin_url: apiLead.linkedin_url,
     facebook_url: apiLead.facebook_url,
     twitter_url: apiLead.twitter_url,
-    timeline: apiLead.custom_fields?.timeline || []
+    timeline: apiLead.custom_fields?.timeline || [],
+    isInLowConversionPipeline: false // Default value, will be overridden later
   };
 }
 
@@ -88,6 +90,7 @@ export function dashboardToApiLead(dashboardLead: DashboardLead): Partial<ApiLea
     linkedin_url: dashboardLead.linkedin_url,
     facebook_url: dashboardLead.facebook_url,
     twitter_url: dashboardLead.twitter_url
+    // isInLowConversionPipeline is not sent back to the API as it's derived from campaign membership
   };
 }
 

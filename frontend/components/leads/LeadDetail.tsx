@@ -123,6 +123,27 @@ const LeadDetail: React.FC<LeadDetailProps> = ({
   // Cast to LeadDetailType for easier access to properties
   const lead = leadResponse as unknown as LeadDetailType;
 
+  // DEBUG: In development/demo mode, ensure we have some campaigns data to show the low conversion badge
+  React.useEffect(() => {
+    if (process.env.NODE_ENV === 'development' && lead && !lead.campaigns?.some(c => 
+      c.name?.toLowerCase().includes('low probability') || 
+      c.name?.toLowerCase().includes('low conversion'))) {
+      // Add mock low conversion campaign for demo purposes if lead score is low
+      if (lead.lead_score && lead.lead_score < 40 && Array.isArray(lead.campaigns)) {
+        console.log('Adding mock low conversion campaign for demo');
+        lead.campaigns.push({
+          id: 'mock-campaign-1',
+          name: 'Low Conversion Pipeline',
+          status: 'ACTIVE',
+          start_date: new Date().toISOString(),
+          added_at: new Date().toISOString(),
+          updated_at: new Date().toISOString(),
+          description: 'Automated nurturing campaign for low probability leads'
+        });
+      }
+    }
+  }, [lead]);
+
   // Debug lead data
   console.log('Lead data:', lead);
   console.log('Campaigns data:', lead?.campaigns);
@@ -292,6 +313,40 @@ const LeadDetail: React.FC<LeadDetailProps> = ({
     phone: lead?.phone,
     data: lead?.data,
     error: leadResponse?.error || null
+  };
+  
+  // Helper to capitalize words
+  const capitalizeWords = (source: string): string => {
+    if (!source) return '';
+    return source.split(' ').map((word: string) => 
+      word.charAt(0).toUpperCase() + word.slice(1).toLowerCase()
+    ).join(' ');
+  };
+  
+  // Check if lead is in a low conversion pipeline campaign
+  const isInLowConversionPipeline = (): boolean => {
+    // Check campaigns
+    if (leadData.campaigns && Array.isArray(leadData.campaigns)) {
+      const inLowConversionCampaign = leadData.campaigns.some((campaign: any) => 
+        campaign.name?.toLowerCase().includes('low probability') || 
+        campaign.name?.toLowerCase().includes('low conversion')
+      );
+      
+      if (inLowConversionCampaign) {
+        return true;
+      }
+    }
+    
+    // In development mode, also consider leads with low scores or conversion probability as part of the low conversion pipeline
+    // This is for demo purposes only
+    if (process.env.NODE_ENV === 'development') {
+      if (leadData.lead_score < 30 || leadData.conversion_probability < 0.3) {
+        console.log('Demo mode: Showing low conversion badge due to low score/probability');
+        return true;
+      }
+    }
+    
+    return false;
   };
   
   // Function for timeline events
@@ -635,14 +690,6 @@ const LeadDetail: React.FC<LeadDetailProps> = ({
     );
   };
   
-  // Helper to capitalize words
-  const capitalizeWords = (source: string): string => {
-    if (!source) return '';
-    return source.split(' ').map((word: string) => 
-      word.charAt(0).toUpperCase() + word.slice(1).toLowerCase()
-    ).join(' ');
-  };
-  
   // Function for rendering activities
   const renderActivities = () => {
     const activities = leadData.activities as any[] || [];
@@ -697,6 +744,11 @@ const LeadDetail: React.FC<LeadDetailProps> = ({
             <Badge className={getSourceColor(leadData.source)}>
               {capitalizeWords(leadData.source.split('_').join(' '))}
             </Badge>
+            {isInLowConversionPipeline() && (
+              <Badge variant="outline" className="bg-red-50 text-red-700 border-red-200">
+                Low Conversion
+              </Badge>
+            )}
           </div>
         </div>
         

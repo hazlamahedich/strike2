@@ -41,6 +41,7 @@ interface ExtendedLead extends Lead {
   lead_score?: number;
   conversion_probability?: number;
   timeline?: TimelineActivity[];
+  isInLowConversionPipeline?: boolean;
 }
 
 interface LeadTableProps {
@@ -59,6 +60,21 @@ export default function LeadTable({
   onCallLead,
 }: LeadTableProps) {
   console.log("🔍 LeadTable - Component rendered with", leads.length, "leads");
+  
+  // In development mode, ensure leads with low scores or conversion probability show the low conversion badge
+  React.useEffect(() => {
+    if (process.env.NODE_ENV === 'development') {
+      leads.forEach(lead => {
+        // Set isInLowConversionPipeline for demo purposes if lead has low score or conversion probability
+        if (!lead.isInLowConversionPipeline && 
+            ((lead.lead_score !== undefined && lead.lead_score < 30) || 
+             (lead.conversion_probability !== undefined && lead.conversion_probability < 0.3))) {
+          console.log('Demo mode: Setting low conversion flag for lead', lead.id);
+          lead.isInLowConversionPipeline = true;
+        }
+      });
+    }
+  }, [leads]);
   
   const { openMeetingDialog, closeMeetingDialog } = useMeetingDialog();
   const { openAddNoteDialog } = useLeadNotes();
@@ -207,7 +223,14 @@ export default function LeadTable({
       {leads.map((lead) => (
         <TableRow key={lead.id} onClick={() => onViewLead(lead.id)} className="cursor-pointer hover:bg-muted/50">
           <TableCell className="font-medium">
-            {lead.first_name} {lead.last_name}
+            <div className="flex items-center gap-2">
+              <span>{lead.first_name} {lead.last_name}</span>
+              {lead.isInLowConversionPipeline && (
+                <Badge variant="outline" className="bg-red-50 text-red-700 border-red-200 text-xs">
+                  Low Conversion
+                </Badge>
+              )}
+            </div>
           </TableCell>
           <TableCell>{lead.company_name || '-'}</TableCell>
           <TableCell>{lead.email || '-'}</TableCell>

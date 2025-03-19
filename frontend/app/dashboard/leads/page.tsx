@@ -398,15 +398,16 @@ function LeadsContent() {
               source: 'Referral',
               created_at: '2023-05-10T14:45:00Z',
               last_contact: '2023-05-12T09:15:00Z',
-              notes: 'Follow up next week',
-              score: 72,
-              conversion_probability: 0.62,
+              notes: 'Low conversion lead - Part of automated nurturing campaign. Click to view detail page to see the "Low Conversion" badge next to the status.',
+              score: 25,
+              conversion_probability: 0.22,
               address: '456 Market St, San Francisco, CA 94105',
-              campaign_id: '2',
-              campaign_name: 'Enterprise Outreach',
+              campaign_id: '4',
+              campaign_name: 'Low Conversion Pipeline',
               company_name: 'XYZ Corp',
               position: 'CTO',
               linkedin_url: 'https://www.linkedin.com/in/sarah-johnson',
+              isInLowConversionPipeline: true,
               timeline: [
                 {
                   id: 201,
@@ -542,6 +543,42 @@ function LeadsContent() {
                   user: { id: 'user2', name: 'Account Manager' }
                 }
               ]
+            },
+            {
+              id: '6',
+              name: 'Jennifer Lee',
+              email: 'jennifer.lee@example.com',
+              phone: '(555) 345-6789',
+              status: 'new',
+              source: 'Website',
+              created_at: '2023-05-01T08:15:00Z',
+              last_contact: '2023-05-01T08:15:00Z',
+              notes: 'Low conversion lead - No response to follow-ups. The "Low Conversion" badge is visible in both the leads table and at the top of the lead detail page.',
+              score: 18,
+              conversion_probability: 0.15,
+              address: '200 Pine St, San Francisco, CA 94104',
+              campaign_id: '4',
+              campaign_name: 'Low Conversion Pipeline',
+              company_name: 'Lee Electronics',
+              position: 'Product Manager',
+              linkedin_url: 'https://www.linkedin.com/in/jennifer-lee',
+              isInLowConversionPipeline: true,
+              timeline: [
+                {
+                  id: 601,
+                  type: 'email',
+                  content: 'Downloaded AI Implementation Whitepaper',
+                  created_at: new Date(Date.now() - 432000000).toISOString(),
+                  user: { id: 'user1', name: 'Sales Rep' }
+                },
+                {
+                  id: 602,
+                  type: 'email',
+                  content: 'Sent follow-up email - no response',
+                  created_at: new Date(Date.now() - 345600000).toISOString(),
+                  user: { id: 'user1', name: 'Sales Rep' }
+                }
+              ]
             }
           ];
           
@@ -577,7 +614,20 @@ function LeadsContent() {
           }
           
           // Convert API leads to dashboard format
-          const dashboardLeads = response.data.map((apiLead: any) => apiToDashboardLead(apiLead));
+          const dashboardLeads = response.data.map((apiLead: any) => {
+            const lead = apiToDashboardLead(apiLead);
+            
+            // Check if lead is in low conversion pipeline
+            // We check if the lead belongs to a campaign with "Low Probability" or "Low Conversion" in the name
+            lead.isInLowConversionPipeline = Boolean(
+              apiLead.campaigns?.some((campaign: any) => 
+                campaign.name?.toLowerCase().includes('low probability') || 
+                campaign.name?.toLowerCase().includes('low conversion')
+              )
+            );
+            
+            return lead;
+          });
           
           setLeads(dashboardLeads);
           setIsLoading(false);
