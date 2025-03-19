@@ -6,9 +6,16 @@ import { Button } from "@/components/ui/button";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { toast } from "@/components/ui/use-toast";
-import { Loader2, BarChart } from "lucide-react";
+import { Loader2, BarChart, PieChart, TrendingUp, DollarSign, MessageSquare, BrainCircuit, Zap } from "lucide-react";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { useMockData } from "@/context/MockDataContext";
+import { 
+  AreaChart, Area, 
+  BarChart as ReBarChart, Bar, 
+  PieChart as RePieChart, Pie, Cell,
+  LineChart, Line,
+  XAxis, YAxis, CartesianGrid, Tooltip as ReTooltip, Legend, ResponsiveContainer 
+} from 'recharts';
 
 // Define types for LLM usage data
 interface LLMUsageSummary {
@@ -58,6 +65,9 @@ const SAMPLE_USAGE_DATA: LLMUsageSummary = {
     '2023-05-05': { tokens: 15178, cost: 0.3035 }
   }
 };
+
+// Color constants for charts
+const COLORS = ['#0088FE', '#00C49F', '#FFBB28', '#FF8042', '#8884d8', '#82ca9d'];
 
 const LLMUsageDashboard = () => {
   const [usageData, setUsageData] = useState<LLMUsageSummary | null>(null);
@@ -142,6 +152,35 @@ const LLMUsageDashboard = () => {
       minimumFractionDigits: 4,
       maximumFractionDigits: 4,
     }).format(amount);
+  };
+
+  // Convert object data to array format for Recharts
+  const prepareModelData = (data: Record<string, number>) => {
+    return Object.entries(data).map(([name, value], index) => ({
+      name,
+      value,
+      fill: COLORS[index % COLORS.length]
+    }));
+  };
+
+  // Prepare time series data for usage over time chart
+  const prepareTimeSeriesData = (data: Record<string, { tokens: number; cost: number }>) => {
+    return Object.entries(data)
+      .sort((a, b) => new Date(a[0]).getTime() - new Date(b[0]).getTime())
+      .map(([date, values]) => ({
+        date: new Date(date).toLocaleDateString('en-US', { month: 'short', day: 'numeric' }),
+        tokens: values.tokens,
+        cost: values.cost
+      }));
+  };
+
+  // Prepare request type data for the bar chart
+  const prepareRequestTypeData = (data: Record<string, number>) => {
+    return Object.entries(data).map(([name, value]) => ({
+      name,
+      requests: value,
+      fill: COLORS[Math.floor(Math.random() * COLORS.length)]
+    }));
   };
 
   if (loading) {
@@ -238,119 +277,255 @@ const LLMUsageDashboard = () => {
 
       {usageData ? (
         <div className="space-y-6">
-          {/* Summary Cards */}
+          {/* Summary Cards with Icons */}
           <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-            <Card>
+            <Card className="border-l-4 border-l-blue-500">
               <CardHeader className="pb-2">
-                <CardTitle className="text-sm font-medium text-muted-foreground">Total Requests</CardTitle>
+                <CardTitle className="text-sm font-medium text-muted-foreground flex items-center gap-2">
+                  <MessageSquare className="h-4 w-4 text-blue-500" />
+                  Total Requests
+                </CardTitle>
               </CardHeader>
               <CardContent>
                 <div className="text-2xl font-bold">{usageData.total_requests.toLocaleString()}</div>
+                <p className="text-xs text-muted-foreground mt-1">Across all models</p>
               </CardContent>
             </Card>
-            <Card>
+            <Card className="border-l-4 border-l-green-500">
               <CardHeader className="pb-2">
-                <CardTitle className="text-sm font-medium text-muted-foreground">Total Tokens</CardTitle>
+                <CardTitle className="text-sm font-medium text-muted-foreground flex items-center gap-2">
+                  <Zap className="h-4 w-4 text-green-500" />
+                  Total Tokens
+                </CardTitle>
               </CardHeader>
               <CardContent>
                 <div className="text-2xl font-bold">{usageData.total_tokens.toLocaleString()}</div>
+                <p className="text-xs text-muted-foreground mt-1">Input and output combined</p>
               </CardContent>
             </Card>
-            <Card>
+            <Card className="border-l-4 border-l-amber-500">
               <CardHeader className="pb-2">
-                <CardTitle className="text-sm font-medium text-muted-foreground">Total Cost</CardTitle>
+                <CardTitle className="text-sm font-medium text-muted-foreground flex items-center gap-2">
+                  <DollarSign className="h-4 w-4 text-amber-500" />
+                  Total Cost
+                </CardTitle>
               </CardHeader>
               <CardContent>
                 <div className="text-2xl font-bold">{formatCurrency(usageData.total_cost)}</div>
+                <p className="text-xs text-muted-foreground mt-1">Estimated API cost</p>
               </CardContent>
             </Card>
           </div>
 
-          {/* Detailed Usage Tables */}
-          <Tabs defaultValue="models">
-            <TabsList>
-              <TabsTrigger value="models">Usage by Model</TabsTrigger>
-              <TabsTrigger value="types">Usage by Type</TabsTrigger>
-            </TabsList>
-            
-            <TabsContent value="models">
-              <Card>
-                <CardHeader>
-                  <CardTitle>Model Usage</CardTitle>
-                  <CardDescription>Token usage and cost breakdown by model</CardDescription>
-                </CardHeader>
-                <CardContent>
-                  <Table>
-                    <TableHeader>
-                      <TableRow>
-                        <TableHead>Model</TableHead>
-                        <TableHead>Tokens</TableHead>
-                        <TableHead>Cost</TableHead>
+          {/* Usage Over Time Chart */}
+          <Card>
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2">
+                <TrendingUp className="h-5 w-5 text-primary" />
+                Usage Trends
+              </CardTitle>
+              <CardDescription>Token usage and costs over time</CardDescription>
+            </CardHeader>
+            <CardContent>
+              <Tabs defaultValue="tokens">
+                <TabsList className="mb-4">
+                  <TabsTrigger value="tokens">Token Usage</TabsTrigger>
+                  <TabsTrigger value="costs">Costs</TabsTrigger>
+                </TabsList>
+                <TabsContent value="tokens" className="h-72">
+                  <ResponsiveContainer width="100%" height="100%">
+                    <AreaChart
+                      data={prepareTimeSeriesData(usageData.usage_by_day)}
+                      margin={{ top: 10, right: 30, left: 0, bottom: 0 }}
+                    >
+                      <defs>
+                        <linearGradient id="colorTokens" x1="0" y1="0" x2="0" y2="1">
+                          <stop offset="5%" stopColor="#8884d8" stopOpacity={0.8} />
+                          <stop offset="95%" stopColor="#8884d8" stopOpacity={0} />
+                        </linearGradient>
+                      </defs>
+                      <CartesianGrid strokeDasharray="3 3" />
+                      <XAxis dataKey="date" />
+                      <YAxis />
+                      <ReTooltip 
+                        formatter={(value: number) => [`${value.toLocaleString()} tokens`, 'Usage']}
+                        labelFormatter={(label) => `Date: ${label}`}
+                      />
+                      <Area
+                        type="monotone"
+                        dataKey="tokens"
+                        stroke="#8884d8"
+                        fillOpacity={1}
+                        fill="url(#colorTokens)"
+                        name="Token Usage"
+                      />
+                    </AreaChart>
+                  </ResponsiveContainer>
+                </TabsContent>
+                <TabsContent value="costs" className="h-72">
+                  <ResponsiveContainer width="100%" height="100%">
+                    <AreaChart
+                      data={prepareTimeSeriesData(usageData.usage_by_day)}
+                      margin={{ top: 10, right: 30, left: 0, bottom: 0 }}
+                    >
+                      <defs>
+                        <linearGradient id="colorCost" x1="0" y1="0" x2="0" y2="1">
+                          <stop offset="5%" stopColor="#82ca9d" stopOpacity={0.8} />
+                          <stop offset="95%" stopColor="#82ca9d" stopOpacity={0} />
+                        </linearGradient>
+                      </defs>
+                      <CartesianGrid strokeDasharray="3 3" />
+                      <XAxis dataKey="date" />
+                      <YAxis tickFormatter={(value) => `$${value.toFixed(2)}`} />
+                      <ReTooltip 
+                        formatter={(value: number) => [formatCurrency(value), 'Cost']}
+                        labelFormatter={(label) => `Date: ${label}`}
+                      />
+                      <Area
+                        type="monotone"
+                        dataKey="cost"
+                        stroke="#82ca9d"
+                        fillOpacity={1}
+                        fill="url(#colorCost)"
+                        name="Cost"
+                      />
+                    </AreaChart>
+                  </ResponsiveContainer>
+                </TabsContent>
+              </Tabs>
+            </CardContent>
+          </Card>
+
+          {/* Model Distribution Charts */}
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <Card>
+              <CardHeader>
+                <CardTitle className="flex items-center gap-2">
+                  <PieChart className="h-5 w-5 text-primary" />
+                  Models Usage Distribution
+                </CardTitle>
+                <CardDescription>Token usage by model</CardDescription>
+              </CardHeader>
+              <CardContent className="h-80">
+                <ResponsiveContainer width="100%" height="100%">
+                  <RePieChart>
+                    <Pie
+                      data={prepareModelData(usageData.tokens_by_model)}
+                      cx="50%"
+                      cy="50%"
+                      labelLine={true}
+                      outerRadius={100}
+                      fill="#8884d8"
+                      dataKey="value"
+                      nameKey="name"
+                      label={({ name, percent }) => `${name}: ${(percent * 100).toFixed(0)}%`}
+                    >
+                      {prepareModelData(usageData.tokens_by_model).map((entry, index) => (
+                        <Cell key={`cell-${index}`} fill={entry.fill || COLORS[index % COLORS.length]} />
+                      ))}
+                    </Pie>
+                    <ReTooltip formatter={(value: any) => `${value.toLocaleString()} tokens`} />
+                    <Legend />
+                  </RePieChart>
+                </ResponsiveContainer>
+              </CardContent>
+            </Card>
+
+            <Card>
+              <CardHeader>
+                <CardTitle className="flex items-center gap-2">
+                  <BarChart className="h-5 w-5 text-primary" />
+                  Request Types
+                </CardTitle>
+                <CardDescription>Distribution by request type</CardDescription>
+              </CardHeader>
+              <CardContent className="h-80">
+                <ResponsiveContainer width="100%" height="100%">
+                  <ReBarChart
+                    data={prepareRequestTypeData(usageData.requests_by_type)}
+                    margin={{ top: 20, right: 30, left: 20, bottom: 5 }}
+                  >
+                    <CartesianGrid strokeDasharray="3 3" />
+                    <XAxis dataKey="name" />
+                    <YAxis />
+                    <ReTooltip formatter={(value: any) => `${value} requests`} />
+                    <Legend />
+                    <Bar dataKey="requests" name="Number of Requests">
+                      {prepareRequestTypeData(usageData.requests_by_type).map((entry, index) => (
+                        <Cell key={`cell-${index}`} fill={entry.fill} />
+                      ))}
+                    </Bar>
+                  </ReBarChart>
+                </ResponsiveContainer>
+              </CardContent>
+            </Card>
+          </div>
+
+          {/* Cost Distribution */}
+          <Card>
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2">
+                <DollarSign className="h-5 w-5 text-primary" />
+                Cost Distribution
+              </CardTitle>
+              <CardDescription>Costs by model</CardDescription>
+            </CardHeader>
+            <CardContent className="h-64">
+              <ResponsiveContainer width="100%" height="100%">
+                <ReBarChart
+                  data={prepareModelData(usageData.cost_by_model)}
+                  margin={{ top: 20, right: 30, left: 20, bottom: 5 }}
+                  layout="vertical"
+                >
+                  <CartesianGrid strokeDasharray="3 3" />
+                  <XAxis type="number" tickFormatter={(value) => `$${value.toFixed(2)}`} />
+                  <YAxis type="category" dataKey="name" />
+                  <ReTooltip formatter={(value: any) => formatCurrency(value)} />
+                  <Bar dataKey="value" name="Cost" radius={[0, 4, 4, 0]}>
+                    {prepareModelData(usageData.cost_by_model).map((entry, index) => (
+                      <Cell key={`cell-${index}`} fill={entry.fill} />
+                    ))}
+                  </Bar>
+                </ReBarChart>
+              </ResponsiveContainer>
+            </CardContent>
+          </Card>
+
+          {/* Detailed Stats Table */}
+          <Card>
+            <CardHeader>
+              <CardTitle>Detailed Statistics</CardTitle>
+              <CardDescription>Complete breakdown of your LLM usage</CardDescription>
+            </CardHeader>
+            <CardContent>
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead>Model</TableHead>
+                    <TableHead className="text-right">Tokens</TableHead>
+                    <TableHead className="text-right">Cost</TableHead>
+                    <TableHead className="text-right">% of Total</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {Object.entries(usageData.tokens_by_model).map(([model, tokens]) => {
+                    const cost = usageData.cost_by_model[model] || 0;
+                    const percentOfTotal = (tokens / usageData.total_tokens) * 100;
+                    return (
+                      <TableRow key={model}>
+                        <TableCell className="font-medium">{model}</TableCell>
+                        <TableCell className="text-right">{tokens.toLocaleString()}</TableCell>
+                        <TableCell className="text-right">{formatCurrency(cost)}</TableCell>
+                        <TableCell className="text-right">{percentOfTotal.toFixed(1)}%</TableCell>
                       </TableRow>
-                    </TableHeader>
-                    <TableBody>
-                      {Object.keys(usageData.tokens_by_model).length > 0 ? (
-                        Object.keys(usageData.tokens_by_model).map((modelName) => (
-                          <TableRow key={modelName}>
-                            <TableCell className="font-medium">{modelName}</TableCell>
-                            <TableCell>{usageData.tokens_by_model[modelName].toLocaleString()}</TableCell>
-                            <TableCell>{formatCurrency(usageData.cost_by_model[modelName] || 0)}</TableCell>
-                          </TableRow>
-                        ))
-                      ) : (
-                        <TableRow>
-                          <TableCell colSpan={3} className="text-center py-4">
-                            No usage data available for this period.
-                          </TableCell>
-                        </TableRow>
-                      )}
-                    </TableBody>
-                  </Table>
-                </CardContent>
-              </Card>
-            </TabsContent>
-            
-            <TabsContent value="types">
-              <Card>
-                <CardHeader>
-                  <CardTitle>Request Types</CardTitle>
-                  <CardDescription>Number of requests by type</CardDescription>
-                </CardHeader>
-                <CardContent>
-                  <Table>
-                    <TableHeader>
-                      <TableRow>
-                        <TableHead>Request Type</TableHead>
-                        <TableHead>Count</TableHead>
-                      </TableRow>
-                    </TableHeader>
-                    <TableBody>
-                      {Object.keys(usageData.requests_by_type).length > 0 ? (
-                        Object.keys(usageData.requests_by_type).map((type) => (
-                          <TableRow key={type}>
-                            <TableCell className="font-medium">{type}</TableCell>
-                            <TableCell>{usageData.requests_by_type[type]}</TableCell>
-                          </TableRow>
-                        ))
-                      ) : (
-                        <TableRow>
-                          <TableCell colSpan={2} className="text-center py-4">
-                            No request data available for this period.
-                          </TableCell>
-                        </TableRow>
-                      )}
-                    </TableBody>
-                  </Table>
-                </CardContent>
-              </Card>
-            </TabsContent>
-          </Tabs>
+                    );
+                  })}
+                </TableBody>
+              </Table>
+            </CardContent>
+          </Card>
         </div>
-      ) : (
-        <div className="text-center py-8">
-          <p className="text-muted-foreground">No usage data available yet.</p>
-        </div>
-      )}
+      ) : null}
     </div>
   );
 };
