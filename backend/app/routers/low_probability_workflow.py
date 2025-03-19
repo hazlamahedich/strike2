@@ -1,11 +1,14 @@
 from fastapi import APIRouter, Depends, HTTPException, status, Query, Body, Path
-from typing import Any, List, Optional, Dict
+from typing import Any, List, Optional, Dict, Tuple
 from datetime import datetime, timedelta
 from pydantic import BaseModel
+from enum import Enum
 
 from app.models.user import User
 from app.core.security import get_current_active_user, get_current_admin_user, RoleChecker
 from app.services.low_probability_lead_workflow import low_probability_workflow
+from app.models.lead import LeadUpdate
+from app.models.ai import WorkflowAnalysisResponse, WorkflowContentGenerationResponse
 
 router = APIRouter()
 
@@ -276,4 +279,70 @@ async def manually_upgrade_lead(
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"Error upgrading lead: {str(e)}"
+        )
+
+@router.post("/analyze", response_model=WorkflowAnalysisResponse)
+async def analyze_workflow(
+    days: int = Body(30, description="Number of days of data to analyze"),
+    current_user: User = Depends(get_current_active_user),
+    _: User = Depends(allow_admin_or_marketer)
+) -> Any:
+    """
+    Analyze the low probability workflow performance and generate insights using LLM.
+    """
+    try:
+        # Set up campaign to ensure it exists
+        campaign_id = await low_probability_workflow.setup_campaign()
+        
+        # Run the analysis
+        result = await low_probability_workflow.analyze_workflow_performance(campaign_id, days)
+        
+        return result
+        
+    except Exception as e:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Error analyzing workflow: {str(e)}"
+        )
+
+@router.post("/leads/{lead_id}/generate-content", response_model=WorkflowContentGenerationResponse)
+async def generate_lead_content(
+    lead_id: int = Path(..., gt=0),
+    template_type: str = Body(..., description="Content template type (educational, social_proof, etc.)"),
+    cycle: int = Body(0, description="Nurturing cycle number (0-based)"),
+    current_user: User = Depends(get_current_active_user),
+    _: User = Depends(allow_admin_or_marketer)
+) -> Any:
+    """
+    Generate personalized content for a specific lead using the LLM.
+    """
+    try:
+        # Validate template type
+        valid_templates = list(low_probability_workflow.EMAIL_TEMPLATES.keys())
+        if template_type not in valid_templates:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail=f"Invalid template type. Valid options are: {', '.join(valid_templates)}"
+            )
+        
+        # Generate content
+        content = await low_probability_workflow.generate_personalized_content(
+            lead_id=lead_id,
+            template_type=template_type,
+            cycle=cycle
+        )
+        
+        return {
+            "subject": content["subject"],
+            "content": content["content"],
+            "template_type": template_type,
+            "lead_id": lead_id
+        }
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Error generating content: {str(e)}"
         ) 

@@ -241,4 +241,28 @@ class LLMSettingsResponse(BaseModel):
     """Response with LLM settings"""
     models: List[LLMModel]
     default_model: Optional[LLMModel] = None
-    usage_summary: Optional[LLMUsageSummary] = None 
+    usage_summary: Optional[LLMUsageSummary] = None
+
+# Add low conversion workflow analysis models
+class WorkflowAnalysisResponse(BaseModel):
+    """Response model for workflow analysis"""
+    summary: str
+    key_metrics: List[str]
+    successful_patterns: List[str]
+    recommendations: List[str]
+    content_suggestions: List[str]
+    experimental_ideas: List[str]
+    analysis_date: str
+    campaign_id: int
+    data_period_days: int
+    next_steps: List[str]
+    error: Optional[str] = None
+
+class WorkflowContentGenerationResponse(BaseModel):
+    """Response model for workflow content generation"""
+    subject: str
+    content: str
+    template_type: str
+    lead_id: int
+    success: bool = True
+    error: Optional[str] = None 

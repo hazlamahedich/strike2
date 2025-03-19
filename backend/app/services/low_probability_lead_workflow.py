@@ -12,6 +12,8 @@ import logging
 from typing import List, Dict, Any, Optional, Tuple
 from datetime import datetime, timedelta
 import asyncio
+import json
+import aiohttp
 
 from app.core.database import fetch_all, fetch_one, insert_row, update_row
 from app.models.lead import Lead, LeadStatus, LeadUpdate
@@ -25,6 +27,8 @@ from app.services import communication as communication_service
 from app.agents.lead_scoring_agent import LeadScoringAgent
 from app.agents.communication_assistant import CommunicationAssistantAgent
 from app.agents.task_orchestrator import TaskOrchestratorAgent
+from app.services.litellm_service import LiteLLMService
+from app.core.config import settings
 
 # Configure logger
 logger = logging.getLogger(__name__)
@@ -268,31 +272,24 @@ class LowProbabilityWorkflow:
             scheduled_date = datetime.now() + timedelta(days=step["delay_days"])
             
             if step["type"] == "email":
-                # Generate personalized content
-                content_request = {
-                    "content_type": "email",
-                    "lead_id": lead_id,
-                    "purpose": step["template"],
-                    "tone": "helpful",
-                    "key_points": [
-                        f"Nurturing cycle {cycle+1} of {MAX_NURTURING_CYCLES}",
-                        "Provide value without being pushy",
-                        "Encourage engagement with a simple call to action"
-                    ]
-                }
-                
-                content = await self.communication_assistant.generate_content(content_request)
+                # Generate personalized content using LLM
+                content = await self.generate_personalized_content(
+                    lead_id=lead_id, 
+                    template_type=step["template"],
+                    cycle=cycle
+                )
                 
                 # Schedule email
                 email_data = {
-                    "subject": content.get("subject", f"Information that might help you - {lead.company}"),
-                    "body": content.get("content", ""),
+                    "subject": content["subject"],
+                    "body": content["content"],
                     "scheduled_at": scheduled_date,
                     "campaign_id": campaign_id,
                     "metadata": {
                         "workflow": "low_probability",
                         "nurturing_cycle": cycle,
-                        "step": step["template"]
+                        "step": step["template"],
+                        "ai_generated": True
                     }
                 }
                 
@@ -506,6 +503,326 @@ class LowProbabilityWorkflow:
             "leads_completed": len(rescore_results["completed"]),
             "timestamp": datetime.now().isoformat()
         }
+
+    async def generate_personalized_content(self, lead_id: int, template_type: str, cycle: int) -> Dict[str, str]:
+        """
+        Generate highly personalized content for a lead using the centralized LLM service
+        
+        Args:
+            lead_id: Lead ID to generate content for
+            template_type: Type of template (educational, social_proof, etc.)
+            cycle: Current nurturing cycle (0-based)
+            
+        Returns:
+            Dict with subject and content fields
+        """
+        try:
+            # Get lead details for personalization
+            lead = await lead_service.get_lead(lead_id)
+            
+            # Get lead's interaction history
+            interactions = await lead_service.get_lead_interactions(lead_id, limit=10)
+            
+            # Get lead's company details if available
+            company_info = {}
+            if lead.company:
+                company_info = await lead_service.get_company_details(lead.company)
+            
+            # Get lead's industry information if available
+            industry_info = company_info.get("industry", "")
+            
+            # Basic context about the lead for personalization
+            lead_context = {
+                "name": lead.name,
+                "company": lead.company,
+                "position": lead.custom_fields.get("position", ""),
+                "industry": industry_info,
+                "lead_score": lead.lead_score,
+                "days_in_pipeline": (datetime.now() - lead.created_at).days,
+                "last_interaction": interactions[0] if interactions else None,
+                "interests": lead.custom_fields.get("interests", []),
+                "pain_points": lead.custom_fields.get("pain_points", []),
+                "nurturing_cycle": cycle + 1,
+                "total_cycles": MAX_NURTURING_CYCLES
+            }
+            
+            # Determine prompt based on template type
+            template_description = EMAIL_TEMPLATES.get(template_type, "")
+            
+            # Build the prompt for the LLM
+            prompt = f"""
+            You are an expert sales and marketing assistant. Create highly personalized email content for a lead in our low conversion nurturing pipeline.
+            
+            LEAD INFORMATION:
+            - Name: {lead.name}
+            - Company: {lead.company or 'Unknown'}
+            - Position: {lead_context['position'] or 'Unknown'}
+            - Industry: {industry_info or 'Unknown'}
+            - Current lead score: {lead.lead_score}/100
+            - Days in pipeline: {lead_context['days_in_pipeline']}
+            - Nurturing cycle: {cycle + 1} of {MAX_NURTURING_CYCLES}
+            
+            EMAIL TYPE: {template_type.capitalize()} - {template_description}
+            
+            GUIDELINES:
+            - Be genuinely helpful and provide value
+            - Don't be pushy or overly sales-focused
+            - Personalize based on company, industry, and any known pain points
+            - Keep tone conversational yet professional
+            - Include a subtle call to action that encourages engagement
+            - Craft a compelling subject line
+            - Keep it concise (150-250 words)
+            
+            RESPONSE FORMAT:
+            Return a JSON object with "subject" and "content" fields representing the email subject line and body.
+            """
+            
+            # Use centralized LLM service
+            llm_response = await LiteLLMService.get_json_completion(
+                prompt=prompt,
+                system_prompt="You are an expert marketing content creator for nurturing low-probability leads.",
+                temperature=0.7,
+                request_type="email_generation",
+                metadata={
+                    "lead_id": lead_id,
+                    "template": template_type,
+                    "cycle": cycle
+                }
+            )
+            
+            # Extract subject and content
+            subject = llm_response.get("subject", f"Information that might help you - {lead.company}")
+            content = llm_response.get("content", "")
+            
+            # Log successful content generation
+            logger.info(f"Generated personalized {template_type} content for lead {lead_id}")
+            
+            return {
+                "subject": subject,
+                "content": content
+            }
+            
+        except Exception as e:
+            logger.error(f"Error generating personalized content for lead {lead_id}: {str(e)}")
+            
+            # Fallback to basic template content
+            subject = f"Information that might help you - {lead.company if hasattr(lead, 'company') else ''}"
+            content = f"Hello {lead.name if hasattr(lead, 'name') else ''},\n\nWe thought you might find this information helpful...\n\nBest regards,\nThe Team"
+            
+            return {
+                "subject": subject,
+                "content": content
+            }
+
+    async def analyze_workflow_performance(self, campaign_id: int, days: int = 30) -> Dict[str, Any]:
+        """
+        Analyze the performance of the low probability workflow and generate insights
+        using the LLM to identify patterns and opportunities for improvement.
+        
+        Args:
+            campaign_id: Campaign ID to analyze
+            days: Number of days of data to analyze
+            
+        Returns:
+            Dict with analysis results and recommendations
+        """
+        try:
+            # Get campaign data
+            campaign = await campaign_service.get_campaign(campaign_id)
+            
+            # Query for workflow statistics over the time period
+            cutoff_date = datetime.now() - timedelta(days=days)
+            
+            query = """
+            SELECT 
+                cl.status, 
+                COUNT(cl.lead_id) as count,
+                AVG(l.lead_score) as avg_score
+            FROM campaign_leads cl
+            JOIN leads l ON cl.lead_id = l.id
+            WHERE cl.campaign_id = :campaign_id
+            AND cl.updated_at >= :cutoff_date
+            GROUP BY cl.status
+            """
+            
+            status_results = await fetch_all(query, {
+                "campaign_id": campaign_id,
+                "cutoff_date": cutoff_date
+            })
+            
+            # Get email engagement metrics
+            email_query = """
+            SELECT 
+                COUNT(*) as total_sent,
+                SUM(CASE WHEN opened_at IS NOT NULL THEN 1 ELSE 0 END) as total_opened,
+                SUM(CASE WHEN clicked_at IS NOT NULL THEN 1 ELSE 0 END) as total_clicked,
+                SUM(CASE WHEN replied_at IS NOT NULL THEN 1 ELSE 0 END) as total_replied
+            FROM emails
+            WHERE campaign_id = :campaign_id
+            AND sent_at >= :cutoff_date
+            """
+            
+            email_results = await fetch_one(email_query, {
+                "campaign_id": campaign_id,
+                "cutoff_date": cutoff_date
+            })
+            
+            # Get leads that upgraded from low probability to higher probability
+            upgraded_query = """
+            SELECT 
+                COUNT(*) as count,
+                AVG(EXTRACT(EPOCH FROM (cl.updated_at - cl.created_at))/86400) as avg_days_to_upgrade
+            FROM campaign_leads cl
+            JOIN leads l ON cl.lead_id = l.id
+            WHERE cl.campaign_id = :campaign_id
+            AND cl.status = 'qualified'
+            AND cl.metadata->>'workflow_stage' = 'graduated'
+            AND cl.updated_at >= :cutoff_date
+            """
+            
+            upgraded_results = await fetch_one(upgraded_query, {
+                "campaign_id": campaign_id,
+                "cutoff_date": cutoff_date
+            })
+            
+            # Prepare data for LLM analysis
+            workflow_data = {
+                "campaign_name": campaign.name,
+                "time_period_days": days,
+                "status_breakdown": status_results,
+                "email_metrics": email_results or {},
+                "upgraded_leads": upgraded_results or {},
+                "current_workflow_stages": list(EMAIL_TEMPLATES.keys()),
+                "avg_nurturing_cycles": 0,  # Will calculate if data available
+                "most_effective_templates": []  # Will populate if data available
+            }
+            
+            # Get average nurturing cycles
+            cycles_query = """
+            SELECT AVG((cl.metadata->>'nurturing_cycle')::int) as avg_cycles
+            FROM campaign_leads cl
+            WHERE cl.campaign_id = :campaign_id
+            AND cl.updated_at >= :cutoff_date
+            AND cl.metadata->>'nurturing_cycle' IS NOT NULL
+            """
+            
+            cycles_result = await fetch_one(cycles_query, {
+                "campaign_id": campaign_id,
+                "cutoff_date": cutoff_date
+            })
+            
+            if cycles_result and cycles_result.get("avg_cycles") is not None:
+                workflow_data["avg_nurturing_cycles"] = cycles_result["avg_cycles"]
+            
+            # Get most effective templates
+            templates_query = """
+            SELECT 
+                e.metadata->>'step' as template,
+                COUNT(*) as sent,
+                SUM(CASE WHEN e.opened_at IS NOT NULL THEN 1 ELSE 0 END) as opened,
+                SUM(CASE WHEN e.clicked_at IS NOT NULL THEN 1 ELSE 0 END) as clicked
+            FROM emails e
+            WHERE e.campaign_id = :campaign_id
+            AND e.sent_at >= :cutoff_date
+            AND e.metadata->>'workflow' = 'low_probability'
+            AND e.metadata->>'step' IS NOT NULL
+            GROUP BY e.metadata->>'step'
+            ORDER BY (SUM(CASE WHEN e.clicked_at IS NOT NULL THEN 1 ELSE 0 END)::float / COUNT(*)) DESC
+            """
+            
+            templates_results = await fetch_all(templates_query, {
+                "campaign_id": campaign_id,
+                "cutoff_date": cutoff_date
+            })
+            
+            workflow_data["most_effective_templates"] = templates_results
+            
+            # Calculate conversion rates
+            if email_results:
+                email_metrics = email_results
+                total_sent = email_metrics.get("total_sent", 0)
+                if total_sent > 0:
+                    workflow_data["email_metrics"]["open_rate"] = email_metrics.get("total_opened", 0) / total_sent
+                    workflow_data["email_metrics"]["click_rate"] = email_metrics.get("total_clicked", 0) / total_sent
+                    workflow_data["email_metrics"]["reply_rate"] = email_metrics.get("total_replied", 0) / total_sent
+            
+            # Format data for LLM prompt
+            formatted_data = json.dumps(workflow_data, default=str, indent=2)
+            
+            # Build prompt for LLM analysis
+            prompt = f"""
+            As an expert marketing analyst, analyze the low probability lead nurturing workflow data and provide insights and recommendations.
+            
+            WORKFLOW DATA:
+            {formatted_data}
+            
+            Please analyze the data above and provide:
+            1. Key performance metrics and trends
+            2. Insights about what's working and what's not
+            3. Specific opportunities for improvement in the low probability nurturing workflow
+            4. Recommendations for adjusting content, timing, or targeting to increase conversion rates
+            5. Any patterns in the leads that successfully convert vs those that don't
+            
+            RESPONSE FORMAT:
+            Return a JSON object with the following structure:
+            {{
+                "summary": "Overall performance summary in 1-2 sentences",
+                "key_metrics": [list of 3-5 key metrics with context],
+                "successful_patterns": [list of patterns observed in converted leads],
+                "recommendations": [list of 4-6 specific recommendations to improve conversion],
+                "content_suggestions": [list of content ideas for each stage of the nurturing process],
+                "experimental_ideas": [2-3 innovative approaches to test]
+            }}
+            """
+            
+            # Use centralized LLM service for analysis
+            llm_response = await LiteLLMService.get_json_completion(
+                prompt=prompt,
+                system_prompt="You are an expert marketing analyst specializing in lead nurturing optimization.",
+                temperature=0.2,
+                request_type="workflow_analysis",
+                metadata={
+                    "campaign_id": campaign_id,
+                    "analysis_type": "low_probability_workflow"
+                }
+            )
+            
+            # Enhance the response with actionable next steps
+            next_steps = [
+                "Review the recommendations and prioritize implementation based on effort vs. impact",
+                "A/B test new content variations based on the content suggestions",
+                "Adjust email timing and sequencing based on engagement patterns",
+                "Refine lead segmentation to better target content to specific lead groups",
+                "Schedule a follow-up analysis in 30 days to measure improvements"
+            ]
+            
+            result = {
+                **llm_response,
+                "analysis_date": datetime.now().isoformat(),
+                "campaign_id": campaign_id,
+                "data_period_days": days,
+                "next_steps": next_steps
+            }
+            
+            # Store the analysis results for reference
+            await insert_row(
+                "workflow_analyses",
+                {
+                    "campaign_id": campaign_id,
+                    "analysis_type": "low_probability",
+                    "results": result,
+                    "created_at": datetime.now()
+                }
+            )
+            
+            return result
+            
+        except Exception as e:
+            logger.error(f"Error analyzing workflow performance: {str(e)}")
+            return {
+                "error": str(e),
+                "summary": "Unable to complete workflow analysis due to an error."
+            }
 
 # Singleton instance
 low_probability_workflow = LowProbabilityWorkflow() 
