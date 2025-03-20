@@ -70,6 +70,7 @@ To configure the production environment:
    ```
    OPENAI_API_KEY=your-production-key
    ANTHROPIC_API_KEY=your-production-key
+   DEEPSEEK_API_KEY=your-production-key
    ```
 
 ## Transitioning from Mock to Live Data

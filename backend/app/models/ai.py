@@ -188,6 +188,7 @@ class LLMProvider(str, Enum):
     GOOGLE = "google"
     COHERE = "cohere"
     HUGGINGFACE = "huggingface"
+    DEEPSEEK = "deepseek"
     CUSTOM = "custom"
 
 class LLMModel(BaseModel):

@@ -31,7 +31,8 @@ PROVIDER_MODEL_PREFIXES = {
     LLMProvider.AZURE: "azure/",
     LLMProvider.GOOGLE: "gemini-",
     LLMProvider.COHERE: "command-",
-    LLMProvider.HUGGINGFACE: "huggingface/"
+    LLMProvider.HUGGINGFACE: "huggingface/",
+    LLMProvider.DEEPSEEK: "deepseek/"
 }
 
 async def get_default_model() -> Optional[LLMModel]:

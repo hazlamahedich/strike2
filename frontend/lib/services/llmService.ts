@@ -139,15 +139,23 @@ export async function generateText(request: LLMGenerateRequest): Promise<LLMGene
         request.max_tokens = defaultModel.max_tokens;
       }
     }
-    
+
+    // Make the API request
     const response = await fetch('/api/llm/generate', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(request),
     });
     
+    // Handle errors
     if (!response.ok) {
       const errorData = await response.json().catch(() => null);
+      
+      // Special handling for disabled features
+      if (response.status === 403 && request.feature_name) {
+        throw new Error(`AI feature '${request.feature_name}' is disabled by the administrator`);
+      }
+      
       throw new Error(errorData?.error || `API call failed with status ${response.status}`);
     }
     

@@ -31,12 +31,39 @@ CREATE TABLE IF NOT EXISTS llm_usage_records (
     metadata JSONB DEFAULT '{}'::jsonb
 );
 
+-- Create AI functionality settings table
+CREATE TABLE IF NOT EXISTS ai_functionality_settings (
+    id SERIAL PRIMARY KEY,
+    feature_key VARCHAR(100) NOT NULL UNIQUE,
+    display_name VARCHAR(255) NOT NULL,
+    description TEXT,
+    is_enabled BOOLEAN DEFAULT TRUE,
+    requires_subscription BOOLEAN DEFAULT FALSE,
+    default_model_id INTEGER REFERENCES llm_models(id) ON DELETE SET NULL,
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+    updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
+);
+
+-- Insert default AI functionality settings
+INSERT INTO ai_functionality_settings (feature_key, display_name, description, is_enabled)
+VALUES 
+('sentiment_analysis', 'Sentiment Analysis', 'Analyze the sentiment of text content from emails, calls, and other communications', TRUE),
+('lead_scoring', 'Lead Scoring', 'AI-powered scoring of leads based on engagement and other factors', TRUE),
+('content_generation', 'Content Generation', 'Generate email templates, follow-ups, and other content', TRUE),
+('entity_extraction', 'Entity Extraction', 'Extract entities like names, organizations, and contact info from text', TRUE),
+('conversation_summary', 'Conversation Summary', 'Summarize conversations and extract key points', TRUE),
+('lead_insights', 'Lead Insights', 'Generate AI insights about leads and opportunities', TRUE),
+('follow_up_suggestions', 'Follow-up Suggestions', 'Get AI-powered suggestions for follow-up actions', TRUE),
+('workflow_automation', 'Workflow Automation', 'AI-powered workflow automation and optimization', TRUE)
+ON CONFLICT (feature_key) DO NOTHING;
+
 -- Create indexes for better performance
 CREATE INDEX IF NOT EXISTS idx_llm_models_is_default ON llm_models(is_default);
 CREATE INDEX IF NOT EXISTS idx_llm_usage_records_model_id ON llm_usage_records(model_id);
 CREATE INDEX IF NOT EXISTS idx_llm_usage_records_user_id ON llm_usage_records(user_id);
 CREATE INDEX IF NOT EXISTS idx_llm_usage_records_timestamp ON llm_usage_records(timestamp);
 CREATE INDEX IF NOT EXISTS idx_llm_usage_records_request_type ON llm_usage_records(request_type);
+CREATE INDEX IF NOT EXISTS idx_ai_functionality_settings_feature_key ON ai_functionality_settings(feature_key);
 
 -- Insert default OpenAI model if API key is set
 DO $$
