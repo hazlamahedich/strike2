@@ -252,6 +252,59 @@ export default function SettingsPage() {
       setIsLoadingUsers(true);
       setUserError(null);
       
+      // Check if mock data is enabled
+      if (settings.enable_mock_features || isMockFeaturesEnabled) {
+        // Return mock user data with proper Role type that matches RBAC definition
+        const mockUsers: User[] = [
+          {
+            id: "1",
+            email: "admin@example.com",
+            name: "Admin User",
+            roles: [{ 
+              id: 1, 
+              name: "Admin", 
+              description: "Administrator role",
+              created_at: new Date().toISOString(),
+              updated_at: new Date().toISOString()
+            }],
+            status: "active",
+            is_active: true
+          },
+          {
+            id: "2",
+            email: "manager@example.com",
+            name: "Manager User",
+            roles: [{ 
+              id: 2, 
+              name: "Manager", 
+              description: "Manager role",
+              created_at: new Date().toISOString(),
+              updated_at: new Date().toISOString()
+            }],
+            status: "active",
+            is_active: true
+          },
+          {
+            id: "3",
+            email: "user@example.com",
+            name: "Regular User",
+            roles: [{ 
+              id: 3, 
+              name: "User", 
+              description: "Regular user role",
+              created_at: new Date().toISOString(),
+              updated_at: new Date().toISOString()
+            }],
+            status: "active",
+            is_active: true
+          }
+        ];
+        
+        setUsers(mockUsers);
+        setIsLoadingUsers(false);
+        return;
+      }
+      
       const response = await fetch('/api/admin/users');
       
       if (!response.ok) {
@@ -280,6 +333,58 @@ export default function SettingsPage() {
   const fetchUserPermissions = async (userId: string) => {
     try {
       setIsLoadingPermissions(true);
+      
+      // Check if mock data is enabled
+      if (settings.enable_mock_features || isMockFeaturesEnabled) {
+        // Return mock permissions data
+        const mockPermissions = [
+          {
+            id: 1,
+            name: "read:users",
+            description: "View user information",
+            resource: "users",
+            action: "read",
+            created_at: new Date().toISOString(),
+            updated_at: new Date().toISOString()
+          },
+          {
+            id: 2,
+            name: "write:users",
+            description: "Modify user information",
+            resource: "users",
+            action: "write",
+            created_at: new Date().toISOString(),
+            updated_at: new Date().toISOString()
+          },
+          {
+            id: 3,
+            name: "read:settings",
+            description: "View system settings",
+            resource: "settings",
+            action: "read",
+            created_at: new Date().toISOString(),
+            updated_at: new Date().toISOString()
+          }
+        ];
+        
+        // Add admin-specific permissions
+        if (userId === "1") {
+          mockPermissions.push({
+            id: 4,
+            name: "write:settings",
+            description: "Modify system settings",
+            resource: "settings",
+            action: "write",
+            created_at: new Date().toISOString(),
+            updated_at: new Date().toISOString()
+          });
+        }
+        
+        setUserPermissions(mockPermissions);
+        setIsLoadingPermissions(false);
+        return;
+      }
+      
       const response = await fetch(`/api/admin/users/${userId}/permissions`);
       
       if (!response.ok) {
