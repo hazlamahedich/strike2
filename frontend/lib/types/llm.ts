@@ -101,4 +101,28 @@ export type LLMProvider = 'openai'
   | 'azure' 
   | 'local' 
   | 'cohere' 
-  | 'huggingface'; 
+  | 'huggingface'
+  | 'deepseek';
+
+/**
+ * Interface for AI functionality settings
+ */
+export interface AIFunctionalitySetting {
+  id: number;
+  feature_key: string;
+  display_name: string;
+  description: string | null;
+  is_enabled: boolean;
+  requires_subscription: boolean;
+  default_model_id: number | null;
+  created_at: string;
+  updated_at: string;
+}
+
+/**
+ * Interface for updating AI functionality settings
+ */
+export interface UpdateAIFunctionalitySetting {
+  is_enabled: boolean;
+  default_model_id?: number | null;
+} 
