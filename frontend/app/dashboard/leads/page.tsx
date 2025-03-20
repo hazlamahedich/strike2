@@ -130,6 +130,7 @@ import { useLeadNotes } from '@/lib/contexts/LeadNotesContext';
 import { TaskButton } from '@/components/tasks/TaskButton';
 import { useTaskDialog, TaskDialogType } from '@/contexts/TaskDialogContext';
 import { ContextualTaskDialog } from '@/components/tasks/ContextualTaskDialog';
+import { TaskDialogProvider } from '@/contexts/TaskDialogContext';
 
 // Define Campaign type
 type Campaign = {
@@ -169,14 +170,16 @@ enum LeadSource {
 
 export default function LeadsPage() {
   // Add this line for debugging
-  console.log("🔄 LeadsPage rendering - No TaskDialogProvider wrapper");
+  console.log("🔄 LeadsPage rendering - Making sure LeadNotesProvider is active");
   
   return (
     <LeadNotesProvider>
       <EmailDialogProvider>
         <LeadPhoneDialogProvider>
-          <LeadsContent />
-          <LeadNoteDialogManager />
+          <TaskDialogProvider>
+            <LeadsContent />
+            <LeadNoteDialogManager />
+          </TaskDialogProvider>
         </LeadPhoneDialogProvider>
       </EmailDialogProvider>
     </LeadNotesProvider>

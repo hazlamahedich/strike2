@@ -20,7 +20,7 @@ import {
 } from '../ui/dropdown-menu';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '../ui/tooltip';
 import { useMeetingDialog, MeetingDialogType } from '@/contexts/MeetingDialogContext';
-import { ContextualRescheduleDialog } from '../meetings/ContextualRescheduleDialog';
+import { ContextualScheduleDialog } from '../meetings/ContextualScheduleDialog';
 import { toast } from 'sonner';
 import { Meeting, MeetingStatus, MeetingType } from '@/lib/types/meeting';
 import { useLeadNotes, LeadNoteDialogType } from '@/lib/contexts/LeadNotesContext';
@@ -28,6 +28,14 @@ import { useTaskDialog } from '@/contexts/TaskDialogContext';
 import { TaskDialogType } from '@/contexts/TaskDialogContext';
 import { ContextualTaskDialog } from '@/components/tasks/ContextualTaskDialog';
 import { useToast } from '@/components/ui/use-toast';
+import { useLeadPhoneDialog } from '@/contexts/LeadPhoneDialogContext';
+import { CallLeadButton } from '../communications/CallLeadButton';
+import { Lead as DialogLead } from '../../types/lead';
+import { ScheduleMeetingDialog } from '../meetings/ScheduleMeetingDialog';
+import { EnhancedMeetingForm } from '../meetings/EnhancedMeetingForm';
+import { Lead as TypesLead } from '@/types/lead';
+import { createMeeting } from '@/lib/api/meetings';
+import { ContextualScheduleMeetingDialog } from '../meetings/ContextualScheduleMeetingDialog';
 
 interface TimelineActivity {
   type: string;
@@ -35,13 +43,23 @@ interface TimelineActivity {
   created_at: string;
 }
 
-interface ExtendedLead extends Lead {
+// Don't extend Lead, define a separate interface with the properties we use
+interface ExtendedLead {
+  id: string | number;
+  name: string;
+  company?: string;
   company_name?: string;
+  email?: string;
+  phone?: string;
+  status?: string;
+  source?: string;
   last_contact?: string;
   lead_score?: number;
   conversion_probability?: number;
   timeline?: TimelineActivity[];
   isInLowConversionPipeline?: boolean;
+  created_at?: string;
+  updated_at?: string;
 }
 
 interface LeadTableProps {
@@ -76,10 +94,17 @@ export default function LeadTable({
     }
   }, [leads]);
   
+  // Helper to safely convert id to string
+  const idToString = (id: string | number | undefined): string => {
+    if (id === undefined) return '';
+    return String(id);
+  };
+  
   const { openMeetingDialog, closeMeetingDialog } = useMeetingDialog();
   const { openAddNoteDialog } = useLeadNotes();
   const { openTaskDialog, closeTaskDialog } = useTaskDialog();
   const { toast } = useToast();
+  const { openPhoneDialog } = useLeadPhoneDialog();
 
   const getStatusColor = (status: string) => {
     switch (status.toLowerCase()) {
@@ -130,69 +155,67 @@ export default function LeadTable({
   };
 
   const handleScheduleMeeting = (e: React.MouseEvent, lead: ExtendedLead) => {
-    e.stopPropagation();
-    console.log("🎯 LeadTable - handleScheduleMeeting called for lead:", lead);
-
-    const dialogId = `schedule-meeting-${lead.id}-${Date.now()}`;
-    console.log("📝 LeadTable - Generated dialogId:", dialogId);
-
-    const baseMeeting = {
-      id: `temp-${Date.now()}`,
-      title: `Meeting with ${lead.first_name} ${lead.last_name}`,
-      start_time: new Date().toISOString(),
-      end_time: new Date(Date.now() + 3600000).toISOString(),
-      status: MeetingStatus.SCHEDULED,
-      meeting_type: MeetingType.INITIAL_CALL,
-      lead_id: lead.id,
-      lead: lead,
-      created_at: new Date().toISOString(),
-      updated_at: new Date().toISOString(),
-    };
-    console.log("📅 LeadTable - Created baseMeeting:", baseMeeting);
-
-    const dialogContent = (
-      <ContextualRescheduleDialog
-        dialogId={dialogId}
-        meeting={baseMeeting}
-        handleClose={() => {
-          console.log("❌ LeadTable - Dialog close handler called");
-          closeMeetingDialog(dialogId);
-        }}
-        handleRescheduleSuccess={() => {
-          console.log("✅ LeadTable - Meeting scheduled successfully");
-          toast({
-            title: 'Success',
-            description: 'Meeting scheduled successfully',
-          });
-          closeMeetingDialog(dialogId);
-        }}
-      />
+    e.preventDefault();
+    e.stopPropagation();  // Prevent form submission
+    
+    console.log(`LeadTable - handleScheduleMeeting called for lead:`, lead);
+    
+    const dialogId = `schedule-meeting-${lead.id}`;
+    console.log(`LeadTable - Calendar button clicked for lead: ${lead.id}`, lead);
+    
+    // Create dialog content with the ContextualScheduleMeetingDialog component
+    const dialogContent = <ContextualScheduleMeetingDialog dialogId={dialogId} />;
+    
+    const result = openMeetingDialog(
+      dialogId,
+      MeetingDialogType.SCHEDULE,
+      dialogContent,
+      { leadId: idToString(lead.id) }
     );
-    console.log("🎨 LeadTable - Created dialog content");
-
-    console.log("🚀 LeadTable - Opening meeting dialog with type:", MeetingDialogType.RESCHEDULE);
-    openMeetingDialog(dialogId, MeetingDialogType.RESCHEDULE, dialogContent, { lead });
+    
+    console.log(`LeadTable - Opening meeting dialog result:`, result);
   };
 
   const handleAddNote = (e: React.MouseEvent, lead: ExtendedLead) => {
     e.stopPropagation();
     console.log("📝 LeadTable - handleAddNote called for lead:", lead);
+    console.log("🔍 LeadTable - lead.id type:", typeof lead.id, "value:", lead.id);
+    console.log("🔍 LeadTable - lead.name:", lead.name);
+    
+    // Convert the lead to a format compatible with the notes dialog
+    const notesLead = {
+      id: typeof lead.id === 'string' ? parseInt(lead.id) : Number(lead.id),
+      name: lead.name || '',
+      email: lead.email || '',
+      phone: lead.phone || '',
+      company: lead.company || lead.company_name || '',
+      status: lead.status || '',
+      // Add other properties required by Lead type if needed
+    };
+    
+    console.log("🧩 LeadTable - Converted notesLead:", notesLead);
     
     // Open the note dialog via the context
-    openAddNoteDialog(lead);
+    openAddNoteDialog(notesLead as any);
     
     // Notify user that the note dialog has been opened
     toast({
       title: 'Add note',
-      description: `Adding note for ${lead.first_name} ${lead.last_name}`,
+      description: `Adding note for ${lead.name || 'lead'}`,
     });
   };
 
   const handleAddTask = (e: React.MouseEvent, lead: ExtendedLead) => {
     e.stopPropagation();
+    console.log("🔧 LeadTable - handleAddTask called for lead:", lead);
+    console.log("🔍 LeadTable - lead.id type:", typeof lead.id, "value:", lead.id);
     
     // Create a unique ID for the dialog
-    const dialogId = `add-task-${lead.id}-${Date.now()}`;
+    const dialogId = `add-task-${idToString(lead.id)}-${Date.now()}`;
+    
+    // Convert lead.id to a number for the ContextualTaskDialog
+    const leadIdNum = typeof lead.id === 'string' ? parseInt(lead.id, 10) : Number(lead.id);
+    console.log("🧩 LeadTable - Converted leadIdNum:", leadIdNum);
     
     // Open the task dialog
     openTaskDialog(
@@ -200,8 +223,8 @@ export default function LeadTable({
       TaskDialogType.ADD,
       <ContextualTaskDialog
         dialogId={dialogId}
-        leadId={parseInt(lead.id)}
-        leadName={`${lead.first_name} ${lead.last_name}`}
+        leadId={leadIdNum}
+        leadName={lead.name || ''}
         handleClose={() => closeTaskDialog(dialogId)}
         handleTaskSuccess={handleTaskCreated}
       />
@@ -221,10 +244,10 @@ export default function LeadTable({
   return (
     <>
       {leads.map((lead) => (
-        <TableRow key={lead.id} onClick={() => onViewLead(lead.id)} className="cursor-pointer hover:bg-muted/50">
+        <TableRow key={lead.id} onClick={() => onViewLead(idToString(lead.id))} className="cursor-pointer hover:bg-muted/50">
           <TableCell className="font-medium">
             <div className="flex items-center gap-2">
-              <span>{lead.first_name} {lead.last_name}</span>
+              <span>{lead.name}</span>
               {lead.isInLowConversionPipeline && (
                 <Badge variant="outline" className="bg-red-50 text-red-700 border-red-200 text-xs">
                   Low Conversion
@@ -275,7 +298,7 @@ export default function LeadTable({
               <span className="text-sm text-muted-foreground">N/A</span>
             )}
           </TableCell>
-          <TableCell>{formatDate(lead.created_at)}</TableCell>
+          <TableCell>{lead.created_at ? formatDate(lead.created_at) : 'N/A'}</TableCell>
           <TableCell>{lead.last_contact ? formatDate(lead.last_contact) : 'Never'}</TableCell>
           <TableCell>
             {lead.timeline && lead.timeline.length > 0 ? (
@@ -292,7 +315,7 @@ export default function LeadTable({
                         </div>
                       </TooltipTrigger>
                       <TooltipContent>
-                        <p className="text-xs">{formatDate(activity.created_at)}</p>
+                        <p className="text-xs">{activity.created_at ? formatDate(activity.created_at) : 'N/A'}</p>
                         <p>{activity.content || `${activity.type} activity`}</p>
                       </TooltipContent>
                     </Tooltip>
@@ -310,23 +333,21 @@ export default function LeadTable({
                 size="icon"
                 onClick={(e) => {
                   e.stopPropagation();
-                  onSendEmail(lead.id);
+                  onSendEmail(idToString(lead.id));
                 }}
                 title="Send Email"
               >
                 <Mail className="h-4 w-4" />
               </Button>
-              <Button
-                variant="ghost"
+              <CallLeadButton
+                leadId={idToString(lead.id)}
+                leadName={lead.name || 'Lead'}
+                phone={lead.phone}
+                email={lead.email}
                 size="icon"
-                onClick={(e) => {
-                  e.stopPropagation();
-                  onCallLead(lead.id);
-                }}
-                title="Call Lead"
-              >
-                <Phone className="h-4 w-4" />
-              </Button>
+                variant="ghost" 
+                className="h-8 w-8"
+              />
               <Button
                 variant="ghost"
                 size="icon"
@@ -360,13 +381,13 @@ export default function LeadTable({
                 <DropdownMenuContent align="end">
                   <DropdownMenuItem onClick={(e) => {
                     e.stopPropagation();
-                    onViewLead(lead.id);
+                    onViewLead(idToString(lead.id));
                   }}>
                     View Details
                   </DropdownMenuItem>
                   <DropdownMenuItem onClick={(e) => {
                     e.stopPropagation();
-                    onEditLead(lead.id);
+                    onEditLead(idToString(lead.id));
                   }}>
                     Edit Lead
                   </DropdownMenuItem>

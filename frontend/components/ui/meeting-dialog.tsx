@@ -146,6 +146,8 @@ interface MeetingDialogContentProps extends React.HTMLAttributes<HTMLDivElement>
   draggable?: boolean;
   title?: string;
   onClose?: () => void;
+  headerClassName?: string;
+  actionButtons?: React.ReactNode;
 }
 
 export const MeetingDialogContent = forwardRef<
@@ -160,6 +162,8 @@ export const MeetingDialogContent = forwardRef<
   draggable = true, 
   title = 'Dialog',
   onClose,
+  headerClassName,
+  actionButtons,
   ...props 
 }, ref) => {
   // Add useEffect for mounting/unmounting logs
@@ -868,7 +872,8 @@ export const MeetingDialogContent = forwardRef<
         className={cn(
           "absolute top-0 left-0 right-0 h-10 bg-muted flex items-center justify-between px-4 cursor-move rounded-t-lg",
           isDragging && "cursor-grabbing bg-blue-100 dark:bg-blue-900/30",
-          !isMaximized && "hover:bg-muted/80"
+          !isMaximized && "hover:bg-muted/80",
+          headerClassName
         )}
         onMouseDown={handleDragStart}
         onTouchStart={handleTouchStart}
@@ -882,6 +887,7 @@ export const MeetingDialogContent = forwardRef<
           <div className="text-sm font-medium truncate max-w-[200px]">{title || `Dialog ${dialogId}`}</div>
         </div>
         <div className="flex items-center gap-1">
+          {actionButtons}
           <button
             className="rounded-full h-6 w-6 inline-flex items-center justify-center text-muted-foreground hover:bg-accent hover:text-accent-foreground"
             onClick={() => {

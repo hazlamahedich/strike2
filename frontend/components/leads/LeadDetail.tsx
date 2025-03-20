@@ -25,7 +25,13 @@ import {
   Twitter,
   CheckSquare,
   Circle,
-  User as UserIcon
+  User as UserIcon,
+  MoreHorizontal,
+  CheckCircle,
+  XCircle,
+  Check,
+  ThumbsDown,
+  ArrowRight
 } from 'lucide-react';
 import { formatDistanceToNow } from 'date-fns';
 import { Lead, LeadSource, LeadStatus } from '../../lib/types/lead';
@@ -34,6 +40,26 @@ import { EmailDialog } from '../communications/EmailDialog';
 import { PhoneDialog } from '../communications/PhoneDialog';
 import CompanyAnalysis from './CompanyAnalysis';
 import { ApiResponse, ApiError } from '../../lib/api/apiClient';
+import { useLeadPhoneDialog } from '../../contexts/LeadPhoneDialogContext';
+import { CallLeadButton } from '../communications/CallLeadButton';
+import { EmailLeadButton } from '../communications/EmailLeadButton';
+import { Separator } from "@/components/ui/separator";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
+import { cn, formatPhoneNumber } from '@/lib/utils';
+import LeadTimeline from './LeadTimeline';
+import LeadNotes from './LeadNotes';
+import LeadTasks from './LeadTasks';
+import LeadMeetings from './LeadMeetings';
+import { useMeetingDialog, MeetingDialogType } from '@/contexts/MeetingDialogContext';
+import { useLeadNotes } from '@/contexts/LeadNotesContext';
+import { useTaskDialog, TaskDialogType } from '@/contexts/TaskDialogContext';
+import { useToast } from '@/components/ui/use-toast';
+import { format } from 'date-fns';
 
 // Extended interface for Lead details
 interface LeadDetailType extends Omit<Lead, 'notes'> {
@@ -213,8 +239,19 @@ const LeadDetail: React.FC<LeadDetailProps> = ({
     setShowEmailDialog(true);
   };
   
+  const { openPhoneDialog } = useLeadPhoneDialog();
+  
   const handleCall = () => {
-    setShowPhoneDialog(true);
+    // Create a lead object with the necessary information for the phone dialog context
+    const phoneDialogLead = {
+      id: leadId.toString(),
+      name: lead?.full_name || `${lead?.first_name} ${lead?.last_name}`.trim(),
+      phone: lead?.phone || '',
+      email: lead?.email || ''
+    };
+    
+    // Open the phone dialog using our context
+    openPhoneDialog(phoneDialogLead);
   };
   
   // Toggle expanded state for timeline events
@@ -882,12 +919,23 @@ const LeadDetail: React.FC<LeadDetailProps> = ({
       </Card>
       
       <div className="flex flex-wrap gap-2">
-        <Button onClick={handleSendEmail}>
+        <EmailLeadButton
+          leadId={leadId}
+          leadName={leadData.full_name}
+          leadEmail={leadData.email}
+          size="default"
+        >
           <Mail className="mr-2 h-4 w-4" /> Send Email
-        </Button>
-        <Button onClick={handleCall}>
+        </EmailLeadButton>
+        <CallLeadButton
+          leadId={leadId.toString()}
+          leadName={leadData.full_name}
+          phone={leadData.phone}
+          email={leadData.email}
+          size="default"
+        >
           <Phone className="mr-2 h-4 w-4" /> Call
-        </Button>
+        </CallLeadButton>
         <Button onClick={onScheduleMeeting}>
           <Calendar className="mr-2 h-4 w-4" /> Schedule Meeting
         </Button>

@@ -11,7 +11,7 @@ import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from '
 import { useForm } from 'react-hook-form';
 import { z } from 'zod';
 import { zodResolver } from '@hookform/resolvers/zod';
-import { Loader2, Send, FileText, Sparkles, Paperclip, X, Mail, Inbox, Share } from 'lucide-react';
+import { Loader2, Send, FileText, Sparkles, Paperclip, X, Mail, Inbox, Share, Minimize } from 'lucide-react';
 import { 
   sendEmail, 
   generateEmailWithAI, 
@@ -23,6 +23,9 @@ import {
 import RichTextEditor from './RichTextEditor';
 import { TemplateSelectionDialog } from './TemplateSelectionDialog';
 import { format } from 'date-fns';
+import { useEmailDialog } from '@/contexts/EmailDialogContext';
+import { cn } from '@/lib/utils';
+import { Rnd } from 'react-rnd';
 
 // Define the form schema
 const emailFormSchema = z.object({
@@ -51,6 +54,7 @@ export function ContextualEmailDialog({
   console.log("⭐⭐⭐ CONTEXTUAL EMAIL DIALOG - Rendering for", leadName);
   
   const { toast } = useToast();
+  const { minimizeDialog, updateDialogPosition } = useEmailDialog();
   const [activeTab, setActiveTab] = useState('compose');
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [templateDialogOpen, setTemplateDialogOpen] = useState(false);
@@ -58,6 +62,7 @@ export function ContextualEmailDialog({
   const [sentEmails, setSentEmails] = useState<ReceivedEmail[]>([]);
   const [isLoading, setIsLoading] = useState(false);
   const [attachments, setAttachments] = useState<File[]>([]);
+  const [position, setPosition] = useState({ x: 0, y: 0 });
   
   // Initialize the form
   const form = useForm<EmailFormValues>({
@@ -311,12 +316,37 @@ export function ContextualEmailDialog({
     else return (bytes / (1024 * 1024)).toFixed(1) + ' MB';
   };
   
+  // Handle minimize dialog
+  const handleMinimize = () => {
+    console.log("⭐⭐⭐ CONTEXTUAL EMAIL DIALOG - Minimizing dialog", dialogId);
+    minimizeDialog(dialogId, true);
+  };
+
+  // Update position when dialog is dragged
+  const handleDragStop = (_e: any, d: { x: number; y: number }) => {
+    console.log("⭐⭐⭐ CONTEXTUAL EMAIL DIALOG - Updating position", d.x, d.y);
+    // The position is already absolute, no need to invert it
+    updateDialogPosition(dialogId, { x: d.x, y: d.y });
+  };
+  
   return (
     <MeetingDialogContent
       dialogId={dialogId}
       dialogType={MeetingDialogType.EMAIL}
       title={`Email ${leadName}`}
       onClose={handleClose}
+      headerClassName="drag-handle"
+      actionButtons={
+        <Button
+          variant="ghost"
+          size="icon"
+          onClick={handleMinimize}
+          className="h-8 w-8 rounded-full"
+          aria-label="Minimize"
+        >
+          <Minimize className="h-4 w-4" />
+        </Button>
+      }
     >
       <div className="p-6">
         <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">

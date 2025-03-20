@@ -1,43 +1,28 @@
-import React from 'react';
 import type { Metadata } from "next";
-import { Inter, Montserrat } from "next/font/google";
+import { Inter } from "next/font/google";
 import "./globals.css";
 import { ThemeProvider } from "@/components/shared/theme-provider";
+import { Toaster } from "sonner";
+import AuthProviderWrapper from "@/components/shared/auth-provider-wrapper";
 import { QueryClientProvider } from "@/components/shared/query-client-provider";
 import { BreadcrumbProvider } from "@/components/shared/breadcrumb-provider";
 import { ChatbotProvider } from "@/components/shared/chatbot-provider";
-import { DialogProvider } from "@/lib/contexts/DialogContext";
-import { MeetingDialogProvider } from "@/contexts/MeetingDialogContext";
+import { MeetingDialogProvider, MeetingDialogContainer } from "@/contexts/MeetingDialogContext";
 import { TaskDialogProvider } from "@/contexts/TaskDialogContext";
-import { LLMProvider } from "@/contexts/LLMContext";
-import { Providers } from "./providers";
-import { Analytics } from "@/components/shared/analytics";
-import { MeetingDialogContainer } from "@/components/ui/meeting-dialog";
-import { MeetingDialogTaskbar } from "@/components/ui/meeting-dialog-taskbar";
+import { EmailDialogProvider } from "@/contexts/EmailDialogContext";
+import { LeadPhoneDialogProvider } from '@/contexts/LeadPhoneDialogContext';
+import { MeetingDialogTaskbar } from '@/components/ui/meeting-dialog-taskbar';
+import { TaskDialogTaskbar } from '@/components/ui/task-dialog-taskbar';
+import { EmailDialogTaskbar } from '@/components/ui/email-dialog-taskbar';
+import { PhoneDialogTaskbar } from '@/components/ui/phone-dialog-taskbar';
+import { LeadNotesProvider } from '@/lib/contexts/LeadNotesContext';
+import { LeadNoteDialogManager } from '@/components/leads/LeadNoteDialogManager';
 
-// Use Inter as the primary font and Montserrat for headings
-const inter = Inter({
-  subsets: ["latin"],
-  variable: "--font-inter",
-  display: "swap",
-});
-
-const montserrat = Montserrat({
-  subsets: ["latin"],
-  variable: "--font-montserrat",
-  display: "swap",
-});
+const inter = Inter({ subsets: ["latin"] });
 
 export const metadata: Metadata = {
-  title: "AI-Powered CRM Suite",
+  title: "Strike CRM",
   description: "Intelligent, modular CRM system built with modern AI capabilities",
-  keywords: "CRM, sales, customer relationship management, AI, analytics",
-  authors: [{ name: "CRM Suite Team" }],
-  viewport: "width=device-width, initial-scale=1",
-  themeColor: [
-    { media: "(prefers-color-scheme: light)", color: "#ffffff" },
-    { media: "(prefers-color-scheme: dark)", color: "#111827" },
-  ],
 };
 
 export default function RootLayout({
@@ -46,11 +31,7 @@ export default function RootLayout({
   children: React.ReactNode;
 }>) {
   return (
-    <html 
-      lang="en" 
-      suppressHydrationWarning 
-      className={`${inter.variable} ${montserrat.variable}`}
-    >
+    <html lang="en" suppressHydrationWarning>
       <body className={inter.className} suppressHydrationWarning>
         <ThemeProvider
           attribute="class"
@@ -58,29 +39,35 @@ export default function RootLayout({
           enableSystem
           disableTransitionOnChange
         >
-          <Providers>
+          <AuthProviderWrapper>
             <QueryClientProvider>
               <ChatbotProvider>
-                <DialogProvider>
+                <MeetingDialogProvider>
                   <TaskDialogProvider>
-                    <MeetingDialogProvider>
-                      <LLMProvider>
-                        <div className="flex flex-col min-h-screen bg-background">
-                          <BreadcrumbProvider />
-                          <main className="flex-1">
-                            {children}
-                          </main>
-                          <Analytics />
-                          <MeetingDialogContainer />
-                          <MeetingDialogTaskbar />
-                        </div>
-                      </LLMProvider>
-                    </MeetingDialogProvider>
+                    <EmailDialogProvider>
+                      <LeadPhoneDialogProvider>
+                        <LeadNotesProvider>
+                          <div className="flex flex-col min-h-screen">
+                            <BreadcrumbProvider />
+                            <div className="flex-1">
+                              {children}
+                            </div>
+                            <MeetingDialogTaskbar />
+                            <TaskDialogTaskbar />
+                            <EmailDialogTaskbar />
+                            <PhoneDialogTaskbar />
+                            <MeetingDialogContainer />
+                            <LeadNoteDialogManager />
+                          </div>
+                          <Toaster position="top-right" />
+                        </LeadNotesProvider>
+                      </LeadPhoneDialogProvider>
+                    </EmailDialogProvider>
                   </TaskDialogProvider>
-                </DialogProvider>
+                </MeetingDialogProvider>
               </ChatbotProvider>
             </QueryClientProvider>
-          </Providers>
+          </AuthProviderWrapper>
         </ThemeProvider>
       </body>
     </html>
