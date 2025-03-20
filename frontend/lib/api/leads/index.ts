@@ -13,6 +13,7 @@ import {
 } from '../../types/lead';
 import { SupabaseMLService } from '@/lib/ml/mlService';
 import { getMockDataStatus } from '@/lib/utils/mockDataUtils';
+import { ExitDecisionOption } from '../../types/pipeline';
 
 // Base URL for lead endpoints
 const BASE_URL = 'leads';
@@ -1737,4 +1738,51 @@ export const updateLeadWorkflowStage = async (leadId: number, stage: string) => 
 const getCurrentUserId = () => {
   const session = supabase.auth.session();
   return session?.user?.id || 'system';
+};
+
+/**
+ * Process exit decision for a lead
+ */
+export const processExitDecision = async (
+  leadId: number | string,
+  decision: ExitDecisionOption, 
+  reason: string,
+  targetWorkflow?: string,
+  targetPipeline?: string,
+): Promise<{ 
+  success: boolean; 
+  action?: string;
+  newStatus?: string;
+  newWorkflow?: string;
+  newPipeline?: string;
+  error?: string;
+}> => {
+  try {
+    const response = await fetch(`/api/leads/${leadId}/process-exit-decision`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        decision,
+        reason,
+        targetWorkflow,
+        targetPipeline
+      }),
+    });
+    
+    const data = await response.json();
+    
+    if (!response.ok) {
+      return { success: false, error: data.error || 'An error occurred' };
+    }
+    
+    return {
+      success: true,
+      ...data
+    };
+  } catch (error) {
+    console.error('Error processing exit decision:', error);
+    return { success: false, error: 'Failed to process exit decision' };
+  }
 }; 

@@ -13,6 +13,7 @@ export interface EmailPayload {
   content: string;
   leadId: string;
   campaignId?: string;
+  updateLeadStatus?: string;
 }
 
 export interface ScheduleEmailPayload extends EmailPayload {

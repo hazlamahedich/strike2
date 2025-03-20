@@ -144,14 +144,16 @@ export const moveLeadToStage = async (
   leadId: number,
   newStage: PipelineStage,
   currentStage: PipelineStage,
-  reason: string
+  reason: string,
+  newStatus?: string
 ): Promise<boolean> => {
   try {
     try {
       const response = await apiClient.post(`/api/leads/${leadId}/change-stage`, {
         new_stage: newStage,
         current_stage: currentStage,
-        reason: reason
+        reason: reason,
+        new_status: newStatus
       });
       
       // If we got here, it succeeded
@@ -163,6 +165,9 @@ export const moveLeadToStage = async (
       
       // In a production app, this would fail, but for development we'll simulate success
       console.log(`Simulated stage change for lead ${leadId}: ${currentStage} → ${newStage}`);
+      if (newStatus) {
+        console.log(`Simulated status update for lead ${leadId}: to ${newStatus}`);
+      }
     }
 
     // Log the stage change activity
@@ -173,7 +178,9 @@ export const moveLeadToStage = async (
       payload: {
         previousStage: currentStage,
         newStage: newStage,
-        reason: reason
+        reason: reason,
+        statusUpdated: newStatus ? true : false,
+        newStatus: newStatus
       }
     });
 

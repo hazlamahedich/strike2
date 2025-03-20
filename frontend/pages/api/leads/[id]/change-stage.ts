@@ -16,22 +16,30 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
 
   try {
     const { id } = req.query;
-    const { new_stage, current_stage, reason } = req.body;
+    const { new_stage, current_stage, reason, new_status } = req.body;
 
     if (!id || !new_stage || !current_stage) {
       return res.status(400).json({ error: 'Missing required parameters' });
     }
 
+    // Prepare update data with proper typing
+    const updateData: Record<string, any> = {
+      current_stage: new_stage,
+      last_stage_change: new Date().toISOString(),
+      stage_change_reason: reason || null,
+      updated_at: new Date().toISOString(),
+      updated_by: session.user.id
+    };
+
+    // Add status update if provided
+    if (new_status) {
+      updateData.status = new_status;
+    }
+
     // Update the lead in the database
     const { data, error } = await supabaseAdmin
       .from('leads')
-      .update({
-        current_stage: new_stage,
-        last_stage_change: new Date().toISOString(),
-        stage_change_reason: reason || null,
-        updated_at: new Date().toISOString(),
-        updated_by: session.user.id
-      })
+      .update(updateData)
       .eq('id', id)
       .select();
 
@@ -41,17 +49,25 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     }
 
     // Create activity record for the stage change
+    const activityDetails: Record<string, any> = {
+      previous_stage: current_stage,
+      new_stage: new_stage,
+      reason: reason || null
+    };
+
+    // Add status change to activity if status was updated
+    if (new_status) {
+      activityDetails.status_updated = true;
+      activityDetails.new_status = new_status;
+    }
+
     const { error: activityError } = await supabaseAdmin
       .from('lead_activities')
       .insert({
         lead_id: id,
         activity_type: 'lead_stage_changed',
         user_id: session.user.id,
-        details: {
-          previous_stage: current_stage,
-          new_stage: new_stage,
-          reason: reason || null
-        },
+        details: activityDetails,
         created_at: new Date().toISOString()
       });
 

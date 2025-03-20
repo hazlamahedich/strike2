@@ -52,6 +52,9 @@ import {
 } from '@/lib/api/workflow';
 import AdminWorkflowControls from './AdminWorkflowControls';
 import type { ApiResponse, ApiError } from '@/lib/api/client';
+import { mapStageToLeadStatus, shouldUpdateLeadStatus } from '../../lib/utils/pipeline-utils';
+import { LeadStatus } from '../../lib/types/lead';
+import { ExitDecisionDialog } from './ExitDecisionDialog';
 
 // Types for API responses
 interface AnalysisResponse {
@@ -248,6 +251,7 @@ const LowConversionPipeline: React.FC = () => {
     recommendedStage?: PipelineStage;
     reason?: string;
   } | null>(null);
+  const [showExitDecisionDialog, setShowExitDecisionDialog] = useState<boolean>(false);
   
   useEffect(() => {
     // Fetch campaigns data
@@ -634,13 +638,17 @@ const LowConversionPipeline: React.FC = () => {
 
     setIsSendingEmail(true);
     try {
+      // Check if we need to update the lead status (if it's NEW, update to CONTACTED)
+      const updateStatus = selectedLead.status === LeadStatus.NEW;
+      
       const result = await sendEmail({
         to: selectedLead.email,
         from: 'marketing@yourdomain.com', // This should come from settings or current user
         subject: generatedContent.subject,
         content: generatedContent.content,
         leadId: selectedLead.id.toString(),
-        campaignId: selectedLead.campaign_id.toString()
+        campaignId: selectedLead.campaign_id.toString(),
+        updateLeadStatus: updateStatus ? LeadStatus.CONTACTED : undefined
       });
 
       if (result.success) {
@@ -651,18 +659,25 @@ const LowConversionPipeline: React.FC = () => {
           source: ActivitySource.USER,
           payload: {
             subject: generatedContent.subject,
-            template: selectedTemplate
+            template: selectedTemplate,
+            statusUpdated: updateStatus
           }
         });
 
+        // Show appropriate toast message
         toast({
           title: 'Email sent successfully',
-          description: `Email has been sent to ${selectedLead.name}`,
+          description: `Email has been sent to ${selectedLead.name}${updateStatus ? ' and status updated to Contacted' : ''}`,
         });
 
         // Refresh activities if activities dialog is open
         if (showActivitiesDialog) {
           await fetchLeadActivities(selectedLead.id);
+        }
+
+        // Refresh lead data to show updated status if needed
+        if (updateStatus) {
+          refreshLeads();
         }
 
         // Close the content dialog
@@ -946,17 +961,24 @@ const LowConversionPipeline: React.FC = () => {
     }
     
     try {
+      // Determine if lead status needs to be updated based on the stage transition
+      const currentStatus = selectedLead.status as unknown as LeadStatus;
+      const updateStatus = shouldUpdateLeadStatus(currentStatus, newStage);
+      const newStatus = updateStatus ? mapStageToLeadStatus(newStage) : currentStatus;
+      
+      // Call the API to move the lead and update status if needed
       const success = await moveLeadToStage(
         selectedLead.id,
         newStage,
         selectedLead.current_stage as PipelineStage,
-        transitionReason
+        transitionReason,
+        updateStatus ? newStatus : undefined
       );
       
       if (success) {
         toast({
           title: 'Lead Moved',
-          description: `Successfully moved lead to ${newStage} stage`,
+          description: `Successfully moved lead to ${newStage} stage${updateStatus ? ` and updated status to ${newStatus}` : ''}`,
         });
         
         // Refresh the data
@@ -1087,6 +1109,12 @@ const LowConversionPipeline: React.FC = () => {
       default:
         return 'bg-gray-100 text-gray-800 dark:bg-gray-900 dark:text-gray-300';
     }
+  };
+  
+  // Handle exit decision for a lead in the Exit Decision stage
+  const handleExitDecision = (lead: Lead) => {
+    setSelectedLead(lead);
+    setShowExitDecisionDialog(true);
   };
   
   if (isLoading) {
@@ -1332,6 +1360,20 @@ const LowConversionPipeline: React.FC = () => {
                             </TooltipContent>
                           </Tooltip>
                         </TooltipProvider>
+
+                        {lead.current_stage === PipelineStage.EXIT_DECISION && (
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            className="text-amber-600 hover:text-amber-700 hover:bg-amber-50 dark:text-amber-400 dark:hover:text-amber-300 dark:hover:bg-amber-950/30"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              handleExitDecision(lead);
+                            }}
+                          >
+                            Exit Decision
+                          </Button>
+                        )}
                       </div>
                     </CardFooter>
                   </Card>
@@ -1466,6 +1508,19 @@ const LowConversionPipeline: React.FC = () => {
                           </DropdownMenuItem>
                         </DropdownMenuContent>
                       </DropdownMenu>
+                      {lead.current_stage === PipelineStage.EXIT_DECISION && (
+                        <Button
+                          size="sm"
+                          variant="ghost"
+                          className="text-amber-600 hover:text-amber-700 hover:bg-amber-50 dark:text-amber-400 dark:hover:text-amber-300 dark:hover:bg-amber-950/30"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            handleExitDecision(lead);
+                          }}
+                        >
+                          Exit Decision
+                        </Button>
+                      )}
                     </td>
                   </tr>
                 ))
@@ -2022,6 +2077,14 @@ const LowConversionPipeline: React.FC = () => {
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      {/* Exit Decision Dialog */}
+      <ExitDecisionDialog
+        lead={selectedLead}
+        open={showExitDecisionDialog}
+        onOpenChange={setShowExitDecisionDialog}
+        onDecisionProcessed={refreshLeads}
+      />
     </div>
   );
 };
