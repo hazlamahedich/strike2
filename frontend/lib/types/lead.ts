@@ -57,4 +57,16 @@ export type TimelineActivity = {
     name: string;
   };
   details?: any;
+}
+
+// Calendar integration with external calendar providers
+export interface LeadCalendarIntegration {
+  id: string;
+  lead_id: string;
+  provider: 'google' | 'microsoft' | 'apple';
+  access_token: string;
+  refresh_token: string;
+  expires_at: number;
+  created_at: string;
+  updated_at: string;
 } 

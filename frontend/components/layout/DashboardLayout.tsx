@@ -46,6 +46,7 @@ import { motion, AnimatePresence } from 'framer-motion';
 import { Input } from '../ui/input';
 import { cn } from '@/lib/utils';
 import { signOut } from 'next-auth/react';
+import { MockDataToggle } from '../ui/mock-data-toggle';
 
 type NavItem = {
   title: string;
@@ -511,6 +512,18 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
         
         {/* Toast notifications */}
         <Toaster position="top-right" />
+
+        {/* Dev tools section (only shown in development mode) */}
+        {process.env.NODE_ENV === 'development' && (
+          <div className="px-3 pb-4 pt-2">
+            <div className="rounded-md border border-dashed p-3 bg-muted/50">
+              <h3 className="text-xs font-semibold mb-2">Development Tools</h3>
+              <div className="space-y-2">
+                <MockDataToggle />
+              </div>
+            </div>
+          </div>
+        )}
       </div>
     </AnalyticsProvider>
   );

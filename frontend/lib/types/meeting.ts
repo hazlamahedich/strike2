@@ -83,6 +83,12 @@ export interface Meeting {
   agenda_items?: string[];
   created_at: string;
   updated_at: string;
+  // Attendees
+  attendees?: Array<{
+    email: string;
+    role?: 'primary' | 'to' | 'cc' | 'bcc';
+    name?: string;
+  }>;
   // Summary fields
   summary?: string;
   action_items?: string[];
@@ -187,6 +193,12 @@ export interface MeetingCreate {
   status?: MeetingStatus;
   notes?: string;
   agenda_items?: string[];
+  // Attendees
+  attendees?: Array<{
+    email: string;
+    role?: 'primary' | 'to' | 'cc' | 'bcc';
+    name?: string;
+  }>;
 }
 
 // Meeting update interface

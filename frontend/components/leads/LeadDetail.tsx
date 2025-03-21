@@ -44,6 +44,7 @@ import { useLeadPhoneDialog } from '../../contexts/LeadPhoneDialogContext';
 import { CallLeadButton } from '../communications/CallLeadButton';
 import { EmailLeadButton } from '../communications/EmailLeadButton';
 import { Separator } from "@/components/ui/separator";
+import { CalendarIntegration } from './CalendarIntegration';
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -915,6 +916,28 @@ const LeadDetail: React.FC<LeadDetailProps> = ({
               </span>
             )}
           </div>
+        </CardContent>
+      </Card>
+      
+      {/* Calendar Integration */}
+      <Card className="mt-4">
+        <CardHeader className="pb-2">
+          <CardTitle className="text-sm font-medium">Calendar Integration</CardTitle>
+          <CardDescription>Connect to the lead's calendar to check availability when scheduling meetings</CardDescription>
+        </CardHeader>
+        <CardContent>
+          <CalendarIntegration 
+            leadId={leadId.toString()}
+            onIntegrationChange={(connected) => {
+              if (connected) {
+                toast({
+                  title: "Calendar Connected",
+                  description: "You can now see the lead's availability when scheduling meetings.",
+                  variant: "default"
+                });
+              }
+            }}
+          />
         </CardContent>
       </Card>
       

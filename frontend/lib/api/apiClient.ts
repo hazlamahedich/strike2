@@ -42,18 +42,37 @@ apiClient.interceptors.request.use(
 
 // Response interceptor to handle common errors
 apiClient.interceptors.response.use(
-  (response) => response,
+  (response) => {
+    // Log successful responses in development
+    if (process.env.NODE_ENV === 'development') {
+      console.log(`API Success [${response.config.method?.toUpperCase()}] ${response.config.url}:`, { 
+        status: response.status,
+        data: response.data 
+      });
+    }
+    return response;
+  },
   (error) => {
     // Log detailed error information for debugging
     if (error.response) {
-      console.error('API Error Response:', {
-        status: error.response.status,
-        statusText: error.response.statusText,
-        data: error.response.data || 'Empty response body',
+      // Detailed response error logging with request context
+      const requestDetails = {
+        method: error.config?.method?.toUpperCase() || 'UNKNOWN',
         url: error.config?.url || 'Unknown URL',
         baseURL: error.config?.baseURL || 'Unknown baseURL',
         fullURL: error.config?.baseURL && error.config?.url ? 
           `${error.config.baseURL}${error.config.url}` : 'Unknown full URL',
+        headers: error.config?.headers || {},
+        data: error.config?.data ? JSON.parse(error.config.data) : 'No request data',
+      };
+      
+      console.error(`API Error [${requestDetails.method}] ${requestDetails.url}:`, {
+        request: requestDetails,
+        response: {
+          status: error.response.status,
+          statusText: error.response.statusText,
+          data: error.response.data || 'Empty response body',
+        }
       });
       
       // Handle empty error response
@@ -62,11 +81,11 @@ apiClient.interceptors.response.use(
         error.isAuthError = true;
         error.message = 'Authentication required. Please log in again.';
       } else if (error.response.status === 404) {
-        console.error('Resource not found error');
+        console.error(`Resource not found error: ${requestDetails.fullURL}`);
         error.isNotFoundError = true;
         error.message = 'The requested resource was not found.';
       } else if (!error.response.data || Object.keys(error.response.data).length === 0) {
-        console.error('Empty error response with status:', error.response.status);
+        console.error(`Empty error response with status: ${error.response.status}`);
         error.message = `API Error: ${error.response.status} ${error.response.statusText}`;
       }
     } else if (error.request) {

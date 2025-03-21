@@ -2,12 +2,21 @@ import type { NextAuthOptions } from "next-auth";
 import CredentialsProvider from "next-auth/providers/credentials";
 import type { JWT } from "next-auth/jwt";
 import type { Session } from "next-auth";
+import GoogleProvider from "next-auth/providers/google";
+import MicrosoftProvider from "next-auth/providers/azure-ad";
 
 // Default UUID to use as fallback if a non-UUID ID is encountered
 const DEFAULT_UUID = "00000000-0000-0000-0000-000000000000";
 
 // UUID validation regex
 const UUID_REGEX = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+// Check if we're in development mode and mock data is enabled
+const isMockModeEnabled = () => {
+  return process.env.NODE_ENV === 'development' && 
+         (process.env.NEXT_PUBLIC_USE_MOCK_DATA === 'true' || 
+          (typeof window !== 'undefined' && window.localStorage.getItem('strike_app_mock_data') === 'true'));
+};
 
 export const authOptions: NextAuthOptions = {
   providers: [
@@ -18,6 +27,18 @@ export const authOptions: NextAuthOptions = {
         password: { label: "Password", type: "password" }
       },
       async authorize(credentials) {
+        // In mock mode (development), bypass authentication
+        if (isMockModeEnabled()) {
+          console.log('Using mock authentication data in development mode');
+          return {
+            id: "7007305b-1d08-49ae-9aa3-680eb8394a76",
+            name: "Admin User (Mock Mode)",
+            email: "admin@example.com",
+            role: "admin",
+            image: null,
+          };
+        }
+        
         if (!credentials?.email || !credentials?.password) {
           throw new Error("Email and password are required");
         }
@@ -53,13 +74,35 @@ export const authOptions: NextAuthOptions = {
         }
       },
     }),
+    GoogleProvider({
+      clientId: process.env.GOOGLE_CLIENT_ID || "",
+      clientSecret: process.env.GOOGLE_CLIENT_SECRET || "",
+      authorization: {
+        params: {
+          scope: "https://www.googleapis.com/auth/calendar.readonly email profile",
+          prompt: "consent",
+          access_type: "offline",
+          response_type: "code"
+        }
+      }
+    }),
+    MicrosoftProvider({
+      clientId: process.env.MICROSOFT_CLIENT_ID || "",
+      clientSecret: process.env.MICROSOFT_CLIENT_SECRET || "",
+      tenantId: "common",
+      authorization: {
+        params: {
+          scope: "openid email profile User.Read Calendars.Read"
+        }
+      }
+    }),
   ],
   session: {
     strategy: "jwt",
     maxAge: 30 * 24 * 60 * 60, // 30 days
   },
   callbacks: {
-    async jwt({ token, user }) {
+    async jwt({ token, user, account }) {
       // Add custom user data to the JWT token
       if (user) {
         // Ensure user ID is a valid UUID
@@ -78,6 +121,15 @@ export const authOptions: NextAuthOptions = {
         }
         
         token.role = (user as any).role || "user";
+      }
+      // Store the access token and refresh token if available
+      if (account) {
+        if (account.provider === 'google' || account.provider === 'azure-ad') {
+          token.accessToken = account.access_token;
+          token.refreshToken = account.refresh_token;
+          token.expiresAt = account.expires_at;
+          token.provider = account.provider;
+        }
       }
       return token;
     },
@@ -103,6 +155,6 @@ export const authOptions: NextAuthOptions = {
     signOut: "/auth/login",
     error: "/auth/login",
   },
-  secret: process.env.NEXTAUTH_SECRET,
+  secret: process.env.NEXTAUTH_SECRET || "DEVELOPMENT_SECRET_DO_NOT_USE_IN_PRODUCTION",
   debug: process.env.NODE_ENV === "development",
 }; 

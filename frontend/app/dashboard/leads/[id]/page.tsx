@@ -97,6 +97,7 @@ import { LeadPhoneDialogProvider, useLeadPhoneDialog } from '@/contexts/LeadPhon
 import { MeetingDialogProvider, useMeetingDialog, MeetingDialogType } from '@/contexts/MeetingDialogContext';
 import { Meeting, MeetingStatus, MeetingType } from '@/lib/types/meeting';
 import { ContextualRescheduleDialog } from '@/components/meetings/ContextualRescheduleDialog';
+import { ContextualScheduleMeetingDialog } from '@/components/meetings/ContextualScheduleMeetingDialog';
 import { MeetingDialogContainer } from '@/components/ui/meeting-dialog';
 import { LeadNotesProvider, useLeadNotes, LeadNoteDialogType, LeadNote } from '@/lib/contexts/LeadNotesContext';
 import { LeadNoteDialogManager } from '@/components/leads/LeadNoteDialogManager';
@@ -459,16 +460,13 @@ const mockLeadInsights: Record<string, any> = {
 export default function LeadDetailPage() {
   const { isEnabled: USE_MOCK_DATA } = useMockData();
   
-  // Wrap the entire component with our providers
+  // Wrap the entire component with our providers, but remove MeetingDialogProvider
   return (
     <LeadNotesProvider>
       <EmailDialogProvider>
         <LeadPhoneDialogProvider>
-          <MeetingDialogProvider>
-            <LeadDetailContent />
-            <MeetingDialogContainer />
-            <LeadNoteDialogManager />
-          </MeetingDialogProvider>
+          <LeadDetailContent />
+          <LeadNoteDialogManager />
         </LeadPhoneDialogProvider>
       </EmailDialogProvider>
     </LeadNotesProvider>
@@ -1409,45 +1407,36 @@ function LeadDetailContent() {
     
     // Generate a unique dialog ID
     const dialogId = `schedule-meeting-${lead.id}-${Date.now()}`;
-    console.log("📝 LeadDetail - Generated dialogId:", dialogId);
+    console.log("📝 LeadDetail - Generated dialogId:", dialogId, "for lead:", lead);
     
-    // Create a temp meeting object with the lead details
-    const baseMeeting = {
-      id: `temp-${Date.now()}`,
-      title: `Meeting with ${lead.first_name} ${lead.last_name}`,
-      start_time: new Date().toISOString(),
-      end_time: new Date(Date.now() + 3600000).toISOString(), // 1 hour later
-      status: MeetingStatus.SCHEDULED,
-      meeting_type: MeetingType.INITIAL_CALL,
-      lead_id: lead.id,
-      lead: lead,
-      created_at: new Date().toISOString(),
-      updated_at: new Date().toISOString(),
-    };
-    console.log("📅 LeadDetail - Created baseMeeting:", baseMeeting);
-
-    // Create the dialog content
-    const dialogContent = (
-      <ContextualRescheduleDialog
-        dialogId={dialogId}
-        meeting={baseMeeting}
-        handleClose={() => {
-          console.log("❌ LeadDetail - Dialog close handler called");
-          closeMeetingDialog(dialogId);
-        }}
-        handleRescheduleSuccess={(scheduledMeeting) => {
-          console.log("✅ LeadDetail - Meeting scheduled successfully");
-          handleScheduleSuccess(scheduledMeeting);
-          closeMeetingDialog(dialogId);
-          toast.success('Meeting scheduled successfully');
-        }}
-      />
-    );
-    console.log("🎨 LeadDetail - Created dialog content");
+    // Log if the MeetingDialogContext is available
+    console.log("🔄 LeadDetail - MeetingDialogContext available:", {
+      openMeetingDialog: !!openMeetingDialog,
+      closeMeetingDialog: !!closeMeetingDialog,
+    });
+    
+    // Create dialog content with the ContextualScheduleMeetingDialog component
+    const dialogContent = <ContextualScheduleMeetingDialog dialogId={dialogId} />;
+    console.log("🧩 LeadDetail - Created dialog content, component available:", !!dialogContent);
     
     // Open the dialog
-    console.log("🚀 LeadDetail - Opening meeting dialog with type:", MeetingDialogType.RESCHEDULE);
-    openMeetingDialog(dialogId, MeetingDialogType.RESCHEDULE, dialogContent, { lead });
+    console.log("🚀 LeadDetail - Opening meeting dialog with type:", MeetingDialogType.SCHEDULE);
+    const result = openMeetingDialog(
+      dialogId,
+      MeetingDialogType.SCHEDULE,
+      dialogContent,
+      { leadId: String(lead.id) }
+    );
+    
+    console.log("✅ LeadDetail - Dialog open result:", result);
+    
+    // Verify if the dialog was added to the context
+    setTimeout(() => {
+      if (typeof window !== 'undefined') {
+        const dialogElement = document.querySelector(`[data-dialog-wrapper="${dialogId}"]`);
+        console.log("🔍 LeadDetail - Dialog element in DOM:", !!dialogElement);
+      }
+    }, 100);
   };
   
   // Render the lead detail page with modern layout

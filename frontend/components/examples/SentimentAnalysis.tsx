@@ -1,3 +1,5 @@
+'use client';
+
 import React, { useState } from 'react';
 import { generateText } from '@/lib/services/llmService';
 import AIFeatureGuard from '@/components/AIFeatureGuard';

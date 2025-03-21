@@ -172,6 +172,15 @@ export const getLead = async (id: string) => {
   return response;
 };
 
+/**
+ * Get a lead by ID - alias for getLead to match the function name used in other places
+ * @param id Lead ID
+ * @returns Promise with lead data or error
+ */
+export const getLeadById = async (id: string) => {
+  return getLead(id);
+};
+
 // Create a new lead
 export const createLead = async (leadData: LeadCreate) => {
   const response = await post<any>(API_ENDPOINT, leadData);

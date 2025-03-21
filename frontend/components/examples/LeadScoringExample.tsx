@@ -1,3 +1,5 @@
+'use client';
+
 import React, { useState } from 'react';
 import { scoreLeadWithFallback } from '@/lib/services/leadScoringService';
 import { Lead } from '@/lib/types/leads';

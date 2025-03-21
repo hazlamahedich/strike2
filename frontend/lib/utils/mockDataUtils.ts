@@ -13,25 +13,38 @@ import { useMockData as configUseMockData } from '@/lib/config';
  * 
  * IMPORTANT: For React components, always use the useMockData hook from /hooks/useMockData.ts
  * 
+ * @param forceMock Option to force mock data regardless of settings
  * @returns Current mock data status
  */
-export const getMockDataStatus = (): boolean => {
-  // Check localStorage first
-  if (typeof window !== 'undefined') {
-    const storedValue = localStorage.getItem('mockDataSettings');
-    if (storedValue) {
-      try {
-        const settings = JSON.parse(storedValue);
-        return settings.enabled;
-      } catch (e) {
-        console.error('Error parsing stored mock data settings:', e);
-      }
-    }
+export function getMockDataStatus(forceMock = false): boolean {
+  // If force mock is enabled, always return true
+  if (forceMock) {
+    return true;
+  }
+
+  if (typeof window === 'undefined') {
+    // Server-side execution
+    return process.env.NEXT_PUBLIC_USE_MOCK_DATA === 'true';
   }
   
-  // Fall back to the config value
-  return configUseMockData();
-};
+  // Client-side execution - check multiple sources in priority order:
+  
+  // 1. Check URL param (highest priority) - useful for testing
+  if (typeof window.location !== 'undefined') {
+    const urlParams = new URLSearchParams(window.location.search);
+    const mockParam = urlParams.get('mock');
+    if (mockParam === 'true') return true;
+    if (mockParam === 'false') return false;
+  }
+  
+  // 2. Check localStorage (user preference)
+  const localStorageMock = localStorage.getItem('strike_app_mock_data');
+  if (localStorageMock === 'true') return true;
+  if (localStorageMock === 'false') return false;
+  
+  // 3. Check environment variable (default setting)
+  return process.env.NEXT_PUBLIC_USE_MOCK_DATA === 'true';
+}
 
 /**
  * Transition guide for mock data usage
@@ -75,88 +88,37 @@ export const getMockDataStatus = (): boolean => {
  */
 
 /**
- * Enable mock data mode client-side
- * This is useful for development and testing
+ * Enable mock data mode
  */
-export const enableMockDataMode = (): void => {
+export function enableMockData(): void {
   if (typeof window !== 'undefined') {
-    try {
-      // Store the setting in localStorage (for backward compatibility)
-      localStorage.setItem('useMockData', 'true');
-      
-      // Store in the structured format used by useMockData hook
-      const currentSettings = localStorage.getItem('mockDataSettings');
-      let settings = { enabled: true };
-      
-      if (currentSettings) {
-        try {
-          const parsedSettings = JSON.parse(currentSettings);
-          settings = { ...parsedSettings, enabled: true };
-        } catch (e) {
-          console.error('Error parsing stored mock data settings:', e);
-        }
-      }
-      
-      localStorage.setItem('mockDataSettings', JSON.stringify({
-        ...settings,
-        enabled: true,
-        timestamp: new Date().toISOString()
-      }));
-      
-      // Dispatch event for other components to react to the change
-      window.dispatchEvent(new CustomEvent('mock-data-changed', { 
-        detail: { useMockData: true } 
-      }));
-      
-      console.log('Mock data mode enabled client-side');
-      
-      // Reload the page to apply the setting
-      window.location.reload();
-    } catch (e) {
-      console.error('Error enabling mock data mode:', e);
-    }
+    localStorage.setItem('strike_app_mock_data', 'true');
   }
-};
+}
 
 /**
- * Disable mock data mode client-side
+ * Disable mock data mode
  */
-export const disableMockDataMode = (): void => {
+export function disableMockData(): void {
   if (typeof window !== 'undefined') {
-    try {
-      // Remove the setting from localStorage (for backward compatibility)
-      localStorage.removeItem('useMockData');
-      
-      // Update the structured format used by useMockData hook
-      const currentSettings = localStorage.getItem('mockDataSettings');
-      let settings = { enabled: false };
-      
-      if (currentSettings) {
-        try {
-          const parsedSettings = JSON.parse(currentSettings);
-          settings = { ...parsedSettings, enabled: false };
-        } catch (e) {
-          console.error('Error parsing stored mock data settings:', e);
-        }
-      }
-      
-      localStorage.setItem('mockDataSettings', JSON.stringify({
-        ...settings,
-        enabled: false,
-        timestamp: new Date().toISOString()
-      }));
-      
-      // Dispatch event for other components to react to the change
-      window.dispatchEvent(new CustomEvent('mock-data-changed', { 
-        detail: { useMockData: false } 
-      }));
-      
-      console.log('Mock data mode disabled client-side');
-      
-      // Reload the page to apply the setting
-      window.location.reload();
-    } catch (e) {
-      console.error('Error disabling mock data mode:', e);
-    }
+    localStorage.setItem('strike_app_mock_data', 'false');
   }
+}
+
+/**
+ * Toggle mock data mode
+ * @returns The new mock data status
+ */
+export const toggleMockData = (): boolean => {
+  if (typeof window !== 'undefined') {
+    const currentStatus = getMockDataStatus();
+    const newStatus = !currentStatus;
+    
+    localStorage.setItem('strike_app_mock_data', newStatus ? 'true' : 'false');
+    console.log(`Mock data mode ${newStatus ? 'enabled' : 'disabled'}`);
+    
+    return newStatus;
+  }
+  
+  return false;
 }; 
